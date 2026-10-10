@@ -1,7 +1,7 @@
 {
   "name": "polarexplorer",
   "private": true,
-  "version": "0.3.7",
+  "version": "0.3.8",
   "workspaces": [
     "ui"
   ],
