@@ -2,8 +2,10 @@
 //! grid, combined cell by cell into the one polar that is exported.
 //!
 //! **The blending rule lives in [`blend`] and nowhere else**, so it can be
-//! changed without touching a view (spec.md 12.3; ask before changing it,
-//! CLAUDE.md). For each cell, over the sources with a value there:
+//! changed without touching a view. Polars use the selected statistic:
+//! a source-weighted mean, min, max, or linearly interpolated median/p90
+//! over positive-weight speeds. Their combined weight is retained when
+//! mixing with tracks. The default mean preserves the original rule:
 //!
 //! ```text
 //! blend = Σ wᵢ · bspᵢ / Σ wᵢ,   wᵢ = source weight × confidence
@@ -68,6 +70,8 @@ pub struct BlendSource<'a> {
 pub struct BlendOptions {
     /// Samples at which a track cell reaches full confidence.
     pub n_full: u32,
+    /// Statistic across polar sources before combining with tracks.
+    pub polar_statistic: pe_core::project::PolarStatistic,
     /// Smooth the filled grid.
     pub smoothing: bool,
 }
@@ -296,7 +300,7 @@ pub struct Contribution {
     pub id: u64,
     /// Its boat speed in the cell, knots.
     pub bsp: f64,
-    /// The weight the rule gave it there: its weight times its confidence.
+    /// Effective weight after polar selection or track sample confidence.
     pub weight: f64,
 }
 
@@ -322,17 +326,58 @@ fn terms<'b>(
     ordered: &'b [&'b BlendSource<'_>],
     i: usize,
     j: usize,
-    n_full: u32,
-) -> impl Iterator<Item = Contribution> + 'b {
-    ordered.iter().filter_map(move |source| {
-        let bsp = source.grid.get(i, j)?;
-        let weight = weight_at(source, i, j, n_full);
-        (weight > 0.0).then_some(Contribution {
+    options: &BlendOptions,
+) -> std::vec::IntoIter<Contribution> {
+    use pe_core::project::PolarStatistic;
+    let mut result = Vec::new();
+    let mut polars = Vec::new();
+    for source in ordered {
+        let Some(bsp) = source.grid.get(i, j) else {
+            continue;
+        };
+        let weight = weight_at(source, i, j, options.n_full);
+        if weight <= 0.0 {
+            continue;
+        }
+        if options.polar_statistic != PolarStatistic::Mean
+            && matches!(source.confidence, Confidence::Full)
+        {
+            polars.push(result.len());
+        }
+        result.push(Contribution {
             id: source.id,
             bsp,
             weight,
-        })
-    })
+        });
+    }
+    if options.polar_statistic != PolarStatistic::Mean {
+        polars.sort_by(|a, b| {
+            result[*a]
+                .bsp
+                .total_cmp(&result[*b].bsp)
+                .then_with(|| result[*a].id.cmp(&result[*b].id))
+        });
+        if !polars.is_empty() {
+            let total: f64 = polars.iter().map(|index| result[*index].weight).sum();
+            let fraction = match options.polar_statistic {
+                PolarStatistic::Min => 0.0,
+                PolarStatistic::Median => 0.5,
+                PolarStatistic::Max => 1.0,
+                PolarStatistic::P90 => 0.9,
+                PolarStatistic::Mean => unreachable!(),
+            };
+            let rank = fraction * (polars.len() - 1) as f64;
+            let lo = rank.floor() as usize;
+            let hi = rank.ceil() as usize;
+            for index in &polars {
+                result[*index].weight = 0.0;
+            }
+            result[polars[lo]].weight += total * (1.0 - rank.fract());
+            result[polars[hi]].weight += total * rank.fract();
+            result.retain(|term| term.weight > 0.0);
+        }
+    }
+    result.into_iter()
 }
 
 /// What stands behind cell (`i`, `j`)'s direct value (spec.md 12.3): each
@@ -352,7 +397,7 @@ pub fn contributions(
         return Vec::new();
     }
     let ordered = summed(sources, twa.len(), tws.len());
-    terms(&ordered, i, j, options.n_full).collect()
+    terms(&ordered, i, j, options).collect()
 }
 
 /// **The blending rule** (spec.md 12.3; see the module documentation), on
@@ -391,7 +436,7 @@ pub fn blend_mode(
     for i in 0..ni {
         for j in 0..nj {
             let (mut sum, mut weights) = (0.0, 0.0);
-            for term in terms(&ordered, i, j, options.n_full) {
+            for term in terms(&ordered, i, j, options) {
                 sum += term.weight * term.bsp;
                 weights += term.weight;
             }
@@ -532,6 +577,7 @@ mod tests {
 
     fn options() -> BlendOptions {
         BlendOptions {
+            polar_statistic: Default::default(),
             n_full: 30,
             smoothing: false,
         }
@@ -834,6 +880,7 @@ mod tests {
             &TWS,
             &[polar(1, &g, 1.0)],
             &BlendOptions {
+                polar_statistic: Default::default(),
                 n_full: 30,
                 smoothing: true,
             },

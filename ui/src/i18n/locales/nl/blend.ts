@@ -62,7 +62,6 @@ const catalogue: Record<string, string> = {
   "Sample counts are whole numbers from 1 to {max}.": "Aantallen punten zijn gehele getallen van 1 tot {max}.",
   "Feed the polar from boat speed and wind through the water where a current was found": "De polar voeden met bootsnelheid en wind door het water waar stroom is gevonden",
   "Smooth the blended grid once its empty cells are filled": "Het samengevoegde raster gladstrijken zodra de lege cellen zijn ingevuld",
-  "Each cell is the weighted mean of the visible sources with a value there: a polar counts by its weight, a track cell by its weight times its samples over the full-confidence count. Empty cells are filled between known values, first along TWA, then along TWS; the 0° row is 0 kn.": "Elke cel is het gewogen gemiddelde van de zichtbare bronnen die daar een waarde hebben: een polar telt mee naar zijn gewicht, een trackcel naar zijn gewicht maal zijn punten gedeeld door het aantal voor volledige betrouwbaarheid. Lege cellen worden ingevuld tussen bekende waarden, eerst langs de TWA, dan langs de TWS; de regel van 0° is 0 kn.",
   "Close without changing anything": "Sluiten zonder iets te wijzigen",
   "Apply these settings as one change (undoable)": "Deze instellingen als één wijziging toepassen (ongedaan te maken)",
   "Apply": "Toepassen",
@@ -106,6 +105,11 @@ const catalogue: Record<string, string> = {
   "Hide blend": "Samenvoeging verbergen",
   "Change blend colour": "Kleur van samenvoeging wijzigen",
   "The polar cannot be exported as it is: its grid would not read back, or it holds nothing. The export dialog says which.": "De polar kan niet worden geëxporteerd zoals hij is: zijn raster zou niet terug te lezen zijn, of hij bevat niets. Het exportvenster zegt welke van de twee.",
+  "Polar blend statistic": "Statistiek voor polairmenging",
+  "Minimum": "Minimum",
+  "Maximum": "Maximum",
+  "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Combineert zichtbare polairen per cel. Het gemiddelde gebruikt brongewichten; mediaan en p90 interpoleren gesorteerde snelheden. Trackinstellingen hebben geen invloed op weergaven met alleen polairen.",
+  "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "Het polairresultaat behoudt het totale polairgewicht bij menging met tracks. Trackcellen tellen volgens gewicht en betrouwbaarheid van monsters. Lege cellen worden tussen bekende waarden gevuld; de rij 0° is 0 kn.",
 };
 
 export default catalogue;

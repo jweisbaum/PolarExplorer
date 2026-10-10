@@ -942,12 +942,18 @@ describe("polar files and the source list (plan.md M4)", () => {
     expect(apply().disabled).toBe(true);
     await type(twa, "0, 45; 90 135 180");
     await type(feature("blend-settings:n-full") as HTMLInputElement, "12");
+    const polarStatistic = feature("blend-settings:polar-statistic") as HTMLSelectElement;
+    expect([...polarStatistic.options].map(option => option.value)).toEqual(["min", "median", "mean", "max", "p90"]);
+    await act(async () => {
+      polarStatistic.value = "max";
+      polarStatistic.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await click(feature("blend-settings:smoothing"));
     await click(apply());
     expect(commands("set_blend_settings")).toEqual([{ boatContext: 1,
       settings: {
         twa: [0, 45, 90, 135, 180], tws: [4, 6, 8, 10, 12, 14, 16, 20, 25, 30], min_samples: 5, n_full: 12,
-        smoothing: true, default_statistic: "p90", use_corrected: true, asymmetric: false, interpolation: "linear",
+        smoothing: true, default_statistic: "p90", polar_statistic: "max", use_corrected: true, asymmetric: false, interpolation: "linear",
       },
     }]);
     expect(feature("blend-settings:twa")).toBeNull();

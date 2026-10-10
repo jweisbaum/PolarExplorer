@@ -29,6 +29,10 @@ smoothing: boolean,
  */
 default_statistic: string,
 /**
+ * `min`, `median`, `mean`, `max` or `p90` across polar sources.
+ */
+polar_statistic: string | null,
+/**
  * Feed the polar from current-corrected values.
  */
 use_corrected: boolean,

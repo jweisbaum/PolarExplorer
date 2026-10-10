@@ -62,7 +62,6 @@ const catalogue: Record<string, string> = {
   "Sample counts are whole numbers from 1 to {max}.": "Les nombres de points sont des entiers de 1 à {max}.",
   "Feed the polar from boat speed and wind through the water where a current was found": "Alimenter la polaire avec la vitesse du bateau et le vent par rapport à l’eau là où un courant a été trouvé",
   "Smooth the blended grid once its empty cells are filled": "Lisser la grille fusionnée une fois ses cellules vides remplies",
-  "Each cell is the weighted mean of the visible sources with a value there: a polar counts by its weight, a track cell by its weight times its samples over the full-confidence count. Empty cells are filled between known values, first along TWA, then along TWS; the 0° row is 0 kn.": "Chaque cellule est la moyenne pondérée des sources visibles qui y ont une valeur : une polaire compte selon son poids, une cellule de trace selon son poids multiplié par ses points divisés par le nombre de la confiance pleine. Les cellules vides sont remplies entre des valeurs connues, d’abord selon le TWA, puis selon le TWS ; la ligne de 0° vaut 0 kn.",
   "Close without changing anything": "Fermer sans rien changer",
   "Apply these settings as one change (undoable)": "Appliquer ces réglages en une seule modification (annulable)",
   "Apply": "Appliquer",
@@ -106,6 +105,11 @@ const catalogue: Record<string, string> = {
   "Hide blend": "Masquer la fusion",
   "Change blend colour": "Changer la couleur de la fusion",
   "The polar cannot be exported as it is: its grid would not read back, or it holds nothing. The export dialog says which.": "La polaire ne peut pas être exportée telle quelle : sa grille ne se relirait pas, ou elle ne contient rien. La fenêtre d’export précise la raison.",
+  "Polar blend statistic": "Statistique de fusion des polaires",
+  "Minimum": "Minimum",
+  "Maximum": "Maximum",
+  "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Combine les polaires visibles par cellule. La moyenne utilise les poids des sources ; la médiane et p90 interpolent les vitesses triées. Les réglages des traces ne concernent pas les vues contenant uniquement des polaires.",
+  "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "Le résultat des polaires conserve leur poids total lors de la fusion avec les traces. Les cellules des traces comptent selon leur poids et la confiance des échantillons. Les cellules vides sont interpolées entre les valeurs connues ; la ligne 0° vaut 0 kn.",
 };
 
 export default catalogue;

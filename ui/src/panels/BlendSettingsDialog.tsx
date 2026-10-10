@@ -44,6 +44,7 @@ export default function BlendSettingsDialog({ project, onProject, onClose }: {
   const blend = project.blend;
   const [twaText, setTwaText] = useState(formatAxis(blend.twa));
   const [twsText, setTwsText] = useState(formatAxis(blend.tws));
+  const [polarStatistic, setPolarStatistic] = useState(blend.polar_statistic);
   const [statistic, setStatistic] = useState(blend.default_statistic);
   const [minText, setMinText] = useState(String(blend.min_samples));
   const [fullText, setFullText] = useState(String(blend.n_full));
@@ -75,7 +76,7 @@ export default function BlendSettingsDialog({ project, onProject, onClose }: {
     try {
       onProject(await api.setBlendSettings({
         twa: twa.values, tws: tws.values, min_samples: minSamples, n_full: nFull, smoothing,
-        default_statistic: statistic, use_corrected: useCorrected, asymmetric, interpolation,
+        default_statistic: statistic, polar_statistic: polarStatistic, use_corrected: useCorrected, asymmetric, interpolation,
       }));
       onClose();
     } catch (failure) {
@@ -149,6 +150,22 @@ export default function BlendSettingsDialog({ project, onProject, onClose }: {
         </section>
 
         <section>
+          <h3>{t("Polars")}</h3>
+          <label className="settings-field">
+            {t("Polar blend statistic")}
+            <select data-feature="blend-settings:polar-statistic" value={polarStatistic}
+              onChange={(event) => setPolarStatistic(event.target.value)}>
+              <option value="min">{t("Minimum")}</option>
+              <option value="median">{t("Median")}</option>
+              <option value="mean">{t("Mean")}</option>
+              <option value="max">{t("Maximum")}</option>
+              <option value="p90">{t("90th percentile")}</option>
+            </select>
+          </label>
+          <p className="muted">{t("Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.")}</p>
+        </section>
+
+        <section>
           <h3>{t("Tracks")}</h3>
           <label className="settings-field">
             {t("Statistic for new tracks")}
@@ -189,7 +206,7 @@ export default function BlendSettingsDialog({ project, onProject, onClose }: {
               onChange={(event) => setSmoothing(event.target.checked)} />
             {t("Smooth the blend")}
           </label>
-          <p className="muted">{t("Each cell is the weighted mean of the visible sources with a value there: a polar counts by its weight, a track cell by its weight times its samples over the full-confidence count. Empty cells are filled between known values, first along TWA, then along TWS; the 0° row is 0 kn.")}</p>
+          <p className="muted">{t("The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.")}</p>
         </section>
 
         <div className="modal-actions">

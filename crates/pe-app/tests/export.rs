@@ -376,6 +376,7 @@ fn input(summary: &pe_app::blend::BlendSummary) -> BlendSettingsInput {
         n_full: summary.n_full,
         smoothing: summary.smoothing,
         default_statistic: summary.default_statistic.clone(),
+        polar_statistic: Some(summary.polar_statistic.clone()),
         use_corrected: true,
     }
 }
@@ -648,4 +649,73 @@ fn a_new_track_takes_the_default_statistic() {
         Ok(())
     })
     .unwrap();
+}
+
+#[test]
+fn polar_blend_settings_survive_save_undo_and_hidden_tracks() {
+    use pe_core::project::PolarStatistic;
+    let root = TempRoot::new("polar-statistic");
+    let app = open_fixed(&root);
+    let before = projects::summary(&app).unwrap().unwrap();
+    assert_eq!(before.blend.polar_statistic, "mean");
+    let mut settings = input(&before.blend);
+    settings.polar_statistic = Some("max".into());
+    let changed = blend::blend_settings_set(&app, settings).unwrap();
+    assert_eq!(changed.blend.polar_statistic, "max");
+    let mut legacy_input = input(&changed.blend);
+    legacy_input.polar_statistic = None;
+    assert_eq!(
+        blend::blend_settings_set(&app, legacy_input)
+            .unwrap()
+            .blend
+            .polar_statistic,
+        "max"
+    );
+    app.with_session(|s| {
+        let mut project = s.require_open()?.project.clone();
+        for source in &mut project.sources {
+            if matches!(source.kind, SourceKind::Track { .. }) {
+                source.visible = false;
+            }
+        }
+        let loaded = pe_core::io::from_bytes(&pe_core::io::to_bytes(&project)?)?;
+        assert_eq!(loaded.blend.polar_statistic, PolarStatistic::Max);
+        let original = blend::fresh(&project);
+        let mut cache = pe_app::derived::Derivations::default();
+        assert_eq!(*cache.blend(&project), original);
+        project.blend.polar_statistic = PolarStatistic::Min;
+        assert_eq!(*cache.blend(&project), blend::fresh(&project));
+        assert_ne!(*cache.blend(&project), original);
+        project.blend.polar_statistic = PolarStatistic::Max;
+        assert_eq!(*cache.blend(&project), original);
+        project.blend.min_samples = 1_000_000;
+        project.blend.n_full = 1_000_000;
+        project.blend.default_statistic = pe_core::track::SegmentStatistic::Median;
+        assert_eq!(blend::fresh(&project), original);
+        project.sources.retain(|source| source.visible);
+        assert_eq!(blend::fresh(&project), original);
+        Ok(())
+    })
+    .unwrap();
+    edit::undo_last(&app).unwrap();
+    assert_eq!(
+        projects::summary(&app)
+            .unwrap()
+            .unwrap()
+            .blend
+            .polar_statistic,
+        "mean"
+    );
+    edit::redo_next(&app).unwrap();
+    assert_eq!(
+        projects::summary(&app)
+            .unwrap()
+            .unwrap()
+            .blend
+            .polar_statistic,
+        "max"
+    );
+    let mut invalid = input(&before.blend);
+    invalid.polar_statistic = Some("p75".into());
+    assert!(blend::blend_settings_set(&app, invalid).is_err());
 }

@@ -31,6 +31,7 @@ pub struct BlendSetParams {
     /// (the output grid's axes, lists of increasing numbers: degrees 0–180,
     /// or 0–360 when asymmetric; knots 0–70), min_samples (the samples a
     /// track cell needs), n_full (the samples for full confidence),
+    /// polar_statistic ("min", "median", "mean", "max", "p90"),
     /// smoothing (true/false), default_statistic ("median", "mean", "p75",
     /// "p90", "p95", "max": what a newly imported track starts with),
     /// use_corrected (correct for current), asymmetric
@@ -158,6 +159,7 @@ fn current_settings(summary: &ProjectSummary) -> Value {
         "n_full": blend.n_full,
         "smoothing": blend.smoothing,
         "default_statistic": blend.default_statistic,
+        "polar_statistic": blend.polar_statistic,
         "use_corrected": summary.use_corrected,
         "stokes_drift": summary.stokes_drift,
         "asymmetric": blend.asymmetric,

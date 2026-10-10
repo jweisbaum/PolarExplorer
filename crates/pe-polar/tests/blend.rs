@@ -86,6 +86,7 @@ fn fixed_blend() -> Blend {
         &grid.tws,
         &sources,
         &BlendOptions {
+            polar_statistic: Default::default(),
             n_full: 30,
             smoothing: false,
         },
@@ -217,4 +218,99 @@ proptest! {
             assert_reads_back(format, &polar, &text);
         }
     }
+}
+
+#[test]
+fn polar_statistics_ignore_track_confidence_and_report_matching_contributions() {
+    use pe_core::project::PolarStatistic::{Max, Mean, Median, Min, P90};
+    use pe_polar::blend::contributions;
+    let grids: Vec<_> = [2.0, 4.0, 10.0, 50.0]
+        .into_iter()
+        .map(|speed| Polar {
+            twa: vec![90.0],
+            tws: vec![10.0],
+            bsp: vec![vec![Some(speed)]],
+        })
+        .collect();
+    let sources: Vec<_> = grids
+        .iter()
+        .enumerate()
+        .map(|(i, grid)| BlendSource {
+            id: i as u64,
+            grid,
+            weight: if i == 3 { 0.0 } else { 1.0 },
+            confidence: Confidence::Full,
+        })
+        .collect();
+    for (statistic, expected) in [
+        (Min, 2.0),
+        (Median, 4.0),
+        (Mean, 5.333333),
+        (Max, 10.0),
+        (P90, 8.8),
+    ] {
+        for n_full in [1, 1_000_000] {
+            let options = BlendOptions {
+                polar_statistic: statistic,
+                n_full,
+                smoothing: false,
+            };
+            let result = blend(&[90.0], &[10.0], &sources, &options);
+            assert_eq!(result.polar.get(0, 0), Some(expected));
+            let terms = contributions(&[90.0], &[10.0], &sources, &options, 0, 0);
+            let weight: f64 = terms.iter().map(|term| term.weight).sum();
+            let speed: f64 = terms.iter().map(|term| term.weight * term.bsp).sum::<f64>() / weight;
+            assert!((speed - expected).abs() < 0.001);
+            assert_eq!(weight, 3.0);
+        }
+    }
+    let options = BlendOptions {
+        polar_statistic: Median,
+        n_full: 30,
+        smoothing: false,
+    };
+    assert_eq!(
+        blend(&[90.0], &[10.0], &sources[..2], &options)
+            .polar
+            .get(0, 0),
+        Some(3.0)
+    );
+    assert_eq!(
+        blend(&[90.0], &[10.0], &sources[..1], &options)
+            .polar
+            .get(0, 0),
+        Some(2.0)
+    );
+    assert_eq!(blend(&[90.0], &[10.0], &[], &options).polar.get(0, 0), None);
+    let count = vec![vec![15]];
+    let overridden = vec![vec![false]];
+    let mut mixed = sources[..2].to_vec();
+    mixed.push(BlendSource {
+        id: 9,
+        grid: &grids[2],
+        weight: 1.0,
+        confidence: Confidence::Samples {
+            count: &count,
+            overridden: &overridden,
+        },
+    });
+    let options = BlendOptions {
+        polar_statistic: Max,
+        ..options
+    };
+    assert_eq!(
+        blend(&[90.0], &[10.0], &mixed, &options).polar.get(0, 0),
+        Some(5.2)
+    );
+    assert_eq!(
+        blend(&[90.0], &[10.0], &mixed[2..], &options)
+            .polar
+            .get(0, 0),
+        Some(10.0)
+    );
+    mixed.reverse();
+    assert_eq!(
+        blend(&[90.0], &[10.0], &mixed, &options).polar.get(0, 0),
+        Some(5.2)
+    );
 }

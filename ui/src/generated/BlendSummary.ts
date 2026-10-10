@@ -51,6 +51,10 @@ smoothing: boolean,
  */
 default_statistic: string,
 /**
+ * `min`, `median`, `mean`, `max` or `p90` across polar sources.
+ */
+polar_statistic: string,
+/**
  * Extra sample filters applied after each track's own filters.
  */
 global_filters: TrackFilters | null,

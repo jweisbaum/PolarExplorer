@@ -15,7 +15,7 @@ export const TEST_BLEND: BlendSummary = {
   min_samples: 5,
   n_full: 30,
   smoothing: false,
-  default_statistic: "p90",
+  default_statistic: "p90", polar_statistic: "mean",
   global_filters: null,
   wave_ranges: { hs: { min: null, max: null }, waveAngle: { min: null, max: null }, wavePeriod: { min: null, max: null } },
   asymmetric: false,

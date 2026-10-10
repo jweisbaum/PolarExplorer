@@ -176,6 +176,7 @@ struct Entry {
 struct BlendKey {
     grid: pe_core::project::OutputGrid,
     n_full: u32,
+    polar_statistic: pe_core::project::PolarStatistic,
     smoothing: bool,
     interpolation: pe_core::project::Interpolation,
     corrections: Vec<pe_core::source::CellOverride>,
@@ -186,6 +187,7 @@ impl PartialEq for BlendKey {
     fn eq(&self, other: &Self) -> bool {
         self.grid == other.grid
             && self.n_full == other.n_full
+            && self.polar_statistic == other.polar_statistic
             && self.smoothing == other.smoothing
             && self.interpolation == other.interpolation
             && self.corrections == other.corrections
@@ -450,6 +452,7 @@ impl Derivations {
         let key = BlendKey {
             grid: project.grid.clone(),
             n_full: project.blend.n_full,
+            polar_statistic: project.blend.polar_statistic,
             smoothing: project.blend.smoothing,
             interpolation: project.blend.interpolation,
             corrections: project.blend.corrections.clone(),

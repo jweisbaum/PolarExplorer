@@ -62,7 +62,6 @@ const catalogue: Record<string, string> = {
   "Sample counts are whole numbers from 1 to {max}.": "Punktzahlen sind ganze Zahlen von 1 bis {max}.",
   "Feed the polar from boat speed and wind through the water where a current was found": "Die Polare aus Bootsgeschwindigkeit und Wind durchs Wasser speisen, wo eine Strömung gefunden wurde",
   "Smooth the blended grid once its empty cells are filled": "Das gemischte Raster glätten, sobald seine leeren Zellen gefüllt sind",
-  "Each cell is the weighted mean of the visible sources with a value there: a polar counts by its weight, a track cell by its weight times its samples over the full-confidence count. Empty cells are filled between known values, first along TWA, then along TWS; the 0° row is 0 kn.": "Jede Zelle ist das gewichtete Mittel der sichtbaren Quellen, die dort einen Wert haben: Eine Polare zählt mit ihrer Gewichtung, eine Trackzelle mit ihrer Gewichtung mal ihren Punkten geteilt durch die Zahl für volles Vertrauen. Leere Zellen werden zwischen bekannten Werten gefüllt, zuerst entlang TWA, dann entlang TWS; die 0°-Zeile ist 0 kn.",
   "Close without changing anything": "Schließen, ohne etwas zu ändern",
   "Apply these settings as one change (undoable)": "Diese Einstellungen als eine Änderung übernehmen (widerrufbar)",
   "Apply": "Übernehmen",
@@ -106,6 +105,11 @@ const catalogue: Record<string, string> = {
   "Hide blend": "Mischung ausblenden",
   "Change blend colour": "Farbe der Mischung ändern",
   "The polar cannot be exported as it is: its grid would not read back, or it holds nothing. The export dialog says which.": "Die Polare kann so nicht exportiert werden: Ihr Raster ließe sich nicht wieder einlesen, oder sie enthält nichts. Der Exportdialog nennt den Grund.",
+  "Polar blend statistic": "Statistik für Polarenmischung",
+  "Minimum": "Minimum",
+  "Maximum": "Maximum",
+  "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Kombiniert sichtbare Polaren pro Zelle. Der Mittelwert verwendet Quellgewichte; Median und p90 interpolieren sortierte Geschwindigkeiten. Track-Einstellungen beeinflussen reine Polarenansichten nicht.",
+  "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "Das Polarenergebnis behält beim Mischen mit Tracks das gesamte Polarengewicht. Track-Zellen zählen nach Gewicht und Stichprobenkonfidenz. Leere Zellen werden zwischen bekannten Werten gefüllt; die 0°-Zeile beträgt 0 kn.",
 };
 
 export default catalogue;

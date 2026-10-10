@@ -122,6 +122,23 @@ pub enum Interpolation {
     MonotoneSpline,
 }
 
+/// Statistic across visible polar sources, independent of track statistics.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PolarStatistic {
+    /// Lowest speed.
+    Min,
+    /// Middle speed, interpolating between the two central values.
+    Median,
+    /// Source-weighted mean, preserving the original blend rule.
+    #[default]
+    Mean,
+    /// Highest speed.
+    Max,
+    /// Linearly interpolated 90th percentile.
+    P90,
+}
+
 /// How the blend is computed and shown (spec.md 7.5, 8, 12).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -148,6 +165,8 @@ pub struct BlendSettings {
     /// The per-cell statistic a newly imported track starts with (spec.md
     /// 12.1); each track keeps its own after that.
     pub default_statistic: SegmentStatistic,
+    /// How polar sources are combined in each cell.
+    pub polar_statistic: PolarStatistic,
     /// Additional track filters, edited in the global 3D view. Never a time window.
     pub global_filters: Option<crate::source::SampleFilters>,
     /// Additional wave ranges from the main view, also applied to the blend.
@@ -240,6 +259,7 @@ impl Default for BlendSettings {
             colour: Colour::trusted(DEFAULT_BLEND_COLOUR),
             visible: true,
             default_statistic: SegmentStatistic::default(),
+            polar_statistic: PolarStatistic::default(),
             global_filters: None,
             wave_ranges: crate::source::WaveRanges::default(),
             asymmetric: false,

@@ -2294,3 +2294,15 @@ the offline check pass. The merge has a hand-built test. An ignored test
 (`PE_TEST_POSTGRES=1`) builds a scratch database on the local server,
 downloads it, and shows the session refuses an `INSERT` and a temporary
 table; it passed. Not run: a download from `syrfbackendprod` itself.
+
+### Follow-up: polar blend statistic · complete (2026-10-10)
+
+- [x] Blend settings → **Polars** → **Polar blend statistic**: *min*,
+  *median*, *mean* (default, the rule as it was), *max* or *p90* across the
+  visible polar sources per cell (spec §12.3); the polars keep their
+  combined weight against the tracks; `blend_set` takes `polar_statistic`.
+- [x] In nine languages, the help topic and the help search.
+
+Validation: workspace fmt, clippy and tests (hand-computed min, median, max
+and p90 cells, polars mixed with a track, export), UI typecheck and tests,
+and the offline check pass.

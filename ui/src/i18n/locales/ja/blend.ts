@@ -62,7 +62,6 @@ const catalogue: Record<string, string> = {
   "Sample counts are whole numbers from 1 to {max}.": "サンプル点数は 1〜{max} の整数です。",
   "Feed the polar from boat speed and wind through the water where a current was found": "海流が得られた箇所では、対水の艇速と風からポーラーを作ります",
   "Smooth the blended grid once its empty cells are filled": "空のセルを補間した後、ブレンドしたグリッドを平滑化します",
-  "Each cell is the weighted mean of the visible sources with a value there: a polar counts by its weight, a track cell by its weight times its samples over the full-confidence count. Empty cells are filled between known values, first along TWA, then along TWS; the 0° row is 0 kn.": "各セルは、そこに値のある表示中のソースの加重平均です。ポーラーはその重みで、航跡のセルは重みにサンプル点数と最大信頼度の点数の比を掛けた値で算入されます。空のセルは既知の値の間を、まず TWA 方向、次に TWS 方向に補間します。0° の行は 0 kn です。",
   "Close without changing anything": "何も変更せずに閉じる",
   "Apply these settings as one change (undoable)": "これらの設定を 1 つの変更として適用します（取り消し可能）",
   "Apply": "適用",
@@ -106,6 +105,11 @@ const catalogue: Record<string, string> = {
   "Hide blend": "ブレンドを隠す",
   "Change blend colour": "ブレンドの色の変更",
   "The polar cannot be exported as it is: its grid would not read back, or it holds nothing. The export dialog says which.": "このままではポーラーを書き出せません。グリッドを正しく読み戻せないか、値がありません。どちらかは書き出しダイアログに表示されます。",
+  "Polar blend statistic": "ポーラー合成の統計量",
+  "Minimum": "最小値",
+  "Maximum": "最大値",
+  "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "表示中のポーラーをセルごとに合成します。平均はソースの重みを使用し、中央値とp90は並べ替えた速度を補間します。ポーラーのみの表示には航跡設定は影響しません。",
+  "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "航跡との合成では、ポーラーの結果にポーラー全体の重みを適用します。航跡セルは重みとサンプルの信頼度に応じて計算します。空のセルは既知の値の間で補間し、0°の行は0ノットです。",
 };
 
 export default catalogue;

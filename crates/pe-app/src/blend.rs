@@ -199,6 +199,7 @@ fn with_blend_sources<T>(
     then(
         &sources,
         &BlendOptions {
+            polar_statistic: project.blend.polar_statistic,
             n_full: project.blend.n_full,
             smoothing: project.blend.smoothing,
         },
@@ -226,7 +227,7 @@ pub struct BlendContributor {
     pub source_id: u64,
     /// Its boat speed in the cell, knots.
     pub bsp: f64,
-    /// The weight the rule gave it: its weight times its confidence.
+    /// Effective weight after polar statistic selection or track confidence.
     pub weight: f64,
     /// Its part of the cell's total weight, 0–1.
     pub share: f64,
@@ -414,6 +415,8 @@ pub struct BlendSummary {
     pub smoothing: bool,
     /// The statistic new tracks start with: `median`, `mean`, `p75`, `p90`.
     pub default_statistic: String,
+    /// `min`, `median`, `mean`, `max` or `p90` across polar sources.
+    pub polar_statistic: String,
     /// Extra sample filters applied after each track's own filters.
     pub global_filters: Option<crate::tracks::TrackFilters>,
     /// Additional wave constraints from the main view.
@@ -451,6 +454,7 @@ impl BlendSummary {
             n_full: settings.n_full,
             smoothing: settings.smoothing,
             default_statistic: statistic_name(settings.default_statistic).to_owned(),
+            polar_statistic: polar_statistic_name(settings.polar_statistic).to_owned(),
             global_filters: settings
                 .global_filters
                 .as_ref()
@@ -466,6 +470,18 @@ impl BlendSummary {
                 .collect(),
             priority_min_samples: settings.priority_min_samples,
         }
+    }
+}
+
+/// Stable wire name of the polar blend statistic.
+pub fn polar_statistic_name(statistic: pe_core::project::PolarStatistic) -> &'static str {
+    use pe_core::project::PolarStatistic::*;
+    match statistic {
+        Min => "min",
+        Median => "median",
+        Mean => "mean",
+        Max => "max",
+        P90 => "p90",
     }
 }
 
@@ -604,6 +620,9 @@ pub struct BlendSettingsInput {
     pub smoothing: bool,
     /// `median`, `mean`, `p75` or `p90`.
     pub default_statistic: String,
+    /// `min`, `median`, `mean`, `max` or `p90` across polar sources.
+    #[serde(default)]
+    pub polar_statistic: Option<String>,
     /// Feed the polar from current-corrected values.
     pub use_corrected: bool,
     /// Independent port/starboard values.
@@ -632,6 +651,24 @@ pub fn blend_settings_set(state: &AppState, input: BlendSettingsInput) -> Result
         field: "Default statistic",
         value: input.default_statistic.clone(),
     })?;
+    let polar_statistic = input
+        .polar_statistic
+        .as_deref()
+        .map(|value| {
+            use pe_core::project::PolarStatistic::*;
+            match value {
+                "min" => Ok(Min),
+                "median" => Ok(Median),
+                "mean" => Ok(Mean),
+                "max" => Ok(Max),
+                "p90" => Ok(P90),
+                _ => Err(AppError::BadOption {
+                    field: "Polar statistic",
+                    value: value.to_owned(),
+                }),
+            }
+        })
+        .transpose()?;
     let interpolation = match input.interpolation.as_str() {
         "" | "linear" => pe_core::project::Interpolation::Linear,
         "monotone_spline" => pe_core::project::Interpolation::MonotoneSpline,
@@ -660,6 +697,7 @@ pub fn blend_settings_set(state: &AppState, input: BlendSettingsInput) -> Result
             smoothing: input.smoothing,
             use_corrected: input.use_corrected,
             default_statistic: statistic,
+            polar_statistic: polar_statistic.unwrap_or(before.polar_statistic),
             asymmetric: input.asymmetric,
             interpolation,
             ..before.clone()

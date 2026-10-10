@@ -2230,6 +2230,17 @@ that have a value in that cell:
   `n_full` default 30. **An overridden cell counts with confidence 1**: a
   track cell the person edited (§10.4) is vouched for, whatever its sample
   count, 0 included (D23).
+- **Polar statistic** (Blend settings, default *mean*): how the polar
+  sources' terms of a cell are combined before they meet the tracks. *Mean*
+  is the rule above unchanged. *Min*, *median*, *max* and *p90* sort the
+  cell's polar terms by boat speed (ties by source id), and hand their
+  **combined weight** to the term at that rank — the median and p90 ranks
+  interpolate linearly between the two neighbouring terms, as a weighted
+  pair — so the polars as a group keep the same weight against the tracks
+  whichever statistic is chosen. Track terms are untouched. The contributions
+  read back (`blend_cell`, the tooltips) show these effective weights, so a
+  polar outside the chosen rank is absent. Stored in the document with a
+  default, so older projects load as *mean* and blend as before.
 - Cell overrides apply before blending; exclusions remove the cell.
 - A polar source is read onto the output grid by the project's
   interpolation rule (§12.2), its edits

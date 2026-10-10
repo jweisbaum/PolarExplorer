@@ -62,7 +62,6 @@ const catalogue: Record<string, string> = {
   "Sample counts are whole numbers from 1 to {max}.": "样本点数为 1 至 {max} 的整数。",
   "Feed the polar from boat speed and wind through the water where a current was found": "在找到海流的位置，用对水船速和对水风生成极曲线",
   "Smooth the blended grid once its empty cells are filled": "在填充空单元格后平滑融合网格",
-  "Each cell is the weighted mean of the visible sources with a value there: a polar counts by its weight, a track cell by its weight times its samples over the full-confidence count. Empty cells are filled between known values, first along TWA, then along TWS; the 0° row is 0 kn.": "每个单元格是该处有值的可见来源的加权平均值：极曲线按其权重计入，航迹单元格按其权重乘以其样本点数与完全置信样本点数之比计入。空单元格在已知值之间填充，先沿 TWA，再沿 TWS；0° 行为 0 kn。",
   "Close without changing anything": "关闭，不做任何更改",
   "Apply these settings as one change (undoable)": "将这些设置作为一次更改应用（可撤销）",
   "Apply": "应用",
@@ -106,6 +105,11 @@ const catalogue: Record<string, string> = {
   "Hide blend": "隐藏融合极曲线",
   "Change blend colour": "更改融合极曲线颜色",
   "The polar cannot be exported as it is: its grid would not read back, or it holds nothing. The export dialog says which.": "极曲线目前无法导出：其网格无法正确读回，或其中没有任何内容。导出对话框会说明是哪种情况。",
+  "Polar blend statistic": "极坐标曲线混合统计量",
+  "Minimum": "最小值",
+  "Maximum": "最大值",
+  "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "按单元格组合可见的极坐标曲线。平均值使用来源权重；中位数和p90对排序后的速度进行插值。航迹设置不影响仅含极坐标曲线的视图。",
+  "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "与航迹混合时，极坐标曲线结果保留其总权重。航迹单元格按权重和样本置信度计算。空单元格在已知值之间填充；0°行的速度为0节。",
 };
 
 export default catalogue;

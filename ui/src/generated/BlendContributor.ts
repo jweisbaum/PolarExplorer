@@ -13,7 +13,7 @@ source_id: number,
  */
 bsp: number,
 /**
- * The weight the rule gave it: its weight times its confidence.
+ * Effective weight after polar statistic selection or track confidence.
  */
 weight: number,
 /**

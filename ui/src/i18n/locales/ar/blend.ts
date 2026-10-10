@@ -62,7 +62,6 @@ const catalogue: Record<string, string> = {
   "Sample counts are whole numbers from 1 to {max}.": "أعداد النقاط أعداد صحيحة من 1 إلى {max}.",
   "Feed the polar from boat speed and wind through the water where a current was found": "تغذية المنحنى القطبي بسرعة القارب والريح بالنسبة إلى الماء حيث وُجد تيار",
   "Smooth the blended grid once its empty cells are filled": "تنعيم الشبكة المدمجة بعد ملء خلاياها الفارغة",
-  "Each cell is the weighted mean of the visible sources with a value there: a polar counts by its weight, a track cell by its weight times its samples over the full-confidence count. Empty cells are filled between known values, first along TWA, then along TWS; the 0° row is 0 kn.": "كل خلية هي المتوسط المرجَّح للمصادر الظاهرة التي لها قيمة فيها: يُحتسب المنحنى القطبي بوزنه، وخلية المسار بوزنها مضروبًا في نسبة نقاطها إلى عدد الثقة الكاملة. تُملأ الخلايا الفارغة بين القيم المعروفة، أولًا على امتداد TWA ثم على امتداد TWS؛ وصف 0° قيمته 0 kn.",
   "Close without changing anything": "الإغلاق دون تغيير أي شيء",
   "Apply these settings as one change (undoable)": "تطبيق هذه الإعدادات تغييرًا واحدًا (قابلًا للتراجع)",
   "Apply": "تطبيق",
@@ -106,6 +105,11 @@ const catalogue: Record<string, string> = {
   "Hide blend": "إخفاء الدمج",
   "Change blend colour": "تغيير لون الدمج",
   "The polar cannot be exported as it is: its grid would not read back, or it holds nothing. The export dialog says which.": "لا يمكن تصدير المنحنى القطبي كما هو: إما أن شبكته لن تُقرأ من جديد، وإما أنه لا يحتوي على شيء. توضّح نافذة التصدير السبب.",
+  "Polar blend statistic": "إحصاء مزج المنحنيات القطبية",
+  "Minimum": "الحد الأدنى",
+  "Maximum": "الحد الأقصى",
+  "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "يجمع المنحنيات القطبية المرئية لكل خلية. يستخدم المتوسط أوزان المصادر؛ ويستوفي الوسيط والمئين التسعون السرعات المرتبة. لا تؤثر إعدادات المسارات على العروض التي تحتوي على منحنيات قطبية فقط.",
+  "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "تحتفظ نتيجة المنحنيات القطبية بوزنها الإجمالي عند مزجها مع المسارات. تُحسب خلايا المسارات حسب الوزن وثقة العينات. تُملأ الخلايا الفارغة بين القيم المعروفة؛ وصف 0° يساوي 0 عقدة.",
 };
 
 export default catalogue;
