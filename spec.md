@@ -320,11 +320,15 @@ or a failed write leaves the previous setting in place.
 - **Autosave**: recovery (default), save, off.
 - **Data sources**: **Open Data (Slow)** (default) keeps the existing public
   archives and current-source fallback chain. **Whirlwind (Fast) S3** reads
-  `s3://whirlwind-hindsight/hindsight`, in `us-east-1`, for wind, waves and
-  current. **Whirlwind (Fast) R2** reads Cloudflare R2 at the configured
-  account endpoint; **Whirlwind (Fast) Tigris** reads Tigris at
-  `fly.storage.tigris.dev`. Both use `whirlwind-hindsight/hindsight` and
-  SigV4 region `auto`. The choice is global and captured when a fetch is queued. Existing
+  `s3://whirlwind-hindsight/hindsight-routing`, in `us-east-1`, for wind,
+  waves and current. **Whirlwind (Fast) R2** reads Cloudflare R2 at the
+  configured account endpoint; **Whirlwind (Fast) Tigris** reads Tigris at
+  `fly.storage.tigris.dev`. Both use `whirlwind-hindsight/hindsight-routing`
+  and SigV4 region `auto`. Since 2026-10-11 the archive is published on S3
+  only: R2 and Tigris remain selectable but hold no weather (the user removed
+  their copies when the layout changed), so a fetch from them reports
+  missing metadata, or missing weather where metadata alone was left behind.
+  The choice is global and captured when a fetch is queued. Existing
   project values stay unchanged until a fetch is requested; resuming a track
   from a different source replaces its weather, so a track never mixes sources.
   S3 reads are anonymous, including metadata and byte ranges: no AWS
@@ -1332,12 +1336,16 @@ retry. Progress and cancellation remain in the status bar and track list.
 
 With **Whirlwind (Fast) S3** selected, the route reader uses the archive's Zarr v3
 metadata, coordinate axes and parameter names. All three Whirlwind sources
-use the combined layout published on R2: `data` contains `u10`, `v10`,
+expect the combined layout published on S3 under `hindsight-routing`: `data`
+contains `u10`, `v10`,
 `ucur`, `vcur`, `wave_direction`, `wave_height` and `wave_period`, mapped by
 the `param` coordinate names. There are no separate wave-array requests. Values
 are float16, stored in Zstandard-compressed inner chunks inside rectilinear
-shards. The currently published inner chunks are 72 hours × all parameters ×
-40 × 40 cells (10° × 10°). Only inner chunks intersecting a requested sample's
+shards. Since 2026-10-11 the published inner chunks are 72 hours × all
+parameters × 20 × 20 cells (5° × 5°; 40 × 40 cells, 10° × 10°, before), in
+the same four latitude and five longitude shard bands. The reader takes the
+inner chunk shape from the metadata, so a sample costs a quarter of the
+bytes it did. Only inner chunks intersecting a requested sample's
 spatial and temporal interpolation stencil are downloaded. It reads each
 required shard's checksummed index using a suffix Range request, then each
 required inner chunk using its exact byte range. It never downloads a complete

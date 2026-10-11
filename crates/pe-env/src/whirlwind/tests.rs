@@ -609,107 +609,87 @@ fn fetching_wind_then_waves_reuses_the_same_combined_chunk() {
     assert_eq!(server.requests.lock().unwrap().len(), count);
 }
 
+/// The S3 archive recorded 2026-10-11: 0.25° cells, so an inner chunk of
+/// 20 × 20 cells is 5° × 5° (it was 40 × 40, 10° × 10°, until then). The
+/// shard bands are unchanged: 20°, 70°, 60° and 30° of latitude from the
+/// north; 80°, 40°, 80°, 100° and 60° of longitude from 180°W.
 #[test]
-fn reads_the_recorded_r2_combined_layout() {
+fn reads_the_recorded_s3_layout_with_five_degree_inner_chunks() {
     let metadata: serde_json::Value = serde_json::from_slice(include_bytes!(
         "../../tests/fixtures/whirlwind/combined-data.zarr.json"
     ))
     .unwrap();
     let data = Array::parse(&metadata, (0..7).collect()).unwrap();
     assert_eq!(data.shape, [447072, 7, 720, 1440]);
-    assert_eq!(data.inner, [72, 7, 40, 40]);
-    let (chunk, offset) = data.locate((73, 200, 1100));
+    assert_eq!(data.inner, [72, 7, 20, 20]);
+    assert_eq!(
+        data.bands,
+        [vec![80, 280, 240, 120], vec![320, 160, 320, 400, 240]]
+    );
+    // Row 203 is 123 rows into the 280-row band from 70°N; column 1107 is
+    // 307 columns into the 400-column band from 20°E: a cell at 39.25°N,
+    // 96.75°E.
+    let (chunk, offset) = data.locate((73, 203, 1107));
     assert_eq!(chunk.key(), "data/c/1/0/1/3");
-    assert_eq!(chunk.inner, 37); // row 3 of 10 inner columns, column 7
-    assert_eq!(offset, 11220); // time 1, parameter 0, row 0, column 20
-    assert_eq!(data.index_len(chunk), 1124); // 7 × 10 index entries + checksum
-    assert_eq!(data.decoded_len(), 1_612_800);
+    assert_eq!(chunk.inner, 135); // inner row 6 of 14, column 15 of 20
+    assert_eq!(offset, 2867); // time 1, parameter 0, row 3, column 7
+    assert_eq!(data.index_len(chunk), 4484); // 14 × 20 index entries + checksum
+    assert_eq!(data.decoded_len(), 403_200);
+    // A position 5° away lands in another inner chunk of the same shard.
+    let (east, _) = data.locate((73, 203, 1127));
+    assert_eq!(east.key(), chunk.key());
+    assert_eq!(east.inner, 136);
 }
 
+/// R2 and Tigris stay selectable, but since 2026-10-11 neither holds
+/// weather: the request authenticates, then either the metadata is absent
+/// (the reader says so) or the metadata opens and every chunk is missing
+/// (missing weather, not an error). A credential or layout failure fails.
 #[test]
-#[ignore = "live R2; run explicitly with PE_TEST_LIVE=1"]
-fn live_r2_combined_chunks_and_restart_cache() {
+#[ignore = "live R2 and Tigris; run explicitly with PE_TEST_LIVE=1"]
+fn live_r2_and_tigris_hold_no_weather() {
     if std::env::var("PE_TEST_LIVE").as_deref() != Ok("1") {
         return;
     }
-    let source = Source::R2;
-    let path =
-        std::env::temp_dir().join(format!("pe-live-cache-{source:?}-{}", std::process::id()));
-    let disk = DiskCache::open(&path, 16 << 20).unwrap();
-    let open = || {
-        Whirlwind::new(
+    for source in [Source::R2, Source::Tigris] {
+        let w = Whirlwind::new(
             source,
             source.credentials(),
             Duration::from_secs(45),
             BlockCache::new(32 << 20),
             CONCURRENCY,
         )
-        .unwrap()
-        .with_disk_cache(Arc::clone(&disk))
-    };
-    let w = open();
-    let p = Point {
-        t: crate::time::parse_utc("2000-01-03T12:30:00").unwrap(),
-        lat: 48.,
-        lon: -5.,
-    };
-    let cancel = Arc::new(AtomicBool::new(false));
-    let start = std::time::Instant::now();
-    let out = w.sample(&[p], &options(), &cancel).unwrap();
-    eprintln!(
-        "{source:?} live combined chunk: {:?}, requests/bytes {:?}, {:?}",
-        start.elapsed(),
-        w.net_totals(),
-        out
-    );
-    assert!(out[0].wind.is_some() && out[0].waves.is_some() && out[0].current.is_some());
-    let before = w.net_totals();
-    assert_eq!(w.sample(&[p], &options(), &cancel).unwrap(), out);
-    assert_eq!(w.net_totals(), before);
-    drop(w);
-    let restarted = open();
-    assert_eq!(restarted.estimate(&[p]).unwrap().hourly_bytes, 0);
-    let before = restarted.net_totals();
-    assert_eq!(restarted.sample(&[p], &options(), &cancel).unwrap(), out);
-    assert_eq!(restarted.net_totals(), before);
-    drop(restarted);
-    drop(disk);
-    std::fs::remove_dir_all(path).unwrap();
-}
-
-#[test]
-#[ignore = "live Tigris; run explicitly with PE_TEST_LIVE=1"]
-fn live_tigris_metadata_and_sparse_sampling() {
-    if std::env::var("PE_TEST_LIVE").as_deref() != Ok("1") {
-        return;
+        .unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let p = Point {
+            t: crate::time::parse_utc("2000-01-03T12:30:00").unwrap(),
+            lat: 48.,
+            lon: -5.,
+        };
+        match w.archive(&cancel) {
+            Err(error) => {
+                let error = error.to_string();
+                eprintln!("{source:?} live: {error} ({:?})", w.net_totals());
+                assert!(
+                    error.contains("Whirlwind metadata missing"),
+                    "{source:?}: {error}"
+                );
+            }
+            Ok(archive) => {
+                assert_eq!(archive.data.inner, [72, 7, 20, 20]);
+                let out = w.sample(&[p], &options(), &cancel).unwrap();
+                eprintln!(
+                    "{source:?} live: metadata only, {out:?} ({:?})",
+                    w.net_totals()
+                );
+                assert_eq!(
+                    out,
+                    vec![EnvPoint::default()],
+                    "{source:?} still serves weather"
+                );
+            }
+        }
     }
-    let source = Source::Tigris;
-    let w = Whirlwind::new(
-        source,
-        source.credentials(),
-        Duration::from_secs(45),
-        BlockCache::new(32 << 20),
-        CONCURRENCY,
-    )
-    .unwrap();
-    let cancel = Arc::new(AtomicBool::new(false));
-    let archive = w.archive(&cancel).unwrap();
-    assert_eq!(archive.data.inner, [72, 7, 40, 40]);
-    assert_eq!(archive.data.parameters.len(), 7);
-    let p = Point {
-        t: crate::time::parse_utc("2000-01-03T12:30:00").unwrap(),
-        lat: 48.,
-        lon: -5.,
-    };
-    // The bucket currently has metadata only. A missing shard is missing
-    // weather, not an authentication/layout error; later uploads also work.
-    let out = w.sample(&[p], &options(), &cancel).unwrap();
-    assert_eq!(out.len(), 1);
-    eprintln!(
-        "Tigris live metadata/sampling: requests/bytes {:?}, {:?}",
-        w.net_totals(),
-        out
-    );
 }
 
 #[test]

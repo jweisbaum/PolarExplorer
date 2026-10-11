@@ -6,6 +6,23 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-11: Whirlwind 5° × 5° inner chunks — complete.**
+The Hindsight archive was rewritten with 20 × 20-cell (5° × 5°) inner chunks
+under the new S3 prefix `hindsight-routing`; the old `hindsight` prefix is
+gone, and the R2 and Tigris copies were removed. All three sources now name
+`hindsight-routing`, as does the offline allow-list. The reader was already
+metadata-driven, so no planning or decoding code changed: the recorded S3
+metadata fixture, its README and the hand-computed shard/inner-chunk test
+were replaced for the new layout (inner chunk 135 of shard `1/0/1/3`,
+offset 2,867, 4,484-byte index, 403,200 decoded bytes). The live R2 and
+Tigris tests now expect no weather there: R2 answers the new metadata with
+every chunk missing, Tigris answers no metadata, and either is accepted while
+a credential or layout failure is not. Live S3 at 48N, 5W, 2000-01-03 12:30Z
+returned wind, waves and current in 0.85 s with 11 requests and 755,760
+bytes (1,363,360 with 10° chunks); a repeat made no requests. Disk-cache
+entries from the old layout are keyed by the old archive URL, are never hit
+again, and leave by least-recent-use eviction.
+
 **2026-10-08: v0.3.7 release preflight — complete.**
 The workspace, npm manifests/lockfile, Cargo lockfile and Tauri configuration
 all name 0.3.7. The production frontend build, release-version guard, ten

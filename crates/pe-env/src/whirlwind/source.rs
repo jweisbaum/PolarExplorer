@@ -13,11 +13,11 @@ pub enum Source {
 impl Source {
     pub const fn url(self) -> &'static str {
         match self {
-            Self::S3 => "https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight",
+            Self::S3 => "https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing",
             Self::R2 => {
-                "https://3d5456ad10ebc32c8a3c259aa84e6c64.r2.cloudflarestorage.com/whirlwind-hindsight/hindsight"
+                "https://3d5456ad10ebc32c8a3c259aa84e6c64.r2.cloudflarestorage.com/whirlwind-hindsight/hindsight-routing"
             }
-            Self::Tigris => "https://fly.storage.tigris.dev/whirlwind-hindsight/hindsight",
+            Self::Tigris => "https://fly.storage.tigris.dev/whirlwind-hindsight/hindsight-routing",
         }
     }
 
