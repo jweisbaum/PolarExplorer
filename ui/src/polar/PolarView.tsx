@@ -1,4 +1,4 @@
-import { useBoatApi } from "../boats/context";
+import { useBoatApi, useBoatReadOnly } from "../boats/context";
 import { useFleetSync, correspondingCell, correspondingDot, type HoverPoint } from "../boats/synchronization";
 import type { BoatViewState } from "../boats/synchronization";
 import WaveRangeControls from "./WaveRangeControls";
@@ -219,6 +219,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const { editSource } = useBoatEditing();
   const { selectSamples, focusMap } = useBoatSelection();
   const api = useBoatApi();
+  const readOnly = useBoatReadOnly();
   const sync = useFleetSync();
   const syncRef = useRef(sync);
   syncRef.current = sync;
@@ -1043,6 +1044,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const labelOf = useMemo(() => new Map(project.sources.map((s) => [s.id, s])), [project.sources]);
 
   const exclude = (excluded: boolean) => {
+    if (readOnly) return;
     const targets = exclusionTargets(packet, acting);
     api.setExcluded(targets.nodes, targets.samples, excluded).then(onProject).catch(reportFailure);
   };
@@ -1191,7 +1193,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
           onDone={() => editSource(null)} />
       )}
 
-      <WaveRangeControls samples={packet.samples} ranges={waveRanges} onChange={(ranges) => { void updateWaveRanges(() => ranges); }}
+      <WaveRangeControls disabled={readOnly} samples={packet.samples} ranges={waveRanges} onChange={(ranges) => { void updateWaveRanges(() => ranges); }}
         units={settings?.units ?? DEFAULT_UNITS} count={sampleDotsBuilt.refs.length} />
 
       <div className="view3d-side">
@@ -1301,11 +1303,11 @@ export default function PolarView({ project, settings, onProject, compact = fals
             </>
           )}
           <div className="view3d-actions">
-            <button className="small" data-feature="view3d:exclude" disabled={summary.included === 0}
+            <button className="small" data-feature="view3d:exclude" disabled={readOnly || summary.included === 0}
               title={t("Remove the selected dots from the blend (undoable)")} onClick={() => exclude(true)}>
               {t("Exclude")}
             </button>
-            <button className="small" data-feature="view3d:include" disabled={summary.excluded === 0}
+            <button className="small" data-feature="view3d:include" disabled={readOnly || summary.excluded === 0}
               title={t("Put the selected dots back into the blend (undoable)")} onClick={() => exclude(false)}>
               {t("Include")}
             </button>

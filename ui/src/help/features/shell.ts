@@ -21,7 +21,7 @@ const features: Feature[] = [
     keywords: [msg("close project"), msg("start screen")], topic: "projects", reveal: menu },
   { id: "shell:rename", label: msg("Project name"), description: msg("Click the project's name in the title bar to rename it."),
     keywords: [msg("rename"), msg("title")], topic: "projects" },
-  { id: "shell:search", label: msg("Search"), description: msg("Find any control or help page by name, as you type."),
+  { id: "shell:search", label: msg("Search"), description: msg("Find included tracks, polars, controls and help pages as you type."),
     keywords: [msg("find"), msg("feature search")], topic: "search" },
   { id: "shell:help", label: msg("Help"), description: msg("Open the help reference."),
     keywords: [msg("manual"), msg("documentation")], topic: "search" },

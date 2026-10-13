@@ -1,4 +1,4 @@
-import { useBoatApi } from "../boats/context";
+import { useBoatApi, useBoatReadOnly } from "../boats/context";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { needsOutline, themeColour } from "../colourContrast";
@@ -6,7 +6,7 @@ import { reportFailure } from "../errors";
 import type { ProjectSummary } from "../generated/ProjectSummary";
 import type { SourceSummary } from "../generated/SourceSummary";
 import { useBoatReveal } from "../boats/context";
-import { msg, useT } from "../i18n";
+import { useT } from "../i18n";
 
 import { compareSource } from "../compare/compareState";
 import { useBoatEditing } from "../polar/editFocus";
@@ -16,15 +16,12 @@ import BlendSettingsDialog from "./BlendSettingsDialog";
 import ExportDialog from "./ExportDialog";
 import PALETTE from "./palette.json";
 
-/** A glyph and a name per kind of source. */
-const KINDS: Readonly<Record<string, { glyph: string; name: string }>> = {
-  orr: { glyph: "◆", name: msg("ORR polar") },
-  orc: { glyph: "◆", name: msg("ORC polar") },
-  polar_file: { glyph: "▦", name: msg("Polar file") },
-  track: { glyph: "〰", name: msg("Track") },
-};
+import { matchingSources, SOURCE_KINDS } from "./sourceSearch";
 
 let gestures = 0;
+
+/** Kept by the tab so folding the source panel does not lose Solo's restore point. */
+export type SoloState = { id: number; before: number[] } | null;
 
 /**
  * The source list (spec.md 8): the Blend entry at the top — its colour, a
@@ -36,13 +33,16 @@ let gestures = 0;
  * arrow keys on it. Every change is one undoable command in Rust; the list
  * shows whatever summary comes back.
  */
-export default function SourceList({ project, onProject, unit = "kn" }: {
+export default function SourceList({ project, onProject, solo, onSolo: setSolo, unit = "kn" }: {
   unit?: import("../generated/SpeedUnit").SpeedUnit;
   project: ProjectSummary;
   onProject: (project: ProjectSummary) => void;
+  solo: SoloState;
+  onSolo: (solo: SoloState) => void;
 }) {
   const { editSource } = useBoatEditing();
   const api = useBoatApi();
+  const readOnly = useBoatReadOnly();
   const onReveal = useBoatReveal();
   const t = useT();
   const [picking, setPicking] = useState<number | null>(null);
@@ -61,6 +61,42 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
   const [weights, setWeights] = useState<Record<number, number>>({});
   const gesture = useRef<string | null>(null);
   const sources = project.sources;
+  const [query, setQuery] = useState("");
+  const matching = matchingSources(sources, query, t);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const visibilityPending = useRef(false);
+  useEffect(() => onReveal("sources:reset-search", () => setQuery("")), [onReveal]);
+  useEffect(() => { setQuery(""); }, [project.id]);
+  useEffect(() => {
+    // Undo and external changes to visibility end Solo, rather than leaving a
+    // pressed button that no longer describes what is shown.
+    if (!visibilityPending.current && solo &&
+      (!sources.some(source => source.id === solo.id) || sources.some(source => source.visible !== (source.id === solo.id)))) setSolo(null);
+  }, [sources, solo, visibilityBusy]);
+  const changeVisibility = async (change: () => Promise<ProjectSummary>, nextSolo: typeof solo = null) => {
+    if (readOnly || visibilityPending.current) return;
+    visibilityPending.current = true;
+    setVisibilityBusy(true);
+    try {
+      const next = await change();
+      setSolo(nextSolo);
+      onProject(next);
+    } catch (error) { reportFailure(error); }
+    finally { visibilityPending.current = false; setVisibilityBusy(false); }
+  };
+  const setVisible = (ids: number[], nextSolo: typeof solo = null) => changeVisibility(() => api.setVisibleSources(ids), nextSolo);
+  const selectMatching = (visible: boolean) => {
+    const matched = new Set(matching.map(source => source.id));
+    void setVisible(sources.filter(source => matched.has(source.id) ? visible : source.visible).map(source => source.id));
+  };
+  const toggleSolo = (source: SourceSummary) => {
+    if (solo?.id === source.id) {
+      const existing = new Set(sources.map(item => item.id));
+      void setVisible(solo.before.filter(id => existing.has(id)));
+    } else {
+      void setVisible([source.id], { id: source.id, before: solo?.before ?? sources.filter(item => item.visible).map(item => item.id) });
+    }
+  };
   const blend = project.blend;
   const first = useRef<number | null>(null);
   first.current = sources[0]?.id ?? null;
@@ -93,7 +129,7 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
   };
 
   const move = (source: SourceSummary, to: number) => {
-    if (to < 0 || to >= sources.length) return;
+    if (readOnly || to < 0 || to >= sources.length) return;
     void run(api.moveSource(source.id, to));
   };
   const onHandleKey = (event: KeyboardEvent, source: SourceSummary, index: number) => {
@@ -105,16 +141,26 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
 
   return (
     <ul className="source-list">
+      <li className="source-list-tools">
+        <input type="search" data-feature="sources:search" aria-label={t("Search included tracks and polars")}
+          placeholder={t("Search included tracks and polars")} value={query} onChange={event => setQuery(event.target.value)} />
+        <div className="source-line">
+          <button className="small" data-feature="sources:select-all" disabled={readOnly || visibilityBusy || !matching.some(source => !source.visible)}
+            title={t("Show all matching sources")} onClick={() => selectMatching(true)}>{t("Select all")}</button>
+          <button className="small" data-feature="sources:select-none" disabled={readOnly || visibilityBusy || !matching.some(source => source.visible)}
+            title={t("Hide all matching sources")} onClick={() => selectMatching(false)}>{t("Select none")}</button>
+        </div>
+      </li>
       {/* The blend (spec.md 8, 12). */}
       <li className={["source-row", "blend-row", blend.visible ? "" : "hidden-source"].join(" ").trim()}>
         <div className="source-line">
-          <button data-feature="sources:blend-colour"
+          <button data-feature="sources:blend-colour" disabled={readOnly}
             // A colour too close to the background gets a contrasting outline.
             className={needsOutline(blend.colour, themeColour("--surface", "#253447")) ? "swatch-button outlined" : "swatch-button"}
             style={{ backgroundColor: blend.colour }} aria-expanded={pickingBlend}
             title={t("Change the blend's colour")} aria-label={t("Blend colour")}
             onClick={() => setPickingBlend(!pickingBlend)} />
-          <input type="checkbox" checked={blend.visible} data-feature="sources:blend-visible"
+          <input type="checkbox" checked={blend.visible} data-feature="sources:blend-visible" disabled={readOnly}
             aria-label={t("Show the blend")}
             title={t("Show or hide the blend in every plot. Export is not affected.")}
             onChange={(event) => void run(api.setBlendVisible(event.target.checked))} />
@@ -125,12 +171,12 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
           </span>
         </div>
         <div className="source-line">
-          <button className="small" data-feature="sources:blend-settings"
+          <button className="small" data-feature="sources:blend-settings" disabled={readOnly}
             title={t("The output grid and how sources are blended")}
             onClick={() => setDialog("settings")}>
             {t("Blend settings")}
           </button>
-          <button className="small" data-feature="sources:blend-edit" onClick={() => setDialog("correction")}>
+          <button className="small" data-feature="sources:blend-edit" disabled={readOnly} onClick={() => setDialog("correction")}>
             {t("Correct blend")}
           </button>
           <button className="small" data-feature="sources:export"
@@ -152,11 +198,13 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
         {dialog === "export" && <ExportDialog project={project} onClose={() => setDialog(null)} />}
       </li>
       {sources.length === 0 && <li className="muted placeholder">{t("No sources yet.")}</li>}
-      {sources.map((source, index) => {
-        const kind = KINDS[source.kind];
+      {sources.length > 0 && matching.length === 0 && <li className="muted placeholder">{t("Nothing matches “{query}”.", { query })}</li>}
+      {matching.map(source => {
+        const index = sources.indexOf(source);
+        const kind = SOURCE_KINDS[source.kind];
         const weight = weights[source.id] ?? source.weight;
         return (
-          <li key={source.id}
+          <li key={source.id} data-source-id={source.id} tabIndex={-1}
             className={["source-row", source.visible ? "" : "hidden-source", dragging === source.id ? "dragging" : ""].join(" ").trim()}
             onDragOver={(event) => { if (dragging !== null) event.preventDefault(); }}
             onDrop={(event) => {
@@ -166,7 +214,7 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
               if (moved && moved.id !== source.id) move(moved, index);
             }}>
             <div className="source-line">
-              <span className="drag-handle" draggable tabIndex={0} data-feature="sources:reorder"
+              <span className="drag-handle" draggable={!readOnly} tabIndex={readOnly ? -1 : 0} data-feature="sources:reorder"
                 title={t("Drag to reorder the list, or press the up and down arrow keys")}
                 aria-label={t("Reorder")}
                 onDragStart={(event) => {
@@ -177,18 +225,18 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
                 onKeyDown={(event) => onHandleKey(event, source, index)}>
                 ⠿
               </span>
-              <button className="swatch-button" data-feature="sources:colour"
+              <button className="swatch-button" data-feature="sources:colour" disabled={readOnly}
                 style={{ backgroundColor: source.colour }} aria-expanded={picking === source.id}
                 title={t("Change the colour")} aria-label={t("Colour")}
                 onClick={() => setPicking(picking === source.id ? null : source.id)} />
-              <input type="checkbox" checked={source.visible} data-feature="sources:visible"
+              <input type="checkbox" checked={source.visible} data-feature="sources:visible" disabled={readOnly || visibilityBusy}
                 title={t("Show or hide this source. A hidden source is left out of the blend and every plot.")}
                 aria-label={t("Visible")}
-                onChange={(event) => void run(api.setSourceVisible(source.id, event.target.checked))} />
+                onChange={(event) => { const visible = event.target.checked; void changeVisibility(() => api.setSourceVisible(source.id, visible)); }} />
               <span className="kind-icon" title={kind ? t(kind.name) : source.kind}
                 aria-label={kind ? t(kind.name) : source.kind}>{kind?.glyph ?? "?"}</span>
               {renaming?.id === source.id
-                ? <input className="source-rename" autoFocus value={renaming.text} data-feature="sources:rename"
+                ? <input className="source-rename" autoFocus value={renaming.text} data-feature="sources:rename" disabled={readOnly}
                   aria-label={t("Source name")} title={t("Type a new name; Enter to keep it, Esc to cancel")}
                   onChange={(event) => setRenaming({ id: source.id, text: event.target.value })}
                   onBlur={commitRename}
@@ -196,7 +244,7 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
                     if (event.key === "Enter") commitRename();
                     else if (event.key === "Escape") setRenaming(null);
                   }} />
-                : <button className="source-label" data-feature="sources:rename"
+                : <button className="source-label" data-feature="sources:rename" disabled={readOnly}
                   title={t("Click to rename")}
                   onClick={() => setRenaming({ id: source.id, text: source.label })}>
                   {source.label}
@@ -209,14 +257,17 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
             </div>
             <div className="source-line">
               <span className="source-weight-label muted">{t("Weight")}</span>
-              <input type="range" min={0} max={1} step={0.05} value={weight} data-feature="sources:weight"
+              <input type="range" min={0} max={1} step={0.05} value={weight} data-feature="sources:weight" disabled={readOnly}
                 aria-label={t("Weight")} title={t("Blend weight, 0 to 1. 1 is the default.")}
                 onPointerDown={() => { gestures += 1; gesture.current = `drag-${gestures}`; }}
                 onPointerUp={() => endWeight(source)}
                 onBlur={() => endWeight(source)}
                 onChange={(event) => setWeight(source, Number(event.target.value))} />
               <span className="source-weight">{weight.toFixed(2)}</span>
-              <button className="small" data-feature="sources:edit"
+              <button className="small" data-feature="sources:solo" aria-pressed={solo?.id === source.id}
+                disabled={readOnly || visibilityBusy} title={t("Show only this source; click again to restore previous visibility")}
+                onClick={() => toggleSolo(source)}>{t("Solo")}</button>
+              <button className="small" data-feature="sources:edit" disabled={readOnly}
                 title={t("Edit this source's polar in the 3D view, with its table")}
                 onClick={() => editSource(source.id)}>
                 {t("Edit")}{source.edits > 0 && <span className="muted" title={t("{count} edits", { count: source.edits })}> ✎</span>}
@@ -224,7 +275,7 @@ export default function SourceList({ project, onProject, unit = "kn" }: {
               <button className="small" data-feature="sources:compare"
                 title={t("Compare this source with the blend in the Compare stage; pick another operand there")}
                 onClick={() => compareSource(project, source.id)}>{t("Compare@@verb")}</button>
-              <button className="small" data-feature="sources:remove"
+              <button className="small" data-feature="sources:remove" disabled={readOnly}
                 title={t("Remove this source from the project (undoable)")}
                 onClick={() => void run(api.removeSource(source.id))}>{t("Remove")}</button>
             </div>

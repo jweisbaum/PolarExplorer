@@ -80,6 +80,25 @@ export async function locateFeature(feature: Feature): Promise<boolean> {
   return false;
 }
 
+/** Reveal a source in the active tab without changing its visibility or blend weight. */
+export async function locateSource(boat: number, source: number): Promise<boolean> {
+  for (const step of ["panel:right", "section:sources", "sources:reset-search"]) {
+    await handlerFor(step)?.(step);
+    await frame();
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const element = document.querySelector<HTMLElement>(`.boat-pane.active[data-boat-id="${boat}"] [data-source-id="${source}"]`);
+    if (element && !element.closest("[hidden]") && element.getBoundingClientRect().height > 0) {
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+      element.focus({ preventScroll: true });
+      flash(element);
+      return true;
+    }
+    await frame();
+  }
+  return false;
+}
+
 let current: (() => void) | null = null;
 
 /** How long the rectangle flashes for, in ms. Three pulses. */

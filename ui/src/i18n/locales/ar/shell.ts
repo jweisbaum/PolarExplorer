@@ -36,7 +36,6 @@ const catalogue: Record<string, string> = {
   "Click the project's name in the title bar to rename it.": "انقر اسم المشروع في شريط العنوان لإعادة تسميته.",
   "rename": "إعادة تسمية",
   "Search": "البحث",
-  "Find any control or help page by name, as you type.": "العثور على أي عنصر تحكم أو صفحة تعليمات بالاسم، أثناء الكتابة.",
   "find": "عثور",
   "feature search": "البحث في الميزات",
   "gear": "الترس",

@@ -1,5 +1,15 @@
 /** The blend: its entry, Blend settings and export (spec.md 8, 12). */
 const catalogue: Record<string, string> = {
+  "Search included tracks and polars": "البحث في المسارات والمنحنيات القطبية المضافة",
+  "Show all matching sources": "إظهار جميع المصادر المطابقة",
+  "Hide all matching sources": "إخفاء جميع المصادر المطابقة",
+  "Select none": "إلغاء تحديد الكل",
+  "Show only this source; click again to restore previous visibility": "إظهار هذا المصدر فقط؛ انقر مجددًا لاستعادة حالة الظهور السابقة",
+  "Solo": "عرض منفرد",
+  "Search sources, features and help": "البحث في المصادر والميزات والمساعدة",
+  "Search sources, features and help ({chord})": "البحث في المصادر والميزات والمساعدة ({chord})",
+  "Change source visibility": "تغيير ظهور المصادر",
+  "Find included tracks, polars, controls and help pages as you type.": "اعثر على المسارات والمنحنيات القطبية المضافة وعناصر التحكم وصفحات المساعدة أثناء الكتابة.",
   "Output grid wind angles": "زوايا الريح في شبكة الناتج",
   "In Blend settings: the true wind angles the blend is made on, 0 to 180, at least 0.01 apart.": "في إعدادات الدمج: زوايا الريح الحقيقية التي يُبنى عليها الدمج، من 0 إلى 180، يفصل بينها 0.01 على الأقل.",
   "axis": "المحور",

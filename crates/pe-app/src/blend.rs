@@ -99,6 +99,50 @@ pub fn wave_ranges_set(state: &AppState, ranges: WaveRangesInput) -> Result<Proj
     })
 }
 
+/// Slider domains from all placed samples of visible tracks, before filtering.
+/// A compact counterpart of the wave columns in the 3D scene, for the 2D view.
+#[tauri::command]
+pub fn wave_range_maxima(
+    state: tauri::State<'_, AppState>,
+    boat_context: Option<u64>,
+) -> Result<[Option<f64>; 3]> {
+    let state = state.scoped(boat_context);
+    state.with_session(|session| {
+        let open = session.require_open()?;
+        let project = &open.project;
+        let mut maxima: [Option<f64>; 3] = [None; 3];
+        for source in project.sources.iter().filter(|source| source.visible) {
+            let Some(track) = source.track() else {
+                continue;
+            };
+            for sample in &track.samples {
+                if crate::derived::sample_point(project, sample).is_none() {
+                    continue;
+                }
+                let heading = if project.blend.use_corrected {
+                    sample.heading_corrected.or(sample.heading)
+                } else {
+                    sample.heading
+                };
+                let values = [
+                    sample.hs_m,
+                    sample
+                        .wave_from
+                        .zip(heading)
+                        .map(|(wave, heading)| pe_tracks::geo::angle_between(wave, heading)),
+                    sample.wave_period_s,
+                ];
+                for (maximum, value) in maxima.iter_mut().zip(values) {
+                    if let Some(value) = value.filter(|v| v.is_finite()) {
+                        *maximum = Some(maximum.unwrap_or(0.0).max(value));
+                    }
+                }
+            }
+        }
+        Ok(maxima)
+    })
+}
+
 /// The blend of `project` from each visible source's derived data.
 pub fn assemble(project: &Project, derived: &BTreeMap<u64, Arc<Derived>>) -> Blend {
     let mut result = assemble_base(project, derived);

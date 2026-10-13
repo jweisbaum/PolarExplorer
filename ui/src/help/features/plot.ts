@@ -8,6 +8,27 @@ import type { Feature } from "../features";
 const inPanel = ["stage:2d"];
 
 const features: Feature[] = [
+  { id: "plot:lasso", label: msg("Lasso selection"), description: msg("Draw round dots to select them; Shift adds to the selection"),
+    keywords: [msg("select"), msg("freehand")], topic: "sources", reveal: inPanel },
+  { id: "plot:box", label: msg("Box selection"), description: msg("Drag a box round dots to select them; Shift adds to the selection"),
+    keywords: [msg("select"), msg("rectangle")], topic: "sources", reveal: inPanel },
+  { id: "plot:exclude", label: msg("Exclude from the blend"), description: msg("Remove the selected dots from the blend. Undo puts them back."),
+    keywords: [msg("remove"), msg("outlier"), msg("selection")], topic: "sources", reveal: inPanel },
+  { id: "plot:include", label: msg("Include in the blend"), description: msg("Put excluded dots back into the blend."),
+    keywords: [msg("restore"), msg("selection")], topic: "sources", reveal: inPanel },
+  { id: "plot:clear-selection", label: msg("Clear the selection"), description: msg("Select nothing (Escape)"),
+    keywords: [msg("deselect"), "Esc"], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-height-move", label: msg("Move wave height range"), description: msg("Drag to move both limits. Arrow keys move the range; Home and End move it to either end."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-angle-move", label: msg("Move wave angle range"), description: msg("Drag to move both limits. Arrow keys move the range; Home and End move it to either end."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-period-move", label: msg("Move wave period range"), description: msg("Drag to move both limits. Arrow keys move the range; Home and End move it to either end."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-height-min", label: msg("Minimum wave height shown"), description: msg("Filter track samples and update the blend in both views. These ranges apply in addition to other filters."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-height-max", label: msg("Maximum wave height shown"), description: msg("Filter track samples and update the blend in both views. These ranges apply in addition to other filters."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-angle-min", label: msg("Minimum wave angle shown"), description: msg("Filter track samples and update the blend in both views. These ranges apply in addition to other filters."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-angle-max", label: msg("Maximum wave angle shown"), description: msg("Filter track samples and update the blend in both views. These ranges apply in addition to other filters."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-period-min", label: msg("Minimum wave period shown"), description: msg("Filter track samples and update the blend in both views. These ranges apply in addition to other filters."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-period-max", label: msg("Maximum wave period shown"), description: msg("Filter track samples and update the blend in both views. These ranges apply in addition to other filters."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+  { id: "plot:wave-ranges-reset", label: msg("Reset ranges"), description: msg("Filter track samples and update the blend in both views. These ranges apply in addition to other filters."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic: "sources", reveal: inPanel },
+
   { id: "plot:all", label: msg("All wind speeds"), description: msg("Show every wind speed a source has, instead of one slice."),
     keywords: ["TWS", msg("all")], topic: "sources", reveal: inPanel },
   { id: "plot:tws", label: msg("Wind speed slice"), description: msg("The true wind speed the polar plot slices at."),

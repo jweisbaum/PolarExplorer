@@ -11,8 +11,8 @@ const controls = [
   { key: "wavePeriod", label: msg("Wave period"), lower: "wave-period-min", upper: "wave-period-max", move: "wave-period-move", moveLabel: msg("Move wave period range"), lowerLabel: msg("Minimum wave period shown"), upperLabel: msg("Maximum wave period shown") },
 ] as const;
 
-function RangeSelection({ min, max, ceiling, step, feature, label, onMove, onDrag }: {
-  min: number; max: number; ceiling: number; step: number; feature: string; label: string;
+function RangeSelection({ min, max, ceiling, step, feature, label, onMove, onDrag, namespace }: {
+  min: number; max: number; ceiling: number; step: number; feature: string; label: string; namespace: "view3d" | "plot";
   onMove: (min: number, max: number) => void;
   onDrag: (active: boolean) => void;
 }) {
@@ -34,7 +34,7 @@ function RangeSelection({ min, max, ceiling, step, feature, label, onMove, onDra
     onDrag(false);
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  return <button type="button" className="wave-range-selection" data-feature={`view3d:${feature}`}
+  return <button type="button" className="wave-range-selection" data-feature={`${namespace}:${feature}`}
     aria-label={label} title={t("Drag to move both limits. Arrow keys move the range; Home and End move it to either end.")}
     style={{ left: `calc(${min / ceiling * 100}% + 7px)`, width: `max(0px, calc(${(max - min) / ceiling * 100}% - 14px))` }}
     onPointerDown={event => {
@@ -60,8 +60,12 @@ function RangeSelection({ min, max, ceiling, step, feature, label, onMove, onDra
     }} />;
 }
 
-export default function WaveRangeControls({ samples, ranges, onChange, units, count }: {
-  samples: ScenePacket["samples"]; ranges: WaveRanges; onChange: (value: WaveRanges) => void; units: Units; count: number;
+export default function WaveRangeControls({ samples, ranges, onChange, units, count, maxima: suppliedMaxima,
+  namespace = "view3d", disabled = false }: {
+  samples?: ScenePacket["samples"];
+  maxima?: readonly (number | null)[];
+  ranges: WaveRanges; onChange: (value: WaveRanges) => void; units: Units; count: number;
+  namespace?: "view3d" | "plot"; disabled?: boolean;
 }) {
   const t = useT();
   const id = useId();
@@ -69,11 +73,12 @@ export default function WaveRangeControls({ samples, ranges, onChange, units, co
   // Keep its scale fixed during a drag, even while that bound moves inward.
   const [dragCeilings, setDragCeilings] = useState<Partial<Record<WaveMetric, number>>>({});
   const height = waveUnit(units);
-  const maxima = useMemo(() => controls.map(({ key }) => {
+  const sampledMaxima = useMemo(() => controls.map(({ key }) => {
     let max: number | null = null;
-    for (const v of samples[key]) if (Number.isFinite(v)) max = Math.max(max ?? 0, v);
+    for (const v of samples?.[key] ?? []) if (Number.isFinite(v)) max = Math.max(max ?? 0, v);
     return max;
-  }), [samples.hs, samples.waveAngle, samples.wavePeriod]);
+  }), [samples?.hs, samples?.waveAngle, samples?.wavePeriod]);
+  const maxima = suppliedMaxima ?? sampledMaxima;
   const change = (key: WaveMetric, end: "min" | "max", value: number, factor: number, ceiling: number) => {
     const old = ranges[key];
     const stored = value / factor;
@@ -86,7 +91,7 @@ export default function WaveRangeControls({ samples, ranges, onChange, units, co
       <h3 title={t("Filter track samples and update the blend in both views. These ranges apply in addition to other filters.")}>{t("Wave range filters")}</h3>
       <div className="wave-range-footer">
         <span role="status">{t("{count} samples shown", { count })}</span>
-        <button data-feature="view3d:wave-ranges-reset" disabled={!waveRangesActive(ranges)} onClick={() => onChange(NO_WAVE_RANGES)}>{t("Reset ranges")}</button>
+        <button data-feature={`${namespace}:wave-ranges-reset`} disabled={disabled || !waveRangesActive(ranges)} onClick={() => onChange(NO_WAVE_RANGES)}>{t("Reset ranges")}</button>
       </div>
     </header>
     {controls.map((control, i) => {
@@ -103,7 +108,7 @@ export default function WaveRangeControls({ samples, ranges, onChange, units, co
       // handles remain reachable on their respective halves of the bullet.
       const split = `calc(7px + (100% - 14px) * ${(values.min + values.max) / (2 * ceiling)})`;
       const display = (end: "min" | "max") => values[end].toFixed(key === "waveAngle" ? 0 : 1);
-      return <fieldset key={key} disabled={missing} aria-labelledby={`${id}-${key}-label`}>
+      return <fieldset key={key} disabled={disabled || missing} aria-labelledby={`${id}-${key}-label`}>
         <div className="wave-range-row">
           <span id={`${id}-${key}-label`} className="wave-range-label">
             {t(control.label)} <span className="muted">({symbol})</span>
@@ -113,7 +118,7 @@ export default function WaveRangeControls({ samples, ranges, onChange, units, co
           <div className="wave-range-slider">
             <div className="wave-range-track">
               <span aria-hidden="true" style={{ left: `${values.min / ceiling * 100}%`, width: `${(values.max - values.min) / ceiling * 100}%` }} />
-              <RangeSelection {...values} ceiling={ceiling} step={step} feature={control.move} label={t(control.moveLabel)}
+              <RangeSelection {...values} ceiling={ceiling} step={step} namespace={namespace} feature={control.move} label={t(control.moveLabel)}
                 onDrag={active => setDragCeilings(previous => ({ ...previous, [key]: active ? ceiling : undefined }))}
                 onMove={(min, max) => onChange({ ...ranges, [key]: {
                   min: min <= 0 ? null : min / factor, max: max >= ceiling ? null : max / factor,
@@ -122,7 +127,7 @@ export default function WaveRangeControls({ samples, ranges, onChange, units, co
             {(["min", "max"] as const).map(end => <input key={end} id={`${id}-${key}-${end}`}
               type="range" min={0} max={ceiling} step={step} value={values[end]}
               style={{ clipPath: end === "min" ? `inset(0 calc(100% - ${split}) 0 0)` : `inset(0 0 0 ${split})` }}
-              data-feature={`view3d:${end === "min" ? control.lower : control.upper}`}
+              data-feature={`${namespace}:${end === "min" ? control.lower : control.upper}`}
               aria-label={t(end === "min" ? control.lowerLabel : control.upperLabel)}
               aria-valuemin={end === "min" ? 0 : values.min}
               aria-valuemax={end === "min" ? values.max : ceiling}

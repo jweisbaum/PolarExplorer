@@ -15,6 +15,7 @@ vi.mock("../ipc", async () => {
   const { emptyDots } = await import("./dotPacket");
   return {
     api: {
+      waveRangeMaxima: async () => [null, null, null],
       polarPlot: (tws: number | null) => polarPlotCall(tws),
       polarPlotDots: async (tws: number | null, filtered: boolean) => (await dotsCall(tws, filtered)) ?? emptyDots(),
       blendCell: (twaIndex: number, twsIndex: number) => blendCellCall(twaIndex, twsIndex),

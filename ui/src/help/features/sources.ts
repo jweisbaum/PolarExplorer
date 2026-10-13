@@ -6,6 +6,14 @@ const list = ["section:sources"];
 const picker = ["section:sources", "sources:colours"];
 
 const features: Feature[] = [
+  { id: "sources:search", label: msg("Search included tracks and polars"), description: msg("Search included tracks and polars"),
+    keywords: [msg("find"), msg("track"), msg("polar")], topic: "sources", reveal: list },
+  { id: "sources:select-all", label: msg("Select all"), description: msg("Show all matching sources"),
+    keywords: [msg("visibility"), msg("all")], topic: "sources", reveal: list },
+  { id: "sources:select-none", label: msg("Select none"), description: msg("Hide all matching sources"),
+    keywords: [msg("visibility"), msg("hide")], topic: "sources", reveal: list },
+  { id: "sources:solo", label: msg("Solo"), description: msg("Show only this source; click again to restore previous visibility"),
+    keywords: [msg("visibility"), msg("track"), msg("polar")], topic: "sources", reveal: [...list, "sources:reset-search"] },
   { id: "sources:blend-colour", label: msg("Blend colour"),
     description: msg("Click the Blend entry's swatch to change the colour the blend is drawn in."),
     keywords: [msg("blend"), msg("colour"), msg("color")], topic: "blend", reveal: list },

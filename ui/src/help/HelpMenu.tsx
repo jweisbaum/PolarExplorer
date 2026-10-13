@@ -3,7 +3,9 @@ import { chordText, IS_MAC } from "../chords";
 import { later, reportError } from "../hint";
 import { msg, useT } from "../i18n";
 import { searchFeatures, type Feature } from "./features";
-import { locateFeature } from "./highlight";
+import { locateFeature, locateSource } from "./highlight";
+import { matchingSources, SOURCE_KINDS, useSearchSources } from "../panels/sourceSearch";
+import type { SourceSummary } from "../generated/SourceSummary";
 import { openHelp } from "./open";
 import { searchTopics, type HelpTopic } from "./topics";
 
@@ -13,7 +15,7 @@ const present = (id: string) => document.querySelector(`[data-feature="${CSS.esc
 const FEATURE_LIMIT = 8;
 const TOPIC_LIMIT = 4;
 
-type Result = { kind: "feature"; feature: Feature } | { kind: "topic"; topic: HelpTopic } | { kind: "reference" };
+type Result = { kind: "source"; source: SourceSummary; boat: number } | { kind: "feature"; feature: Feature } | { kind: "topic"; topic: HelpTopic } | { kind: "reference" };
 
 /** Whether a key event is the search chord: Cmd-F on a Mac, Ctrl-F elsewhere. */
 export function isSearchChord(event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
@@ -32,6 +34,7 @@ export function isSearchChord(event: Pick<KeyboardEvent, "key" | "metaKey" | "ct
  */
 export default function HelpMenu() {
   const t = useT();
+  const included = useSearchSources();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -76,7 +79,9 @@ export default function HelpMenu() {
     .filter(m => m.feature.reveal?.length || present(m.feature.landing ?? m.feature.id))
     .slice(0, FEATURE_LIMIT).map(m => ({ kind: "feature", feature: m.feature }) as const);
   const topics = query.trim() ? searchTopics(query).slice(0, TOPIC_LIMIT).map(topic => ({ kind: "topic", topic }) as const) : [];
-  const results: Result[] = [...features, ...topics, { kind: "reference" }];
+  const sources = included && query.trim() ? matchingSources(included.sources, query, t).slice(0, FEATURE_LIMIT)
+    .map(source => ({ kind: "source", source, boat: included.boat }) as const) : [];
+  const results: Result[] = [...sources, ...features, ...topics, { kind: "reference" }];
   const selected = Math.min(active, results.length - 1);
 
   const choose = (result: Result) => {
@@ -86,6 +91,7 @@ export default function HelpMenu() {
     input.current?.blur();
     if (result.kind === "reference") { openHelp(); return; }
     if (result.kind === "topic") { openHelp(result.topic.id); return; }
+    if (result.kind === "source") { void locateSource(result.boat, result.source.id); return; }
     const feature = result.feature;
     void locateFeature(feature).then(found => {
       if (found) return;
@@ -103,6 +109,12 @@ export default function HelpMenu() {
       onPointerDown: (event: React.PointerEvent) => event.preventDefault(),
       onClick: () => choose(result),
     } as const;
+    if (result.kind === "source") {
+      return <li key={`s:${result.boat}:${result.source.id}`} {...props}>
+        <span className="help-search-label">{result.source.label}</span>
+        <span className="help-search-detail">{t(SOURCE_KINDS[result.source.kind]?.name ?? result.source.kind)}</span>
+      </li>;
+    }
     if (result.kind === "feature") {
       return <li key={`f:${result.feature.id}`} {...props}>
         <span className="help-search-label">{t(result.feature.label)}</span>
@@ -126,7 +138,7 @@ export default function HelpMenu() {
       aria-label={t("Help")} onClick={() => openHelp()}>?</button>
     <input ref={input} type="search" role="combobox" data-feature="shell:search"
       aria-expanded={open} aria-controls={`${id}-list`} aria-activedescendant={open ? optionId(selected) : undefined}
-      aria-label={t("Search features and help")} title={t("Search features and help ({chord})", { chord })}
+      aria-label={t("Search sources, features and help")} title={t("Search sources, features and help ({chord})", { chord })}
       placeholder={t("Search… ({chord})", { chord })} value={query}
       onFocus={() => setOpen(true)}
       onChange={event => { setQuery(event.target.value); setActive(0); setOpen(true); }}
@@ -139,11 +151,13 @@ export default function HelpMenu() {
       }} />
     {open && query.trim() !== "" && <div className="help-menu-popup">
       <ul id={`${id}-list`} role="listbox" aria-label={t("Search results")}>
+        {sources.length > 0 && <li role="presentation" className="help-search-heading">{t("Sources")}</li>}
+        {sources.map((result, index) => row(result, index))}
         {features.length > 0 && <li role="presentation" className="help-search-heading">{t("Features")}</li>}
-        {features.map((result, index) => row(result, index))}
+        {features.map((result, index) => row(result, sources.length + index))}
         {topics.length > 0 && <li role="presentation" className="help-search-heading">{t("Help pages")}</li>}
-        {topics.map((result, index) => row(result, features.length + index))}
-        {features.length === 0 && topics.length === 0
+        {topics.map((result, index) => row(result, sources.length + features.length + index))}
+        {sources.length === 0 && features.length === 0 && topics.length === 0
           && <li role="presentation" className="help-search-empty">{t("Nothing matches “{query}”.", { query })}</li>}
         {row({ kind: "reference" }, results.length - 1)}
       </ul>

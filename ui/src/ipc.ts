@@ -345,7 +345,9 @@ export function boatApi(boatContext?: number) {
   /** Ordered priority groups and the additional global point filter layer. */
   setPriorityFilters: (groups: TrackFilters[], minimum: number) =>
     call<ProjectSummary>("set_priority_filters", { groups, minimum }),
-  setWaveRanges: (ranges: import("./generated/WaveRangesInput").WaveRangesInput): Promise<ProjectSummary> => invoke("set_wave_ranges", { ranges }),
+  setWaveRanges: (ranges: import("./generated/WaveRangesInput").WaveRangesInput) => call<ProjectSummary>("set_wave_ranges", { ranges }),
+  waveRangeMaxima: () => call<[number | null, number | null, number | null]>("wave_range_maxima"),
+  setVisibleSources: (ids: number[]) => call<ProjectSummary>("set_visible_sources", { ids }),
   setGlobalFilters: (filters: TrackFilters | null) => call<ProjectSummary>("set_global_filters", { filters }),
 
   /** Every visible track for the map, packed as binary (layout in `map/trackPacket.ts`). */

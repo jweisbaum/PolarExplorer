@@ -15,8 +15,6 @@ const catalogue: Record<string, string> = {
   "No page matches “{query}”.": "没有与“{query}”匹配的页面。",
   "{feature} is not available here. Open a project to use it.": "{feature} 在此处不可用。请打开一个项目后再使用。",
   "Open the help reference": "打开帮助参考",
-  "Search features and help": "搜索功能和帮助",
-  "Search features and help ({chord})": "搜索功能和帮助 ({chord})",
   "Search… ({chord})": "搜索… ({chord})",
   "Features": "功能",
   "Help pages": "帮助页面",

@@ -17,7 +17,7 @@ import { onThemeChange } from "../settings/themes";
 import { CLASS_A_ONLY, CLASS_B_ONLY, CLASS_BOTH, emptyCompare, type ComparePacket } from "./comparePacket";
 import { operandOf, setCompareChoice, swapOperands, useCompareChoice } from "./compareState";
 import {
-  compareBounds, compareSurfaces, DEFAULT_COMPARE_TOGGLES, heatCellAt, heatImage, heatLayout, labelStep, operandInfo,
+  compareBounds, compareCell, compareSurfaces, DEFAULT_COMPARE_TOGGLES, heatCellAt, heatImage, heatLayout, labelStep, operandInfo,
   operandKey, regionRows, singleMarkers, spanText, type CompareToggles, type HeatCell, type HeatImage,
 } from "./compareModel";
 import { currentScheme, legendGradient, POLES, type Scheme } from "./diverging";
@@ -65,6 +65,10 @@ export default function CompareView({ project, settings }: {
   const [toggles, setToggles] = useState<CompareToggles>(DEFAULT_COMPARE_TOGGLES);
   const [scheme, setScheme] = useState<Scheme>(currentScheme);
   const [hovered, setHovered] = useState<HeatCell | null>(null);
+  const [surfaceHover, setSurfaceHover] = useState<{ i: number; j: number; x: number; y: number; left: boolean; above: boolean } | null>(null);
+  const hoverFrame = useRef(0);
+  const compareReady = useRef(false);
+  const markerCells = useRef<Uint32Array>(new Uint32Array(0));
   /** Why the last comparison failed, shown on the stage; null when it did not. */
   const [failure, setFailure] = useState<{ text: string; detail: string | null } | null>(null);
   const choice = useCompareChoice(project);
@@ -72,6 +76,35 @@ export default function CompareView({ project, settings }: {
   const unit = settings?.units.speed ?? "kn";
   const factor = SPEED_FACTOR[unit];
   const symbol = SPEED_SYMBOL[unit];
+
+  const clearSurfaceHover = useCallback(() => {
+    cancelAnimationFrame(hoverFrame.current);
+    hoverFrame.current = 0;
+    setSurfaceHover(null);
+  }, []);
+
+  const hoverSurface = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.buttons !== 0 || !compareReady.current) { clearSurfaceHover(); return; }
+    const element = event.currentTarget;
+    const rect = element.getBoundingClientRect();
+    const x = event.clientX - rect.left, y = event.clientY - rect.top;
+    // Pick at most once per frame, using the latest pointer position.
+    cancelAnimationFrame(hoverFrame.current);
+    hoverFrame.current = requestAnimationFrame(() => {
+      hoverFrame.current = 0;
+      const current = scene.current;
+      if (!current || !compareReady.current) return;
+      const hit = current.pickSurface(x, y);
+      // An isolated one-only cell has a cross instead of a surface quad.
+      const marker = hit ? undefined : markerCells.current[current.pick(x, y, 8)];
+      const i = hit?.twaIndex ?? (marker === undefined ? -1 : Math.floor(marker / packet.tws.length));
+      const j = hit?.twsIndex ?? (marker === undefined ? -1 : marker % packet.tws.length);
+      if (!compareCell(packet, i, j, percent)) { setSurfaceHover(null); return; }
+      const left = x > rect.width / 2, above = y > rect.height / 2;
+      setSurfaceHover({ i, j, x: element.offsetLeft + x + (left ? -12 : 12),
+        y: element.offsetTop + y + (above ? -12 : 12), left, above });
+    });
+  };
 
   const paint = useCallback(() => {
     const current = scene.current;
@@ -112,10 +145,11 @@ export default function CompareView({ project, settings }: {
     // The MCP service's screenshot reads this canvas (every build).
     const offCapture = registerCapture(element, paint);
     made.setBackground(cssColour("--inset", "#1f2c3c"));
-    made.enableControls(element, draw);
+    made.enableControls(element, draw, clearSurfaceHover);
     const resize = () => {
       // Hidden with its stage (kept mounted): keep the size it had.
       if (element.clientWidth === 0 || element.clientHeight === 0) return;
+      clearSurfaceHover();
       made.resize(element.clientWidth, element.clientHeight);
       draw();
     };
@@ -133,11 +167,13 @@ export default function CompareView({ project, settings }: {
       offRedraw();
       offCapture();
       cancelAnimationFrame(frame.current);
+      cancelAnimationFrame(hoverFrame.current);
+      hoverFrame.current = 0;
       frame.current = 0;
       made.dispose();
       scene.current = null;
     };
-  }, [draw, paint]);
+  }, [draw, paint, clearSurfaceHover]);
 
   useEffect(() => { fitted.current = false; }, [project.id]);
 
@@ -146,12 +182,16 @@ export default function CompareView({ project, settings }: {
   const operands = `${operandKey(a)}|${operandKey(b)}`;
   useEffect(() => {
     const id = ++request.current;
+    compareReady.current = false;
+    clearSurfaceHover();
+    setHovered(null);
     void api.comparePolars(a, b, thresholdKn)
       .then((next) => {
         if (request.current !== id) return;
         setPacket(next);
         setArrived(true);
         setFailure(null);
+        compareReady.current = true;
       })
       .catch((error: unknown) => {
         if (request.current !== id) return;
@@ -162,7 +202,8 @@ export default function CompareView({ project, settings }: {
         setFailure(describeError(error));
         reportFailure(error);
       });
-  }, [project.id, project.revision, operands, thresholdKn]);
+    return () => { compareReady.current = false; request.current += 1; };
+  }, [project.id, project.revision, operands, thresholdKn, clearSurfaceHover]);
 
   const infoA = operandInfo(project, a);
   const infoB = operandInfo(project, b);
@@ -171,14 +212,17 @@ export default function CompareView({ project, settings }: {
   useEffect(() => {
     const current = scene.current;
     if (!current) return;
+    clearSurfaceHover();
+    setHovered(null);
     // Lone cells only one operand covers have no whole hatched quad: each
     // such node is marked with a cross (spec.md 11).
-    const markers = toggles.delta ? singleMarkers(packet, scheme) : { points: new Float32Array(0), colors: new Float32Array(0), count: 0 };
+    const markers = toggles.delta ? singleMarkers(packet, scheme) : { points: new Float32Array(0), colors: new Float32Array(0), cells: new Uint32Array(0), count: 0 };
+    markerCells.current = markers.cells;
     current.setData({
       samples: markers.points, colors: markers.colors, shapes: new Float32Array(markers.count).fill(SHAPE_CROSS), layout,
       surfaces: compareSurfaces(packet, toggles, { a: infoA.colour, b: infoB.colour }, percent, scheme),
     });
-    const guides = buildGuides(bounds, layout, unit);
+    const guides = buildGuides(bounds, layout, unit, project.blend.asymmetric);
     current.setGuides(guides.segments, cssColour("--muted", "#b3c9de"));
     labels.current = guides.labels;
     const host = labelsHost.current;
@@ -195,9 +239,10 @@ export default function CompareView({ project, settings }: {
       fitted.current = true;
     }
     draw();
-  }, [packet, arrived, toggles, layout, bounds, unit, percent, scheme, infoA.colour, infoB.colour, draw]);
+  }, [packet, arrived, toggles, layout, bounds, unit, percent, scheme, infoA.colour, infoB.colour, project.blend.asymmetric, draw, clearSurfaceHover]);
 
   const camera = (preset: CameraPreset) => {
+    clearSurfaceHover();
     const current = scene.current;
     if (!current) return;
     current.setView(presetView(preset, bounds, current.camera.fov));
@@ -205,6 +250,7 @@ export default function CompareView({ project, settings }: {
   };
 
   const chooseLayout = (next: Layout) => {
+    clearSurfaceHover();
     setLayout(next);
     const current = scene.current;
     if (current) current.setView(presetView("iso", compareBounds(packet, next), current.camera.fov));
@@ -220,6 +266,10 @@ export default function CompareView({ project, settings }: {
     : percent ? `${value.toFixed(1)} %` : `${(value * factor).toFixed(2)} ${symbol}`);
   const speed = (knots: number) => (Number.isFinite(knots) ? `${(knots * factor).toFixed(2)} ${symbol}` : "—");
   const windSpeed = (knots: number) => `${Number((knots * factor).toFixed(1))} ${symbol}`;
+  const cellDelta = (cell: HeatCell) => cell.cls === CLASS_BOTH
+    ? Number.isFinite(cell.delta) ? delta(cell.delta) : t("not comparable in %")
+    : cell.cls === CLASS_A_ONLY ? t("only A") : cell.cls === CLASS_B_ONLY ? t("only B") : "—";
+  const surfaceCell = surfaceHover ? compareCell(packet, surfaceHover.i, surfaceHover.j, percent) : null;
 
   const stats = percent ? packet.pct : packet.kn;
   const where = (cell: number) => {
@@ -243,8 +293,22 @@ export default function CompareView({ project, settings }: {
     <div className="view3d compare" tabIndex={-1}>
       <canvas ref={canvas} className="view3d-canvas compare-canvas"
         onPointerEnter={() => setHint(later(msg("Drag to turn, right-drag to pan, scroll to zoom.")))}
-        onPointerLeave={() => setHint(null)} />
+        onPointerMove={hoverSurface} onPointerDown={clearSurfaceHover} onPointerCancel={clearSurfaceHover}
+        onLostPointerCapture={clearSurfaceHover} onWheel={clearSurfaceHover}
+        onPointerLeave={() => { setHint(null); clearSurfaceHover(); }} />
       <div className="view3d-labels compare-labels" ref={labelsHost} aria-hidden="true" />
+      {surfaceHover && surfaceCell && <div role="tooltip" className="view3d-tooltip compare-tooltip" style={{
+        left: surfaceHover.x, top: surfaceHover.y,
+        transform: `translate(${surfaceHover.left ? "-100%" : "0"}, ${surfaceHover.above ? "-100%" : "0"})`,
+      }}>
+        <dl>
+          <div><dt>TWA</dt><dd>{Number(surfaceCell.twa.toFixed(2))}°</dd></div>
+          <div><dt>TWS</dt><dd>{windSpeed(surfaceCell.tws)}</dd></div>
+          <div><dt className="compare-tooltip-source" style={{ color: infoA.colour }}>A · {infoA.label ?? t("Blend")}</dt><dd>{speed(surfaceCell.a)}</dd></div>
+          <div><dt className="compare-tooltip-source" style={{ color: infoB.colour }}>B · {infoB.label ?? t("Blend")}</dt><dd>{speed(surfaceCell.b)}</dd></div>
+          <div><dt>Δ</dt><dd>{cellDelta(surfaceCell)}</dd></div>
+        </dl>
+      </div>}
       {unavailable !== null && <p className="view3d-unavailable muted">{t(unavailable)}</p>}
       {failure !== null && (
         <p className="view3d-empty compare-empty compare-failure" role="alert" title={failure.detail ?? undefined}>
@@ -387,8 +451,7 @@ export default function CompareView({ project, settings }: {
                 twa: Number(hovered.twa.toFixed(2)),
                 tws: windSpeed(hovered.tws),
                 a: speed(hovered.a), b: speed(hovered.b),
-                delta: hovered.cls === CLASS_BOTH ? (Number.isFinite(hovered.delta) ? delta(hovered.delta) : t("not comparable in %"))
-                  : hovered.cls === CLASS_A_ONLY ? t("only A") : hovered.cls === CLASS_B_ONLY ? t("only B") : "—",
+                delta: cellDelta(hovered),
               })
               : t("Hover a cell for its values. Rows are TWA, columns TWS.")}
           </div>

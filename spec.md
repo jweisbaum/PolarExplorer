@@ -1775,6 +1775,19 @@ unchanged. The GRIB encoder and backend fixture tests are retained internally.
 
 The right panel lists every source (ORC, file, track) in one list:
 
+- A search field at the top matches included tracks and polars by name,
+  kind, file, boat/event or certificate metadata, ignoring case and accents.
+  Hidden sources remain searchable. **Select all** and **Select none** show
+  or hide the matching sources (all sources when the search is empty), each
+  as one undoable change; sources outside the search keep their visibility.
+- **Solo** on a source shows it alone. Clicking it again restores the
+  previous visibility choices; choosing a different Solo keeps the same
+  restore point. The restore point survives folding the panel or changing
+  tabs. Manual visibility changes, bulk selection or undo ending the solo
+  visibility end Solo. These controls obey a tab's read-only state.
+- The title-bar search also searches the active tab's included sources.
+  Choosing a result opens the source list, clears its local search, scrolls
+  to the row and highlights it, without changing the source.
 - Colour swatch: click to change (a palette of 16 plus a custom picker). New
   sources take the next unused palette colour.
 - Visibility toggle: **hidden sources are excluded from the blend and from
@@ -1860,6 +1873,22 @@ The MCP service's `view://stage` still names the stage `"plot"`.
   shared fixture), not JSON: "all" draws every sample with wind, and 50
   tracks of 10,000 fixes as JSON objects are tens of megabytes. Beyond
   20,000 dots each is drawn as a small square rather than a circle.
+- Clicking selects a drawn sample dot by default. **Lasso** and **Box**
+  enable screen-space selection gestures; clicking the active tool again
+  returns to normal click selection. Shift-click toggles a dot; Shift with
+  a lasso or box adds to the selection. **Clear** or Escape clears it.
+  Sample IDs link the selection with 3D and the map. **Exclude** and
+  **Include** use the same undoable overlays as 3D (§10.3), updating both
+  views, the blend, PDFs and exports. Only currently drawn selected dots
+  are affected. Show **Excluded** to select and restore excluded samples.
+  Selection gestures are separate from Measure and disabled in PDF mode;
+  read-only tabs allow selection but cannot change exclusions.
+- **Wave range filters** (§10.2) sit at the bottom centre of the 2D stage,
+  matching 3D, with the plot fitted above them. Height, bow-relative
+  angle and period share the tab's saved ranges with 3D, including reset and
+  undo/redo. Their domains use all placed samples of visible tracks before
+  filtering, so narrowing a range cannot shrink away its controls. Samples
+  outside these ranges stay hidden even with **Filtered** enabled.
 - **Colour** chooses what the dots' colour shows: their track (the
   default) or the **time of day** they were sailed at, with a legend of the
   four bands (§10.2). It is offered while a track is shown, and is view
@@ -2030,8 +2059,9 @@ band. It is a display grouping and never enters the blend. A mode, or "show filt
 that value, no sample is filtered) is offered disabled with a tooltip saying
 why.
 
-**Wave range filters** sits at the bottom centre of the 3D view, between the
-open side panels. Each metric uses one horizontal slider with round start/end
+**Wave range filters** sits at the bottom centre of both the 3D and 2D views,
+between the open side panels (§9.2). Both controls edit the same
+tab-scoped ranges. Each metric uses one horizontal slider with round start/end
 handles on a shared rail and a value at each end: significant wave height
 (the Settings height unit), wave angle off the selected bow (0–180°), and wave
 period (seconds). Both handles remain reachable when they coincide and support
@@ -2223,7 +2253,18 @@ tool, draws the 3D view once per wave direction.
   of stops for dark themes (arms lighten away from zero) and one for light
   themes (arms darken); neither pole is the feature search's flash orange.
   Each surface can be shown or hidden; the layouts and preset cameras are
-  the 3D view's (§10.1).
+  the 3D view's (§10.1). Axis guides follow the project's asymmetric mode:
+  tower rings and spokes cover 360°, and the Cartesian angle axis extends
+  to 360°. Angle labels use the same mirrored 0–180° notation on each side
+  as the 3D view. Switching the mode refreshes the guides with the surfaces.
+- Hovering a visible A, B or difference surface shows the nearest grid
+  cell's TWA, TWS, both operand names and boat speeds, and the native A − B
+  difference in the selected units or percent. One-only cells report which
+  operand has data; percentages undefined because B is under 0.1 kn say so.
+  Isolated cross markers have the same tooltip. Picking follows the visible
+  surfaces in both layouts and across the full asymmetric angle range.
+  The tooltip clears during navigation, on leaving the graph, and when the
+  comparison or display changes; it reads the same packet as the heat map.
 - **Overlap**: only cells where both A and B have a value are coloured.
   Cells covered by only one are drawn in neutral grey with a pattern at
   that operand's speed, and counted in the summary ("N only A, M only B"):

@@ -1,4 +1,4 @@
-import { useBoatApi } from "../boats/context";
+import { useBoatApi, useBoatReadOnly } from "../boats/context";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import { needsOutline } from "../colourContrast";
@@ -14,9 +14,14 @@ import type { ProjectSummary } from "../generated/ProjectSummary";
 import type { SpeedUnit } from "../generated/SpeedUnit";
 import { useT } from "../i18n";
 
+import WaveRangeControls from "../polar/WaveRangeControls";
+import { useLiveEdit } from "./useLiveEdit";
+import { DEFAULT_UNITS } from "./filterUnits";
+import type { Units } from "../generated/Units";
+import { lassoSelect } from "../polar/geometry3d";
 import BlendCellTooltip from "../polar/BlendCellTooltip";
 import { ramp, SPEED_FACTOR, SPEED_SYMBOL } from "../polar/view3d";
-import { useSampleSelection } from "../selection";
+import { useSampleSelection, useBoatSelection } from "../selection";
 import { onThemeChange } from "../settings/themes";
 import { DOT_EXCLUDED, DOT_FILTERED, dotSampleId, emptyDots, withoutExcluded, type DotPacket } from "./dotPacket";
 import {
@@ -305,7 +310,9 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
  * command, including undo and redo, and by a source's colour, visibility,
  * weight or label — and whenever the chosen wind speed changes.
  */
-export default function PolarPlot({ project, variant, unit = "kn", hidden = false }: {
+export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, variant, unit = "kn", hidden = false }: {
+  onProject?: (project: ProjectSummary) => void;
+  units?: Units;
   project: ProjectSummary;
   /** Kept mounted while another stage shows: it answers no key then. */
   hidden?: boolean;
@@ -319,6 +326,15 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   variant: "panel" | "stage";
 }) {
   const api = useBoatApi();
+  const readOnly = useBoatReadOnly();
+  const { selectSamples, clearSamples } = useBoatSelection();
+  const [waveRanges, updateWaveRanges] = useLiveEdit(project.blend.wave_ranges,
+    ranges => api.setWaveRanges(ranges).then(next => onProject?.(next)), project.id);
+  const [waveMaxima, setWaveMaxima] = useState<readonly (number | null)[]>([null, null, null]);
+  const [tool, setTool] = useState<"select" | "lasso" | "box">("select");
+  const [selectionPath, setSelectionPath] = useState<number[] | null>(null);
+  const selecting = useRef<{ pointer: number; x: number; y: number; path: number[]; tool: "lasso" | "box" } | null>(null);
+  const suppressClick = useRef(false);
   const t = useT();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -440,6 +456,31 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
     ? pdfHeat(pdfFit, rangeEnabled ? null : tws, rangeEnabled ? [rangeLow, rangeHigh] : null)
     : null, [pdfMode, pdfFit, tws, rangeEnabled, rangeLow, rangeHigh]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void api.waveRangeMaxima().then(next => { if (!cancelled) setWaveMaxima(next); })
+      .catch((error: unknown) => { if (!cancelled) reportFailure(error); });
+    return () => { cancelled = true; };
+  }, [api, project.id, project.revision]);
+
+  const selectedDots = useMemo(() => {
+    const ids: number[] = [];
+    let excluded = 0;
+    for (let k = 0; k < dots.count; k++) {
+      const id = dotSampleId(dots, k);
+      if (!selection.ids.has(id)) continue;
+      ids.push(id);
+      if (dots.flags[k]! & DOT_EXCLUDED) excluded++;
+    }
+    return { ids, excluded, included: ids.length - excluded };
+  }, [dots, selection.ids]);
+  const excludeSelection = (excluded: boolean) => {
+    if (readOnly || !selectedDots.ids.length) return;
+    void api.setExcluded([], selectedDots.ids, excluded).then(next => onProject?.(next)).catch(reportFailure);
+  };
+  const cancelSelection = () => { selecting.current = null; setSelectionPath(null); };
+  useEffect(cancelSelection, [project.id, project.revision, tws, rangeEnabled, rangeLow, rangeHigh, pdfMode, hidden, showFiltered, showExcluded]);
+
   const sourcesById = useMemo(() => {
     const map = new Map<number, SourceStyle>();
     for (const source of project.sources) map.set(source.id, { label: source.label, colour: source.colour });
@@ -485,7 +526,7 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   /** The pointer's place on the plot, or null where the fan is not (the port side of a symmetric plot). */
   const pointed = useCallback((event: MouseEvent<HTMLCanvasElement>): { point: PolarPoint; scale: number } | null => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const layout = fitLayout(rect.width, rect.height, Math.max(plotMaxBsp(shownResult, dots), 1), 28, project.blend.asymmetric, variant === "stage");
+    const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
     const x = event.clientX - rect.left;
     if (!project.blend.asymmetric && x < layout.centerX - 1) return null;
     const point = unproject(x, event.clientY - rect.top, layout);
@@ -495,14 +536,14 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   }, [shownResult, dots, project.blend.asymmetric]);
 
   const onMove = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-    if (!shownResult || pdfMode) return;
+    if (!shownResult || pdfMode || selecting.current) return;
     if (measure) {
       // Measuring replaces the hover: the readout says more than a tooltip.
       setCursor(pointed(event)?.point ?? null);
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const layout = fitLayout(rect.width, rect.height, Math.max(plotMaxBsp(shownResult, dots), 1), 28, project.blend.asymmetric, variant === "stage");
+    const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
     const hit = nearestPoint(
       allCurves, dots, sourcesById,
       event.clientX - rect.left, event.clientY - rect.top, layout, HOVER_DISTANCE_PX,
@@ -533,7 +574,26 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
 
   /** Pins point A where the pointer is: on a curve's own value when the click is on its mark. */
   const onClick = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-    if (!measure) return;
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    if (pdfMode) return;
+    if (!measure) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      let closest: number | null = null, distance = HOVER_DISTANCE_PX ** 2;
+      for (let k = 0; k < dots.count; k++) {
+        const at = projectPoint(dots.points[k * 3]!, dots.points[k * 3 + 2]!, layout);
+        const d = (at.x - x) ** 2 + (at.y - y) ** 2;
+        if (d <= distance) { distance = d; closest = dotSampleId(dots, k); }
+      }
+      const next = new Set(event.shiftKey ? selection.ids : []);
+      if (closest !== null) {
+        if (event.shiftKey && next.has(closest)) next.delete(closest);
+        else next.add(closest);
+      }
+      selectSamples(next, "plot");
+      return;
+    }
     const at = pointed(event);
     if (!at) return;
     const here = crossings(allCurves, at.point.twa);
@@ -541,7 +601,65 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
     const snapped = near !== undefined && Math.abs(near.bsp - at.point.bsp) * at.scale <= PIN_SNAP_PX;
     setPin({ twa: at.point.twa, bsp: snapped ? near.bsp : at.point.bsp });
     setCursor(at.point);
-  }, [measure, pointed, allCurves]);
+  }, [measure, pointed, allCurves, pdfMode, dots, shownResult, selection.ids, selectSamples, project.blend.asymmetric, variant]);
+
+  const chooseTool = (next: "lasso" | "box") => {
+    cancelSelection();
+    setTool(current => !measure && current === next ? "select" : next);
+    setMeasure(false); setPin(null); setCursor(null); setHover(null);
+  };
+  const onSelectionDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    suppressClick.current = false;
+    if (event.button !== 0 || tool === "select" || measure || pdfMode) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left, y = event.clientY - rect.top;
+    selecting.current = { pointer: event.pointerId, x, y, path: [x, y], tool };
+    leave();
+    setSelectionPath([x, y]);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+  const onSelectionMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const g = selecting.current;
+    if (!g || g.pointer !== event.pointerId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left, y = event.clientY - rect.top;
+    if (g.tool === "lasso") {
+      if (Math.hypot(x - g.path[g.path.length - 2]!, y - g.path[g.path.length - 1]!) >= 2) g.path.push(x, y);
+    } else g.path = [g.x, g.y, x, g.y, x, y, g.x, y];
+    setSelectionPath([...g.path]);
+  };
+  const onSelectionUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const g = selecting.current;
+    if (!g || g.pointer !== event.pointerId) return;
+    onSelectionMove(event);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left, y = event.clientY - rect.top;
+    cancelSelection();
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (Math.hypot(x - g.x, y - g.y) < 4 && g.path.length < 10) return;
+    suppressClick.current = true;
+    const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
+    const screen = new Float32Array(dots.count * 2);
+    for (let k = 0; k < dots.count; k++) {
+      const point = projectPoint(dots.points[k * 3]!, dots.points[k * 3 + 2]!, layout);
+      screen[k * 2] = point.x; screen[k * 2 + 1] = point.y;
+    }
+    const hits = lassoSelect(screen, g.path);
+    const next = new Set(event.shiftKey ? selection.ids : []);
+    for (const k of hits) next.add(dotSampleId(dots, k));
+    selectSamples(next, "plot");
+  };
+  useEffect(() => {
+    if (hidden) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return;
+      if (selecting.current) { event.preventDefault(); cancelSelection(); return; }
+      if (!measure && selection.ids.size) { event.preventDefault(); clearSamples("plot"); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hidden, measure, selection.ids, clearSamples]);
 
   /** Turns the Measure tool on or off; off forgets the pinned point. */
   const toggleMeasure = useCallback(() => {
@@ -712,12 +830,30 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
           {t("Measure")}
         </button>
       </div>
+      <div className="polar-plot-selection-tools">
+        <button className="small" data-feature="plot:lasso" aria-pressed={!measure && tool === "lasso"} disabled={pdfMode}
+          title={t("Draw round dots to select them; Shift adds to the selection")} onClick={() => chooseTool("lasso")}>{t("Lasso")}</button>
+        <button className="small" data-feature="plot:box" aria-pressed={!measure && tool === "box"} disabled={pdfMode}
+          title={t("Drag a box round dots to select them; Shift adds to the selection")} onClick={() => chooseTool("box")}>{t("Box")}</button>
+        <span role="status">{t("{count} selected", { count: selectedDots.ids.length })}</span>
+        <button className="small" data-feature="plot:exclude" disabled={pdfMode || readOnly || !selectedDots.included}
+          title={t("Remove the selected dots from the blend (undoable)")} onClick={() => excludeSelection(true)}>{t("Exclude")}</button>
+        <button className="small" data-feature="plot:include" disabled={pdfMode || readOnly || !selectedDots.excluded}
+          title={t("Put the selected dots back into the blend (undoable)")} onClick={() => excludeSelection(false)}>{t("Include")}</button>
+        <button className="small" data-feature="plot:clear-selection" disabled={!selection.ids.size}
+          title={t("Select nothing (Escape)")} onClick={() => clearSamples("plot")}>{t("Clear")}</button>
+      </div>
       {shownDotColour === "timeOfDay" && <DayBandLegend className="polar-plot-bands" />}
       {visibleCount === 0 ? (
         <div className="plot-placeholder muted">{t("The polar plot appears here once the project has a source.")}</div>
       ) : (
         <div className="polar-plot-canvas-wrap" ref={wrap}>
-          <canvas ref={canvas} className={measure ? "measuring" : undefined} onMouseMove={onMove} onMouseLeave={leave} onClick={onClick} />
+          <canvas ref={canvas} className={measure ? "measuring" : tool !== "select" && !pdfMode ? "selecting" : undefined}
+            onMouseMove={onMove} onMouseLeave={leave} onClick={onClick}
+            onPointerDown={onSelectionDown} onPointerMove={onSelectionMove} onPointerUp={onSelectionUp}
+            onPointerCancel={cancelSelection} onLostPointerCapture={cancelSelection} />
+          {selectionPath && <svg className="polar-plot-selection-path" aria-hidden="true"><polygon
+            points={Array.from({ length: selectionPath.length / 2 }, (_, k) => `${selectionPath[k * 2]},${selectionPath[k * 2 + 1]}`).join(" ")} /></svg>}
           {measuring && (
             <div className="polar-plot-measure" role="status">
               <h4>{t("At TWA {twa}°", { twa: shownAngle(measuring.cursor.twa) })}</h4>
@@ -779,6 +915,8 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
           )}
         </div>
       )}
+      <WaveRangeControls namespace="plot" maxima={waveMaxima} ranges={waveRanges} units={units} count={dots.count} disabled={readOnly}
+        onChange={ranges => { void updateWaveRanges(() => ranges); }} />
     </div>
   );
 }

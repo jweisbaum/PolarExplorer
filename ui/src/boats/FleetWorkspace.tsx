@@ -16,6 +16,7 @@ import BoatWorkspace from "./BoatWorkspace";
 import { FleetSyncProvider } from "./synchronization";
 import type { BoatViewState } from "./synchronization";
 import ConfirmDialog from "../project/ConfirmDialog";
+import { publishSearchSources } from "../panels/sourceSearch";
 
 type Layout = 1 | 2 | 4;
 
@@ -41,6 +42,11 @@ export default function FleetWorkspace({ project, settings, onSettings, onProjec
   const [tabs, setTabs] = useState<BoatTabs | null>(null);
   const [summaries, setSummaries] = useState<Record<number, ProjectSummary>>({ [project.id]: project });
   const [active, setActive] = useState(project.id);
+  const searchProject = summaries[active];
+  useEffect(() => {
+    publishSearchSources(searchProject ? { boat: active, sources: searchProject.sources } : null);
+    return () => publishSearchSources(null);
+  }, [active, searchProject]);
   const [layout, setLayout] = useState<Layout>(1);
   const viewStates = useRef(new Map<number, BoatViewState>());
   useEffect(() => onReveal("boats:tabs", () => setLayout(1)), []);
@@ -295,7 +301,7 @@ export default function FleetWorkspace({ project, settings, onSettings, onProjec
                 setPanes(current => current.map((old, i) => i === slot ? id : old === id ? summary.id : old));
                 select(id);
               }}>{rows.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>}
-            <BoatProvider id={summary.id} active={active === summary.id && slot >= 0}><BoatWorkspace project={summary} settings={settings} onSettings={onSettings}
+            <BoatProvider id={summary.id} readOnly={rows.find(row => row.id === summary.id)?.read_only ?? false} active={active === summary.id && slot >= 0}><BoatWorkspace project={summary} settings={settings} onSettings={onSettings}
               onProject={update} split={layout > 1} visible={slot >= 0} active={active === summary.id && slot >= 0}
               viewState={viewStateFor(summary.id)} /></BoatProvider>
           </section>;

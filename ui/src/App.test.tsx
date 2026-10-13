@@ -150,6 +150,7 @@ function backend() {
         const bytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "compare/fixtures/compare-v2.bin"));
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       }
+      case "wave_range_maxima": return [null, null, null];
       case "polar_plot_dots": {
         // No dots: the header alone (layout in panels/dotPacket.ts).
         const header = new ArrayBuffer(16);

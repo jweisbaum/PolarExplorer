@@ -138,6 +138,7 @@ export function differenceSurface(packet: ComparePacket, percent: boolean, schem
     grid: gridOf(packet, heights),
     color: POLES[scheme].mid,
     opaque: true,
+    pickable: true,
     vertexColors: colours,
     hatched,
     hatchColor: POLES[scheme].hatch,
@@ -150,28 +151,30 @@ export function differenceSurface(packet: ComparePacket, percent: boolean, schem
  * hatch marks quads whose four corners are all one-only, so a lone cell (or
  * a strip one cell wide) needs a mark of its own (spec.md 11).
  */
-export function singleMarkers(packet: ComparePacket, scheme: Scheme): { points: Float32Array; colors: Float32Array; count: number } {
+export function singleMarkers(packet: ComparePacket, scheme: Scheme): { points: Float32Array; colors: Float32Array; cells: Uint32Array; count: number } {
   const nj = packet.tws.length;
   const found: number[] = [];
+  const cells: number[] = [];
   for (let k = 0; k < packet.cls.length; k++) {
     const cls = packet.cls[k]!;
     if (cls !== CLASS_A_ONLY && cls !== CLASS_B_ONLY) continue;
     const i = Math.floor(k / nj), j = k % nj;
     found.push(packet.twa[i]!, packet.tws[j]!, cls === CLASS_A_ONLY ? packet.a[k]! : packet.b[k]!);
+    cells.push(k);
   }
   const count = found.length / 3;
   const colour = hexChannels(POLES[scheme].hatch);
   const colors = new Float32Array(count * 3);
   for (let n = 0; n < count; n++) colors.set(colour, n * 3);
-  return { points: Float32Array.from(found), colors, count };
+  return { points: Float32Array.from(found), colors, cells: Uint32Array.from(cells), count };
 }
 
 /** Every surface to draw: A and B translucent in their colours, the difference opaque. */
 export function compareSurfaces(packet: ComparePacket, toggles: CompareToggles, colours: { a: string; b: string },
   percent: boolean, scheme: Scheme): SurfaceInput[] {
   const out: SurfaceInput[] = [];
-  if (toggles.a) out.push({ grid: gridOf(packet, packet.a), color: colours.a, opacity: 0.16 });
-  if (toggles.b) out.push({ grid: gridOf(packet, packet.b), color: colours.b, opacity: 0.16 });
+  if (toggles.a) out.push({ grid: gridOf(packet, packet.a), color: colours.a, opacity: 0.16, pickable: true });
+  if (toggles.b) out.push({ grid: gridOf(packet, packet.b), color: colours.b, opacity: 0.16, pickable: true });
   if (toggles.delta) out.push(differenceSurface(packet, percent, scheme));
   return out;
 }
@@ -222,7 +225,7 @@ export function spanText([first, last]: readonly [number, number]): string {
   return first === last ? f(first) : `${f(first)}–${f(last)}`;
 }
 
-/** One cell of the heat map, as the hover readout shows it. */
+/** One comparison cell, shared by the heat-map readout and 3D tooltip. */
 export interface HeatCell {
   /** The cell in the packet. */
   i: number;
@@ -236,6 +239,17 @@ export interface HeatCell {
   b: number;
   /** Δ in the unit shown; NaN where not compared, or not comparable in %. */
   delta: number;
+}
+
+/** Read a grid cell verbatim from Rust's comparison, never interpolating Δ in the view. */
+export function compareCell(packet: ComparePacket, i: number, j: number, percent: boolean): HeatCell | null {
+  if (!Number.isInteger(i) || !Number.isInteger(j) || i < 0 || i >= packet.twa.length || j < 0 || j >= packet.tws.length) return null;
+  const k = i * packet.tws.length + j;
+  const cls = packet.cls[k]!;
+  return {
+    i, j, twa: packet.twa[i]!, tws: packet.tws[j]!, cls, a: packet.a[k]!, b: packet.b[k]!,
+    delta: cls === CLASS_BOTH ? deltaOf(packet, percent)[k]! : Number.NaN,
+  };
 }
 
 /**
@@ -331,13 +345,7 @@ export function heatCellAt(packet: ComparePacket, image: HeatImage, layout: Heat
   const c = Math.floor((x - layout.left) / layout.cellWidth);
   const r = Math.floor((y - layout.top) / layout.cellHeight);
   if (!(c >= 0 && c < image.cols && r >= 0 && r < image.rows)) return null;
-  const i = image.rowIndex[r]!, j = c;
-  const k = i * packet.tws.length + j;
-  const cls = packet.cls[k]!;
-  return {
-    i, j, twa: packet.twa[i]!, tws: packet.tws[j]!, cls, a: packet.a[k]!, b: packet.b[k]!,
-    delta: cls === CLASS_BOTH ? deltaOf(packet, percent)[k]! : Number.NaN,
-  };
+  return compareCell(packet, image.rowIndex[r]!, c, percent);
 }
 
 /** Every `step`-th index from 0, so labels `size` pixels apart never overlap at `spacing` pixels per index. */

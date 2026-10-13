@@ -1,5 +1,15 @@
 /** The blend: its entry, Blend settings and export (spec.md 8, 12). */
 const catalogue: Record<string, string> = {
+  "Search included tracks and polars": "追加済みの航跡とポーラーを検索",
+  "Show all matching sources": "一致するすべてのソースを表示",
+  "Hide all matching sources": "一致するすべてのソースを非表示",
+  "Select none": "すべて選択解除",
+  "Show only this source; click again to restore previous visibility": "このソースだけを表示します。もう一度クリックすると元の表示状態に戻ります",
+  "Solo": "単独表示",
+  "Search sources, features and help": "ソース・機能・ヘルプを検索",
+  "Search sources, features and help ({chord})": "ソース・機能・ヘルプを検索（{chord}）",
+  "Change source visibility": "ソースの表示状態を変更",
+  "Find included tracks, polars, controls and help pages as you type.": "入力に合わせて、追加済みの航跡、ポーラー、操作項目、ヘルプページを検索します。",
   "Output grid wind angles": "出力グリッドの真風向角",
   "In Blend settings: the true wind angles the blend is made on, 0 to 180, at least 0.01 apart.": "ブレンド設定：ブレンドを作る真風向角です。0〜180 で、0.01 以上の間隔をあけます。",
   "axis": "軸",

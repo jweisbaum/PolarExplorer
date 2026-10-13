@@ -252,7 +252,13 @@ pub fn dots_of(
             .zip(&placed.points)
             .zip(&placed.filtered)
         {
-            if *filtered && !show_filtered {
+            if (*filtered && !show_filtered)
+                || pe_tracks::filter::wave_ranges_exclude(
+                    sample,
+                    &project.blend.wave_ranges,
+                    project.blend.use_corrected,
+                )
+            {
                 continue;
             }
             let Some((twa, sample_tws, bsp)) = *point else {

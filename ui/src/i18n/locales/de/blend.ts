@@ -1,5 +1,15 @@
 /** The blend: its entry, Blend settings and export (spec.md 8, 12). */
 const catalogue: Record<string, string> = {
+  "Search included tracks and polars": "Enthaltene Tracks und Polaren durchsuchen",
+  "Show all matching sources": "Alle passenden Quellen anzeigen",
+  "Hide all matching sources": "Alle passenden Quellen ausblenden",
+  "Select none": "Keine auswählen",
+  "Show only this source; click again to restore previous visibility": "Nur diese Quelle anzeigen; erneut klicken, um die vorherige Sichtbarkeit wiederherzustellen",
+  "Solo": "Solo",
+  "Search sources, features and help": "Quellen, Funktionen und Hilfe durchsuchen",
+  "Search sources, features and help ({chord})": "Quellen, Funktionen und Hilfe durchsuchen ({chord})",
+  "Change source visibility": "Sichtbarkeit der Quellen ändern",
+  "Find included tracks, polars, controls and help pages as you type.": "Enthaltene Tracks, Polaren, Bedienelemente und Hilfeseiten während der Eingabe finden.",
   "Output grid wind angles": "Windwinkel des Ausgaberasters",
   "In Blend settings: the true wind angles the blend is made on, 0 to 180, at least 0.01 apart.": "In den Mischungseinstellungen: die wahren Windwinkel, auf denen die Mischung berechnet wird, 0 bis 180, mindestens 0,01 auseinander.",
   "axis": "Achse",

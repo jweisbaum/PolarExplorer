@@ -1,5 +1,15 @@
 /** The blend: its entry, Blend settings and export (spec.md 8, 12). */
 const catalogue: Record<string, string> = {
+  "Search included tracks and polars": "搜索已添加的航迹和极曲线",
+  "Show all matching sources": "显示所有匹配的数据源",
+  "Hide all matching sources": "隐藏所有匹配的数据源",
+  "Select none": "全不选",
+  "Show only this source; click again to restore previous visibility": "仅显示此数据源；再次单击可恢复之前的显示状态",
+  "Solo": "独显",
+  "Search sources, features and help": "搜索数据源、功能和帮助",
+  "Search sources, features and help ({chord})": "搜索数据源、功能和帮助（{chord}）",
+  "Change source visibility": "更改数据源显示状态",
+  "Find included tracks, polars, controls and help pages as you type.": "输入时查找已添加的航迹、极曲线、控件和帮助页面。",
   "Output grid wind angles": "输出网格风角",
   "In Blend settings: the true wind angles the blend is made on, 0 to 180, at least 0.01 apart.": "在融合设置中：生成融合极曲线所用的真风角，0 至 180，间隔至少 0.01。",
   "axis": "轴",

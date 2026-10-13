@@ -50,8 +50,8 @@ export interface SurfaceInput {
    */
   vertexColors?: Float32Array;
   /**
-   * Whether `pickSurface` finds this surface under the pointer: the blend,
-   * whose cells have something to say (spec.md 10.1).
+   * Whether `pickSurface` finds this surface under the pointer: the blend
+   * and Compare surfaces, whose cells have something to say (spec.md 10.1, 11).
    */
   pickable?: boolean;
   /** Nodes (indexed `j * ni + i`, non-zero marked) whose quads are hatched, in `hatchColor`. */

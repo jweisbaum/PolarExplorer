@@ -15,8 +15,6 @@ const catalogue: Record<string, string> = {
   "No page matches “{query}”.": "Aucune page ne correspond à « {query} ».",
   "{feature} is not available here. Open a project to use it.": "{feature} n’est pas disponible ici. Ouvrez un projet pour l’utiliser.",
   "Open the help reference": "Ouvrir l’aide",
-  "Search features and help": "Rechercher des commandes et de l’aide",
-  "Search features and help ({chord})": "Rechercher des commandes et de l’aide ({chord})",
   "Search… ({chord})": "Rechercher… ({chord})",
   "Features": "Commandes",
   "Help pages": "Pages d’aide",

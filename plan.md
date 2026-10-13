@@ -6,6 +6,47 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-13: v0.3.12 release preflight — complete.**
+All workspace, npm and Tauri versions and lockfiles now name 0.3.12 for the
+shared dot exclusions, wave filters, source controls/search and Compare
+improvements below. The release-version guard (including the intended tag),
+UI typecheck and production build, workspace formatting, pe-app library
+clippy with warnings denied, offline check and diff whitespace check pass.
+Tests were not run locally. The tagged Release builds workflow runs the
+release checks and builds all five platforms before publishing the beta.
+
+**2026-10-13: Compare graph hover tooltip — complete.**
+Visible A, B and difference surfaces, plus isolated one-only cross markers,
+now expose the nearest comparison cell on hover. The tooltip shows TWA,
+TWS, operand names and boat speeds, and the native difference in the chosen
+unit or percent. Missing and non-comparable values use the heat map's
+readout rules. Picking is limited to once per frame; navigation, display
+changes and refetches clear the tooltip. UI typecheck, production build
+and diff whitespace check passed. Tests were not added or run.
+
+**2026-10-13: Full-circle Compare guides — complete.**
+Compare passes the project's asymmetric setting to the shared 3D guide
+builder and refreshes when that setting changes. Its tower rings and spokes
+and Cartesian angle axis now cover 360° in asymmetric mode. UI typecheck,
+production build and diff whitespace check passed. Tests were not run.
+
+**2026-10-13: Shared dot exclusions, wave controls and source selection — complete.**
+The 2D plot now selects samples by click, lasso and box, with shared sample
+IDs and undoable Exclude/Include actions used by 3D, calculations and export.
+Click selection is the default; Lasso and Box toggle on and off without a
+separate Select dots button.
+Wave height, bow-relative angle and period controls share the tab's saved
+ranges between 2D and 3D; both place the filters at the bottom centre,
+leaving the plot area above them. Wave edits now retain their boat context. The
+source list has reversible Solo and one-command Select all/Select none
+actions, scoped to search matches. Both list search and title-bar search
+find included tracks and polars by name and import metadata. New controls
+respect read-only tabs and are translated and registered in help search.
+
+Checks: UI typecheck and production build, `cargo clippy -p pe-app --lib
+-- -D warnings`, workspace format check, offline check and diff whitespace
+check passed. Existing API mocks were updated. Tests were not added or run.
+
 **2026-10-11: Whirlwind 5° × 5° inner chunks — complete.**
 The Hindsight archive was rewritten with 20 × 20-cell (5° × 5°) inner chunks
 under the new S3 prefix `hindsight-routing`; the old `hindsight` prefix is

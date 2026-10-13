@@ -145,6 +145,38 @@ pub fn source_visible_set(state: &AppState, id: u64, visible: bool) -> Result<Pr
     })
 }
 
+/// Replace the visible source set in one undoable change (bulk selection/solo).
+#[tauri::command]
+pub fn set_visible_sources(
+    state: tauri::State<'_, AppState>,
+    boat_context: Option<u64>,
+    ids: Vec<u64>,
+) -> Result<ProjectSummary> {
+    let state = state.scoped(boat_context);
+    apply(&state, |project| {
+        let ids: std::collections::BTreeSet<_> = ids.into_iter().collect();
+        for id in &ids {
+            source_of(project, *id)?;
+        }
+        let commands: Vec<_> = project
+            .sources
+            .iter()
+            .filter_map(|source| {
+                let visible = ids.contains(&source.id.raw());
+                (source.visible != visible).then_some(Command::SetSourceVisible {
+                    source: source.id,
+                    before: source.visible,
+                    after: visible,
+                })
+            })
+            .collect();
+        Ok((!commands.is_empty()).then_some(Command::Batch {
+            label: "Change source visibility".to_owned(),
+            commands,
+        }))
+    })
+}
+
 /// Changes a source's blend weight, 0–1. `gesture` names a slider drag: every
 /// call carrying the same name, one after another, is one undo entry.
 #[tauri::command]

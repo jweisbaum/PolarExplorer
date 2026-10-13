@@ -7,6 +7,7 @@ import { onShowStage } from "../mcp/follow";
 import MapView from "../map/MapView";
 import LeftNav from "../panels/LeftNav";
 import RightPanel from "../panels/RightPanel";
+import type { SoloState } from "../panels/SourceList";
 import PolarPlot from "../panels/PolarPlot";
 import CompareView from "../compare/CompareView";
 import { onCompareSource } from "../compare/compareState";
@@ -25,6 +26,8 @@ export default function BoatWorkspace({ project, settings, onSettings: setSettin
 }) {
   const t = useT();
   const [requestedStage, setStage] = useState<Stage>("3d");
+  const [solo, setSolo] = useState<SoloState>(null);
+  useEffect(() => { setSolo(null); }, [project.id]);
   const hasTracks = project.sources.some(source => source.kind === "track");
   const stage = split || (requestedStage === "map" && !hasTracks) ? "3d" : requestedStage;
   // A stage once shown stays mounted, hidden, so coming back to it finds it
@@ -88,7 +91,7 @@ export default function BoatWorkspace({ project, settings, onSettings: setSettin
         <main className="centre-stage" aria-label={t("Stage")}>
           {slot("map", shown => <MapView project={shown} settings={settings} onSettings={setSettings} />)}
           {slot("3d", shown => <PolarView project={shown} settings={settings} onProject={updateProject} compact={split && !comparisonControls} comparison={split} active={active} viewState={viewState} />)}
-          {slot("2d", shown => <PolarPlot project={shown} variant="stage" unit={settings?.units.speed ?? "kn"} hidden={stage !== "2d"} />)}
+          {slot("2d", shown => <PolarPlot project={shown} onProject={updateProject} {...(settings ? { units: settings.units } : {})} variant="stage" unit={settings?.units.speed ?? "kn"} hidden={stage !== "2d"} />)}
           {/* Keyed by project: nothing of one project's comparison (its answer, its framing, a hovered cell) shows under another's names. */}
           {slot("compare", shown => <CompareView key={shown.id} project={shown} settings={settings} />)}
         </main>
@@ -98,7 +101,7 @@ export default function BoatWorkspace({ project, settings, onSettings: setSettin
         {panels.right && (
           <aside className="sidebar right">
             <RightPanel project={project} onProject={updateProject} panels={panels} onToggle={toggle}
-              speedUnit={settings?.units.speed ?? "kn"} />
+              speedUnit={settings?.units.speed ?? "kn"} solo={solo} onSolo={setSolo} />
           </aside>
         )}
         {/* Split and four-way panes are for the polars side by side: no panels to open, so no toggles. */}

@@ -458,6 +458,9 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 .source-line input[type="range"] { flex: 1; min-width: 60px; }
 .source-weight { font-size: 11px; width: 28px; text-align: right; font-variant-numeric: tabular-nums; }
 .source-weight-label { font-size: 11px; white-space: nowrap; }
+.source-list-tools { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 10px; border-bottom: 1px solid var(--border-subtle); }
+.source-list-tools input[type="search"] { width: 100%; min-width: 0; box-sizing: border-box; }
+.source-line button[aria-pressed="true"] { background: var(--selected-bg); color: var(--selected-ink); border-color: var(--accent); }
 .colour-popover { position: absolute; z-index: 20; left: 18px; top: 24px; padding: 8px; border: 1px solid var(--border);
   border-radius: 6px; background: var(--surface); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
 .palette { display: grid; grid-template-columns: repeat(8, 18px); gap: 4px; }
@@ -479,6 +482,11 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 /* The 2D polar plot (spec.md 9.2) */
 .polar-plot { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .polar-plot-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.polar-plot-selection-tools { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+.polar-plot-selection-tools button[aria-pressed="true"] { background: var(--selected-bg); color: var(--selected-ink); border-color: var(--accent); }
+.polar-plot-selection-path { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.polar-plot-selection-path polygon { fill: var(--accent); fill-opacity: .12; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 3; }
+.polar-plot-canvas-wrap canvas.selecting { cursor: crosshair; touch-action: none; }
 .polar-plot-all, .polar-plot-filtered, .polar-plot-excluded, .polar-plot-colour, .polar-plot-display { display: flex; align-items: center; gap: 3px; font-size: 11px; white-space: nowrap; }
 .polar-plot-pdf-legend { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .polar-plot-pdf-gradient { display: inline-block; width: 64px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #440154, #3b528b, #21918c, #5ec962, #fde725); }
@@ -569,6 +577,9 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
   flex-wrap: wrap;
 }
 .compare .compare-empty { right: calc(var(--compare-side) + 10px); }
+.compare .compare-tooltip { max-width: 320px; }
+.compare-tooltip-source { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-tooltip dd { flex: none; }
 .compare-side {
   position: absolute;
   top: 10px;
@@ -1252,6 +1263,9 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
   font-size: 11px;
 }
 .wave-range-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 4px; }
+/* The 2D stage already excludes the docks and has a 12px bottom inset.
+   Keep the filters in flow so the canvas also leaves their space free. */
+.polar-plot > .wave-display-ranges { position: static; transform: none; width: min(580px, 100%); box-sizing: border-box; margin: auto auto 0; flex: none; }
 .wave-display-ranges h3 { margin: 0; font-size: 12px; }
 .wave-display-ranges fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 .wave-range-row { display: grid; grid-template-columns: minmax(96px, 1fr) 3.2em minmax(70px, 2fr) 3.2em; align-items: center; gap: 6px; min-height: 30px; }

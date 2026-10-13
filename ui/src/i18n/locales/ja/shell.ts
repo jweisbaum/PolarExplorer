@@ -36,7 +36,6 @@ const catalogue: Record<string, string> = {
   "Click the project's name in the title bar to rename it.": "タイトルバーのプロジェクト名をクリックすると名前を変更できます。",
   "rename": "名前を変更",
   "Search": "検索",
-  "Find any control or help page by name, as you type.": "入力に合わせて、コントロールやヘルプページを名前で検索します。",
   "find": "探す",
   "feature search": "機能検索",
   "gear": "歯車",

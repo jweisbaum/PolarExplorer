@@ -36,7 +36,6 @@ const catalogue: Record<string, string> = {
   "Click the project's name in the title bar to rename it.": "点按标题栏中的项目名称即可重命名。",
   "rename": "重命名",
   "Search": "搜索",
-  "Find any control or help page by name, as you type.": "边输入边按名称查找任意控件或帮助页面。",
   "find": "查找",
   "feature search": "功能搜索",
   "gear": "齿轮",
