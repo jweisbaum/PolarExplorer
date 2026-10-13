@@ -1,5 +1,10 @@
 /** The 3D polar stage (spec.md 10). */
 const catalogue: Record<string, string> = {
+  "Points and PDF": "数据点和PDF",
+  "Points and polars": "数据点和极曲线",
+  "Show polars, PDFs, or dots with PDFs.": "显示极曲线、PDF，或同时显示数据点和PDF。",
+  "Dots are drawn over PDFs. Click dots to select them; click between dots to inspect a PDF cell.": "数据点绘制在PDF上方。点击数据点可选中；点击数据点之间可查看PDF单元格。",
+
   "3D layout": "3D 布局",
   "Draw the polar as a tower (angle, radius, height) or on straight axes.": "将极曲线绘制为塔形（角度、半径、高度）或绘制在直角坐标轴上。",
   "polar tower": "极曲线塔",

@@ -125,6 +125,8 @@ fn parse(
         // combination. PDF mode is deliberately not imported into the 2D
         // speed model.
         matrix.pdf = None;
+        matrix.pdf_gaussians = None;
+        matrix.sog_bins_kn.clear();
         parsed.matrix = Some(matrix);
     }
     Ok(parsed)

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>WhirlwindMatrixPolar · Binary format reference</title>
+<style>
+:root{--paper:#f5f6f8;--ink:#202d40;--muted:#5e6b7c;--line:#dae1e9;--teal:#067a75;--gold:#966009;--violet:#6946b9;--pink:#fa6aaa;--nav:#142436;--mono:ui-monospace,SFMono-Regular,Consolas,monospace}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:30px}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:#146590;text-underline-offset:3px}button,input,select{font:inherit}button,select{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,canvas:focus-visible{outline:3px solid #288dc8;outline-offset:3px}button{border:1px solid var(--line);border-radius:7px;background:white;padding:7px 12px;color:var(--ink)}button:hover{background:#edf2f8}button[aria-pressed=true]{background:var(--nav);border-color:var(--nav);color:white}select{border:1px solid #bbc7d4;border-radius:6px;padding:6px 28px 6px 9px;background:white;max-width:100%;color:var(--ink)}input[type=checkbox]{accent-color:var(--teal)}input[type=range]{accent-color:var(--teal);width:100%}code,pre,.mono{font-family:var(--mono);font-size:.88em}code{background:#e9eef3;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}pre{padding:18px 22px;overflow:auto;background:#17283a;color:#d8e8f3;border-radius:10px;line-height:1.65}pre code{background:none;padding:0;color:inherit;font-size:inherit;overflow-wrap:normal}h1,h2,h3{line-height:1.16;letter-spacing:-.025em}h1{font-size:clamp(34px,4.1vw,60px);margin:18px 0;max-width:900px}h2{font-size:30px;margin:0 0 22px}h3{font-size:20px;margin:28px 0 12px}p{margin:12px 0 18px}small,.small{font-size:13px;color:var(--muted)}strong{font-weight:650}.shell{display:grid;grid-template-columns:224px minmax(0,1fr);max-width:1600px;margin:auto}.side{position:sticky;top:0;height:100vh;padding:38px 24px;background:var(--nav);color:#d4e0ed}.brand{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#91c8d2}.side strong{display:block;font-size:22px;margin:7px 0 30px}.side a{display:block;color:#b9cbdc;text-decoration:none;font-size:13px;padding:9px 0}.side a:hover{color:white}.side a span{color:#6da8b6;font-family:var(--mono);padding-right:9px}.side .foot{margin-top:35px;color:#9eb4c7;font-size:12px}.side button{margin-top:18px;border-color:#4a637b;color:white;background:transparent}.main{min-width:0;padding:60px clamp(24px,5vw,78px) 80px}.kicker{font-size:12px;text-transform:uppercase;letter-spacing:.17em;color:var(--teal);font-weight:700}.lead{font-size:20px;color:#526379;max-width:800px}.chips{display:flex;gap:9px;flex-wrap:wrap;margin:24px 0}.chip{border:1px solid #ced9e3;border-radius:20px;padding:4px 12px;font-size:12px;color:#496075}.rule{height:1px;background:var(--line);margin:42px 0}section{margin:56px 0;scroll-margin-top:26px}.num{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--teal);display:block;margin-bottom:8px;letter-spacing:.06em}.callout{padding:18px 22px;border-left:4px solid #c78323;background:#fff5e5;border-radius:0 8px 8px 0;color:#5e421c;margin:24px 0}.callout p{margin:6px 0}.callout.info{background:#eaf3f8;border-color:#428ba7;color:#294d63}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}.mode-card{background:white;border:1px solid var(--line);border-top:3px solid var(--teal);border-radius:8px;padding:22px}.mode-card h3{margin:8px 0}.mode-card.pdf{border-top-color:#c18b30}.mode-card.gaussian{border-top-color:var(--violet)}.tag{font:12px var(--mono);color:var(--teal)}.mode-card.pdf .tag{color:var(--gold)}.mode-card.gaussian .tag{color:var(--violet)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:9px;margin:18px 0;background:white}table{border-collapse:collapse;width:100%;font-size:14px;text-align:left}th{background:#eaf0f5;font-weight:650;color:#39536a}th,td{padding:12px 15px;border-bottom:1px solid #e1e7ed;vertical-align:top}tr:last-child td{border-bottom:0}td:first-child{white-space:nowrap}table code{background:transparent;padding:0}.diagram{padding:22px;background:white;border:1px solid var(--line);border-radius:10px;margin:22px 0;overflow:auto}.diagram svg{width:100%;height:auto;display:block;min-width:650px;font-family:system-ui,sans-serif}.caption{font-size:13px;color:var(--muted);margin:12px 0 0}.formulas{font-size:14px}.mode-row{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.mode-row span{padding:5px 12px;background:#e9eef3;border-radius:6px;font-family:var(--mono);font-size:13px}.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.modes pre{padding:12px;font-size:12px}.modes p{font-size:14px}.muted{color:var(--muted)}.explorer{background:white;border:1px solid #cbd7e1;border-radius:14px;overflow:hidden}.toolbar{padding:20px 22px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;gap:12px}.toolbar .buttons{display:flex;gap:6px;flex-wrap:wrap}.controls{padding:16px 22px;display:flex;align-items:flex-end;flex-wrap:wrap;gap:18px;background:#f2f6f9;border-bottom:1px solid var(--line)}.controls label{font-size:12px;color:#41586f;display:grid;gap:4px}.controls label.inline{display:flex;align-items:center;gap:6px;min-height:34px}.controls fieldset{display:flex;gap:12px;border:0;margin:0;padding:0;flex-wrap:wrap}.controls legend{font-size:12px;color:var(--muted);margin-bottom:4px}.explorer-body{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(290px,1fr)}.stage{position:relative;background:#142638;min-height:480px;isolation:isolate}.stage canvas{display:block;width:100%;height:500px;touch-action:none;cursor:grab}.stage canvas:active{cursor:grabbing}.stage .labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}.axis-label{position:absolute;font-size:11px;color:#bad3e7;transform:translate(-50%,-50%);text-shadow:0 1px 3px #102234;white-space:nowrap}.axis-label.pick{color:#fff;background:#76334f;border-radius:4px;padding:2px 6px}.stage .instructions{position:absolute;top:16px;left:18px;right:18px;font-size:12px;color:#a5c2d6;pointer-events:none}.stage .legend{position:absolute;bottom:14px;left:18px;font-size:11px;color:#b9d0df;pointer-events:none}.gradient{display:inline-block;width:105px;height:7px;background:linear-gradient(90deg,#31235d,#236f91,#24ae97,#efdb67);vertical-align:middle;margin:0 6px;border-radius:4px}.inspector{padding:22px;border-left:1px solid var(--line);min-width:0}.inspector h3{margin:0 0 12px}.inspector .selector{display:grid;grid-template-columns:1fr 1fr;gap:12px}.selector label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.trace{background:#eff4f8;padding:12px;border-radius:8px;margin:16px 0;font-size:12px;overflow-wrap:anywhere}.trace strong{color:var(--teal)}.metric{font-size:28px;letter-spacing:-.025em;line-height:1.25;margin:14px 0}.metric small{display:block;font-size:12px;letter-spacing:0;margin-top:4px}.density{width:100%;height:110px;display:block}.density text{font-family:system-ui,sans-serif;font-size:10px;fill:#52667b}.range-label{font-size:12px;display:block}.readout{min-height:48px;font:12px/1.65 var(--mono);background:#172b3c;color:#d5eaf5;padding:12px;border-radius:7px;overflow-wrap:anywhere}.bottom-memory{padding:22px;border-top:1px solid var(--line)}.bottom-memory h3{margin-top:0}.blocks{display:flex;gap:4px;min-height:48px;margin:12px 0;align-items:stretch}.block{font-size:11px;line-height:1.35;padding:8px;min-width:62px;color:white;overflow:hidden;display:flex;justify-content:center;flex-direction:column;border-radius:5px}.block.sog{background:#067a75}.block.pdf{background:#956719}.block.gaussian{background:#6946b9}.block.active{outline:3px solid #d84288;outline-offset:2px}.memory-grid{display:grid;grid-template-columns:50px repeat(4,minmax(0,1fr));gap:3px;margin:16px 0}.memory-grid .head{font-size:11px;padding:3px;color:var(--muted);text-align:center}.memory-grid button{font:11px var(--mono);padding:4px 0;border-radius:4px;min-height:27px;background:#eaf1f5;border-color:transparent}.memory-grid button[aria-pressed=true]{background:#96365f;color:white}.memory-grid button:hover{border-color:#bf648c}.memory-content{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}.hex{font:12px/1.9 var(--mono);background:#142638;color:#cee0ee;padding:14px;border-radius:8px;overflow:auto;white-space:pre;display:block}.hex mark{background:#a93471;color:white;border-radius:2px}.dimension-strip{display:flex;gap:5px;flex-wrap:wrap;margin:18px 0}.dimension-strip span{background:#e4edf4;padding:8px 11px;border-radius:5px;font:12px var(--mono)}.dimension-strip .fast{background:#ccece8;color:#095c56}.source-list{font-size:13px}.source-list li{margin:7px 0}.footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:22px}.skip{position:absolute;left:-9999px}.skip:focus{left:16px;top:10px;z-index:20;background:white;padding:10px}ul,ol{padding-left:23px}li{margin:7px 0}.error{padding:20px;color:#f8d4df;position:absolute;top:70px;left:10px;right:10px}.hidden,[hidden]{display:none!important}
+@media(min-width:1450px){.stage canvas{height:550px}}
+@media(max-width:1120px){.shell{grid-template-columns:180px minmax(0,1fr)}.side{padding:30px 18px}.main{padding:40px 28px}.modes{grid-template-columns:1fr}.modes pre{font-size:13px}.explorer-body{grid-template-columns:1fr}.inspector{border-left:0;border-top:1px solid var(--line)}.stage canvas{height:460px}.stage{min-height:460px}.memory-content{grid-template-columns:1fr 1fr}}
+@media(max-width:720px){.shell{display:block}.side{position:static;height:auto;padding:20px}.side strong{margin:3px 0 8px;font-size:18px}.side nav{display:flex;flex-wrap:wrap;gap:0 18px}.side a{font-size:12px;padding:4px 0}.side .foot,.side button{display:none}.main{padding:30px 18px}.lead{font-size:18px}.grid2,.memory-content{grid-template-columns:1fr}h2{font-size:26px}.diagram{padding:12px}.stage canvas{height:430px}.stage{min-height:430px}.toolbar,.controls,.inspector,.bottom-memory{padding:16px}.blocks{flex-wrap:wrap}.block{flex-basis:100px!important;flex-grow:1!important}.chips{gap:5px}.main section{margin:44px 0}.table-wrap{font-size:13px}}
+@media print{body{background:white;font-size:11px}.shell{display:block}.side,.toolbar,.controls,.selector,.skip,.print-hide{display:none}.main{padding:0}.lead{font-size:14px}h1{font-size:32px}h2{font-size:22px}h3{font-size:16px}section{margin:30px 0}.explorer-body{grid-template-columns:1fr 1fr}.stage,.stage canvas{min-height:340px;height:340px}.memory-content{grid-template-columns:1fr 1fr}.diagram svg{min-width:0}table{font-size:11px}th,td{padding:7px}.mode-card,.diagram,.callout,tr{break-inside:avoid}.modes{grid-template-columns:1fr}.table-wrap{overflow:visible}a{color:inherit}pre{white-space:pre-wrap}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<a class="skip" href="#overview">Skip to reference</a>
+<div class="shell">
+<aside class="side"><div class="brand">Whirlwind</div><strong>Matrix Polar<br>File reference</strong><nav aria-label="Contents">
+<a href="#overview"><span>00</span> Scope &amp; status</a><a href="#file"><span>01</span> File envelope</a><a href="#axes"><span>02</span> Axes &amp; indexing</a><a href="#modes"><span>03</span> Three data modes</a><a href="#explore"><span>04</span> Bowl → bytes</a><a href="#example"><span>05</span> Complete byte example</a><a href="#reading"><span>06</span> Reader procedure</a><a href="#compatibility"><span>07</span> Compatibility notes</a><a href="#sources"><span>08</span> Source references</a></nav><div class="foot">Binary v1<br>Draft · 13 October 2026<br>PolarExplorer v0.3.13<br><br>Self-contained document.<br>No network dependencies.</div><button type="button" id="print">Print reference</button></aside>
+<main class="main">
+<header id="overview"><div class="kicker">Standalone technical reference · Draft</div><h1>WhirlwindMatrixPolar</h1><p class="lead">A compact binary container for boat-speed matrices and conditional speed distributions, indexed by wind and optional wave conditions.</p><div class="chips"><span class="chip">.wmpolar</span><span class="chip">Little-endian</span><span class="chip">44-byte header</span><span class="chip">16-bit payload values</span><span class="chip">LZ4 block</span></div>
+<p>This reference describes the <strong>v1 binary layout</strong> implemented by PolarExplorer <code>v0.3.13</code>. The writer layout is unchanged from v0.3.12; this release adds configurable exports and corrects the reader. It covers all three independent modes: one SOG value per condition, sampled PDF densities, and a Gaussian mean/standard-deviation pair. A file can contain any nonempty combination.</p>
+<div class="callout"><strong>Draft status: updated for configurable wave and PDF export.</strong><p>The reader now uses the writer's axis order and SOG/sample step-size scales. <a href="#compatibility">Section 07 records the legacy v0.3.12 reader defects</a> and the current application export profile. The version remains 1. The source links are pinned to the v0.3.13 release tag, including the reader corrections and new export controls.</p></div>
+<p class="small">Offsets are zero-based. Ranges written <code>[start, end)</code> exclude the end byte. “Body offset” always means an offset in the <strong>decompressed</strong> payload; it is not a seek position in the compressed file. The format specifies bytes on disk, not the layout of Rust structs in RAM.</p></header>
+<section id="file"><span class="num">01 / FILE ENVELOPE</span><h2>One header, six axes, one compressed body</h2>
+<div class="diagram"><svg viewBox="0 0 920 182" role="img" aria-labelledby="envelope-title envelope-desc"><title id="envelope-title">File regions and their byte offsets</title><desc id="envelope-desc">Header from 0 to 44, six float32 axes from 44 to E, decompressed length from E to E plus 4, and an LZ4 compressed block from E plus 4 to end of file.</desc><g font-size="14" fill="#415971"><text x="0" y="20">0x00</text><text x="183" y="20">0x2C = 44</text><text x="567" y="20">E</text><text x="650" y="20">E + 4</text><text x="874" y="20">EOF</text></g><rect x="0" y="34" width="177" height="70" rx="7" fill="#203b53"/><rect x="183" y="34" width="378" height="70" rx="7" fill="#216e80"/><rect x="567" y="34" width="76" height="70" rx="7" fill="#725298"/><rect x="649" y="34" width="271" height="70" rx="7" fill="#0b7c77"/><g fill="white" text-anchor="middle" font-size="16"><text x="88" y="63">Fixed header</text><text x="88" y="88" font-size="12">44 bytes</text><text x="372" y="63">Axis arrays · float32</text><text x="372" y="88" font-size="12">4 × (T + W + H + D + P + B) bytes</text><text x="605" y="63">L</text><text x="605" y="88" font-size="12">u32</text><text x="784" y="63">LZ4 block</text><text x="784" y="88" font-size="12">compressed concatenated modes</text></g><path d="M649 120 H919 M784 120 V142" stroke="#52718a" fill="none"/><text x="784" y="164" font-size="13" fill="#415971" text-anchor="middle">Decompress exactly L bytes</text><text x="0" y="144" font-size="13" fill="#415971">No padding, alignment bytes, directory, or footer.</text><text x="0" y="166" font-size="12" fill="#6c7b8a">Region widths are schematic, not proportional.</text></svg></div>
+<div class="table-wrap"><table><thead><tr><th>Offset (dec / hex)</th><th>Bytes</th><th>Type</th><th>Field</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>0 / 0x00</td><td>8</td><td>ASCII bytes</td><td>Magic</td><td><code>WWMPOLAR</code> = <code>57 57 4D 50 4F 4C 41 52</code>. No trailing NUL.</td></tr>
+<tr><td>8 / 0x08</td><td>2</td><td>u16 LE</td><td>Version</td><td><code>1</code> = <code>01 00</code> in current writer output.</td></tr>
+<tr><td>10 / 0x0A</td><td>2</td><td>u16 LE</td><td>Mode flags</td><td><code>0x0001</code> SOG; <code>0x0002</code> sampled PDF; <code>0x0004</code> Gaussian PDF.</td></tr>
+<tr><td>12 / 0x0C</td><td>4</td><td>u32 LE</td><td>T</td><td>Number of true wind angle values.</td></tr>
+<tr><td>16 / 0x10</td><td>4</td><td>u32 LE</td><td>W</td><td>Number of true wind speed values.</td></tr>
+<tr><td>20 / 0x14</td><td>4</td><td>u32 LE</td><td>H</td><td>Number of wave height values.</td></tr>
+<tr><td>24 / 0x18</td><td>4</td><td>u32 LE</td><td>D</td><td>Number of wave angle values.</td></tr>
+<tr><td>28 / 0x1C</td><td>4</td><td>u32 LE</td><td>P</td><td>Number of wave period values.</td></tr>
+<tr><td>32 / 0x20</td><td>4</td><td>u32 LE</td><td>B</td><td>Number of SOG sample positions for the sampled PDF. Zero if that mode is absent.</td></tr>
+<tr><td>36 / 0x24</td><td>4</td><td>IEEE-754 f32 LE</td><td>s<sub>S</sub></td><td>SOG quantization step <em>as written</em>. Writer default for absent/all-zero data: 1.</td></tr>
+<tr><td>40 / 0x28</td><td>4</td><td>IEEE-754 f32 LE</td><td>s<sub>F</sub></td><td>Sampled-density quantization step <em>as written</em>. Writer default for absent/all-zero data: 1.</td></tr>
+<tr><td>44 / 0x2C</td><td>variable</td><td>f32 LE arrays</td><td>Axes</td><td>Stored in count-field order: TWA, TWS, height, wave angle, period, SOG samples.</td></tr>
+<tr><td>E</td><td>4</td><td>u32 LE</td><td>L</td><td>Uncompressed body length in bytes. <code>E = 44 + 4 × (T+W+H+D+P+B)</code>.</td></tr>
+<tr><td>E + 4</td><td>to EOF</td><td>LZ4 block</td><td>Payload</td><td>One raw LZ4 block, with no external dictionary. The preceding length is the <code>lz4_flex::compress_prepend_size</code> wrapper.</td></tr>
+</tbody></table></div>
+<p>The compression is <strong>LZ4 block encoding, not the LZ4 frame format</strong>. There is no frame magic, checksum, per-mode compression header, per-cell offset table, string metadata, or file name inside the file. The axes and fixed header are uncompressed. The wrapper stores the decoded byte count; compressed length comes from EOF.</p>
+<details><summary><strong>Inside the LZ4 block</strong></summary>
+<pre><code>sequence = token | literal-length extension? | literals
+                 | match offset u16 LE | match-length extension?
+token bits:       [7 6 5 4] [3 2 1 0]
+                   literals   match − 4</code></pre>
+<p>Each sequence starts with a one-byte token. Its high nibble gives the literal count; its low nibble gives match length minus four. For either nibble equal to 15, add extension bytes until a byte below 255 appears (including a zero terminator). Literal extensions precede literals; match extensions follow the two-byte match offset.</p>
+<p>The offset is a backward distance, 1–65,535, into already decoded bytes. Copy sequentially so overlapping matches can repeat newly written bytes. The final sequence contains only literals and no offset. At least the last five decoded bytes are literals, except bodies shorter than five bytes, which are entirely literal. The last match starts at least twelve decoded bytes before the end. See the <a href="https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md">official LZ4 block specification</a>.</p>
+</details>
+<h3>Flags are additive</h3><div class="mode-row"><span>1 · SOG</span><span>2 · sampled</span><span>3 · SOG + sampled</span><span>4 · Gaussian</span><span>5 · SOG + Gaussian</span><span>6 · sampled + Gaussian</span><span>7 · all three</span></div><p class="small">Flag value 0 and any bit outside <code>0x0007</code> are rejected for v1. Flags do not choose a “preferred” mode and do not require the three representations to agree.</p>
+</section>
+<section id="axes"><span class="num">02 / AXES &amp; INDEXING</span><h2>Axis order and value order are different</h2>
+<p>The axis metadata starts with wind. The payload is arranged as a sequence of <strong>wave-conditioned wind matrices</strong>, so wave coordinates are the outer indices. Within each matrix, TWS changes fastest.</p>
+<div class="table-wrap"><table><thead><tr><th>Axis</th><th>First file byte</th><th>Length</th><th>Unit / permitted values</th></tr></thead><tbody>
+<tr><td>TWA</td><td><code>44</code></td><td><code>4T</code></td><td>Degrees, 0–360 inclusive; T &gt; 0.</td></tr><tr><td>TWS</td><td><code>44 + 4T</code></td><td><code>4W</code></td><td>Knots, 0–70 inclusive; W &gt; 0.</td></tr><tr><td>Wave height</td><td><code>44 + 4(T+W)</code></td><td><code>4H</code></td><td>Metres, 0–100 inclusive.</td></tr><tr><td>Wave angle</td><td><code>44 + 4(T+W+H)</code></td><td><code>4D</code></td><td>Degrees, 0–360 inclusive.</td></tr><tr><td>Wave period</td><td><code>44 + 4(T+W+H+D)</code></td><td><code>4P</code></td><td>Seconds, 0–1000 inclusive.</td></tr><tr><td>SOG sample positions</td><td><code>44 + 4(T+W+H+D+P)</code></td><td><code>4B</code></td><td>Knots, 0–60 inclusive; B &gt; 0 when sampled PDF is present.</td></tr>
+</tbody></table></div>
+<p>All axes contain finite, strictly increasing float32 values. Spacing can be irregular. A count of 1 is valid; uniform increments are not implied. SOG sample positions are the coordinates at which densities are stored; no separate array of bin edges is encoded. Likewise, visual cell boundaries and interpolation rules are not stored.</p>
+<div class="grid2"><div><h3>Wave-independent polar</h3><p><code>H = D = P = 0</code>. The three axis arrays consume zero bytes. There is one wind matrix, not zero matrices.</p><pre><code>H′ = D′ = P′ = 1
+C = T × W</code></pre></div><div><h3>Wave-conditioned polar</h3><p><code>H, D, P &gt; 0</code>. All combinations exist logically; absent speeds use sentinels. One or two populated wave axes with the others empty is invalid.</p><pre><code>H′ = H; D′ = D; P′ = P
+C = H × D × P × T × W</code></pre></div></div>
+<p><code>H′ = max(H,1)</code>, <code>D′ = max(D,1)</code>, and <code>P′ = max(P,1)</code>. For zero-based indices <code>h,d,p,t,w</code>, define:</p>
+<pre class="formulas"><code>waveIndex = (h × D′ + d) × P′ + p
+k = (waveIndex × T + t) × W + w
+  = ((((h × D′ + d) × P′ + p) × T + t) × W + w)
+C = H′ × D′ × P′ × T × W</code></pre>
+<div class="dimension-strip" aria-label="Payload dimensions, slowest to fastest"><span>height h · slowest</span><span>→ wave angle d</span><span>→ period p</span><span>→ TWA t</span><span class="fast">→ TWS w · fastest cell index</span><span>→ SOG sample b · sampled mode only</span></div>
+<div class="diagram"><svg viewBox="0 0 920 244" role="img" aria-labelledby="order-title"><title id="order-title">Flattening wind matrices within successive wave combinations</title><g fill="#244057" font-size="14"><text x="0" y="22">Wave combination 0</text><text x="474" y="22">Wave combination 1</text></g><g fill="#edf4f7" stroke="#c6d6e3"><rect x="0" y="36" width="434" height="111" rx="8"/><rect x="474" y="36" width="434" height="111" rx="8"/></g><g fill="#0d746e"><rect x="15" y="52" width="95" height="32" rx="4"/><rect x="117" y="52" width="95" height="32" rx="4"/><rect x="219" y="52" width="95" height="32" rx="4"/><rect x="321" y="52" width="95" height="32" rx="4"/></g><g fill="#d4e4ed"><rect x="15" y="94" width="95" height="32" rx="4"/><rect x="117" y="94" width="95" height="32" rx="4"/><rect x="219" y="94" width="95" height="32" rx="4"/><rect x="321" y="94" width="95" height="32" rx="4"/></g><g font-family="monospace" font-size="13" text-anchor="middle"><g fill="white"><text x="62" y="73">t=0 w=0</text><text x="164" y="73">t=0 w=1</text><text x="266" y="73">t=0 w=2</text><text x="368" y="73">t=0 w=3</text></g><g fill="#35536b"><text x="62" y="116">t=1 w=0</text><text x="164" y="116">t=1 w=1</text><text x="266" y="116">t=1 w=2</text><text x="368" y="116">…</text><text x="690" y="83">Same TWA × TWS layout</text><text x="690" y="112">starts at k = T × W</text></g></g><path d="M20 167 H419 M451 90 H466 M20 167 V187 H420" fill="none" stroke="#137c76" stroke-width="2"/><text x="25" y="214" fill="#3b5871" font-size="14">Traverse a TWA row in increasing TWS, then the next TWA row.</text><text x="475" y="179" fill="#3b5871" font-size="13">Next period → next wave angle → next height.</text><text x="475" y="207" fill="#6a7a88" font-size="12">The sketch uses W = 4. Actual counts are variable.</text></svg></div>
+<div class="callout info"><strong>Angle semantics need an external agreement.</strong><p>The file stores a numeric wave angle in degrees but contains no field identifying its reference frame (absolute direction, bow-relative angle, or wind-relative angle). It also stores no tack-symmetry flag. Consumers must agree on the angle convention; a 0–180° TWA axis alone is not an encoded instruction to mirror it to 360°.</p></div>
+</section>
+<section id="modes"><span class="num">03 / MODE PAYLOADS</span><h2>Three independent, contiguous blocks</h2>
+<p>Let <code>S</code>, <code>F</code> and <code>G</code> be 1 when SOG, sampled PDF and Gaussian PDF are present, or 0 otherwise. Every scalar in the decompressed body is a <strong>little-endian u16</strong>. Modes are grouped into whole arrays; representations of the same cell are not interleaved across modes.</p>
+<pre><code>SOG base      = 0                     length = 2 × C × S
+Sampled base  = 2 × C × S             length = 2 × C × B × F
+Gaussian base = 2 × C × S + 2 × C × B × F
+                                      length = 4 × C × G
+L = 2 × C × (S + B × F + 2 × G)</code></pre>
+<div class="diagram"><svg viewBox="0 0 920 154" role="img" aria-labelledby="modes-title"><title id="modes-title">Three payload blocks in order, with the byte arrangement within one cell</title><rect x="0" y="8" width="260" height="54" rx="6" fill="#067a75"/><rect x="268" y="8" width="336" height="54" rx="6" fill="#956719"/><rect x="612" y="8" width="308" height="54" rx="6" fill="#6946b9"/><g fill="white" text-anchor="middle" font-size="16"><text x="130" y="41">All SOG cells</text><text x="436" y="41">All sampled PDFs</text><text x="766" y="41">All Gaussian PDFs</text></g><g fill="#415971" text-anchor="middle" font-size="13"><text x="130" y="96">cell k: [q low][q high]</text><text x="436" y="96">cell k: [q₀][q₁] … [qB−1]</text><text x="766" y="96">cell k: [μ low][μ high][σ low][σ high]</text><text x="130" y="130">2 bytes</text><text x="436" y="130">2B bytes</text><text x="766" y="130">4 bytes</text></g></svg><p class="caption">Absent modes consume no bytes. There are no per-cell tags. Gaussian parameters are interleaved <em>within</em> that mode: μ₀, σ₀, μ₁, σ₁, …</p></div>
+<div class="modes"><article class="mode-card"><div class="tag">0x0001 · SOG</div><h3>A scalar speed</h3><p>One quantized speed for each wind/wave condition. Input values must be finite, 0–60 knots inclusive, or missing.</p><pre><code>byte = 2 × k
+q = u16le(body, byte)</code></pre><p><code>0xFFFF</code> (65,535) means missing. <code>0</code> is a valid zero speed. Valid numeric codes span 0–65,534.</p></article><article class="mode-card pdf"><div class="tag">0x0002 · SAMPLED PDF</div><h3>A density array</h3><p>B density samples for each condition, ordered by increasing SOG sample position. Densities are finite, nonnegative values with nominal units of 1/knot.</p><pre><code>byte = sampledBase
+     + 2 × (k × B + b)</code></pre><p><code>0xFFFF</code> is invalid. An all-zero curve is allowed by the codec. It has no probability mass; no missing-curve flag is provided.</p></article><article class="mode-card gaussian"><div class="tag">0x0004 · GAUSSIAN PDF</div><h3>Two parameters</h3><p>Mean μ and standard deviation σ, each quantized over 0–60 knots. There is no stored amplitude, variance, mixture weight, or density array.</p><pre><code>byteμ = gaussianBase + 4k
+byteσ = byteμ + 2</code></pre><p><code>FF FF FF FF</code> means missing. A sentinel in only one parameter is invalid. σ = 0 represents a point mass at μ.</p></article></div>
+<h3>SOG and sampled PDF: the writer’s quantization</h3>
+<p>Both modes use the same algorithm with a separate global scale per mode. Let <code>M</code> be the maximum present value over the <em>entire</em> mode, across all wave and wind cells (and all density samples for sampled PDF). The input arrays are float32; the maximum and division are computed in float64 before the scale is cast to float32.</p>
+<pre><code>Q = 65534
+s = 1                                  if M = 0 (including absent / all-missing)
+s = float32(M / Q)                     otherwise
+s = float32(M)                         if that conversion underflows to 0
+
+q = clamp(round(value / float64(s)), 0, Q)
+q = 0                                  for value = 0
+q = 65535                              for missing SOG only
+
+reconstruction: value ≈ q × s</code></pre>
+<p>The writer uses nearest rounding, with half-way cases rounded away from zero (all accepted values are nonnegative). Typical quantization error is at most half a step, apart from floating-point rounding and saturation. The scale is a <strong>step size</strong> in the emitted file. The current reader uses <code>q × s</code>. The v0.3.12 reader and specification used an extra division; see <a href="#compatibility">the compatibility note</a>.</p>
+<h3>Gaussian: fixed-range parameters</h3>
+<pre><code>qμ = clamp(round(float64(μ) / 60 × 65534), 0, 65534)
+qσ = clamp(round(float64(σ) / 60 × 65534), 0, 65534)
+μ ≈ qμ × 60 / 65534
+σ ≈ qσ × 60 / 65534
+
+f(v | μ, σ) = exp(−0.5 × ((v − μ) / σ)²) / (σ × √(2π))  for σ &gt; 0</code></pre>
+<p>The parameter step is <strong>60/65,534 ≈ 0.000915555 knots</strong>, with a maximum rounding error of about 0.000457778 knots. The header’s two scales do not control v1 Gaussian parameters. Quantization can round a very small positive σ to zero.</p>
+<p>The normal density integrates to one over the full real line. The 0–60 limit is a <em>parameter encoding range</em>; the file does not encode truncation limits, normalization on a restricted speed domain, display opacity, or the number of standard deviations to draw. A renderer may clip the visible domain, but that is a display decision.</p>
+<h3>Density samples are not probabilities</h3>
+<p>A stored sampled value is a density ordinate at a speed coordinate, not a probability for a bin. Probability over an interval requires an integration rule. The codec does not require a sampled curve to integrate to one, specify interpolation, or store bin widths. Irregularly spaced SOG coordinates must be respected. The visualization below uses linear interpolation for its synthetic sampled curves and the analytic normal for its Gaussian curves.</p>
+</section>
+<section id="explore"><span class="num">04 / INTERACTIVE MEMORY MAP</span><h2>From a 3D bowl to bytes</h2>
+<p>At a fixed wave combination, a scalar polar becomes a bowl: <strong>angle = TWA, radius = SOG, height = TWS</strong>. A PDF replaces one radius with a distribution along that radius. Select a point or cell, or use the angle/wind selectors and memory grid. Drag the view to rotate; scroll to zoom. The pink selection and byte highlight refer to the same condition.</p>
+<pre><code>x = v × sin(TWA × π/180)
+y = v × cos(TWA × π/180)
+z = TWS
+
+Scalar: v is one stored SOG.  PDF: v varies; colour encodes density f(v).
+Wave coordinates choose the bowl; they do not become extra spatial axes.</code></pre>
+<div class="explorer" id="explorer">
+<div class="toolbar"><strong>Representation</strong><div class="buttons" aria-label="Displayed representation"><button type="button" data-mode="sog" aria-pressed="true">SOG surface</button><button type="button" data-mode="pdf" aria-pressed="false">Sampled PDF</button><button type="button" data-mode="gaussian" aria-pressed="false">Gaussian PDF</button></div><button type="button" id="reset-camera">Reset view</button></div>
+<div class="controls"><label class="inline"><input type="checkbox" id="waves" checked> Include wave axes</label><label>Height (m)<select id="height"><option value="0">0</option><option value="1">2</option></select></label><label>Wave angle (°)<select id="direction"><option value="0">0</option><option value="1">180</option></select></label><label>Period (s)<select id="period"><option value="0">6</option><option value="1">10</option></select></label><fieldset><legend>Modes present in the illustrative file</legend><label class="inline"><input type="checkbox" data-stored="sog" checked> SOG</label><label class="inline"><input type="checkbox" data-stored="pdf" checked> Sampled</label><label class="inline"><input type="checkbox" data-stored="gaussian" checked> Gaussian</label></fieldset></div>
+<div class="explorer-body"><div class="stage" id="stage"><canvas id="bowl" tabindex="0" aria-label="Interactive 3D polar bowl. Drag to rotate, scroll to zoom. Arrow keys rotate. Select cells with the adjacent labeled selectors or memory grid.">The 3D bowl uses angle for TWA, radius for SOG, and height for TWS. Use the memory grid and selectors to explore the same data without graphics.</canvas><div class="labels" id="labels" aria-hidden="true"></div><div class="instructions">Synthetic data · one wave combination<br>Drag to rotate · scroll to zoom · click a cell</div><div class="legend" id="plot-legend">SOG surface · dots are stored wind cells</div><div id="graphics-error" class="error" hidden>3D graphics are unavailable in this browser. The selectors, byte inspector, and memory grid remain available.</div></div>
+<div class="inspector"><h3>Selected condition</h3><div class="selector"><label>True wind angle<select id="angle"></select></label><label>True wind speed<select id="wind"></select></label></div><div class="trace" id="trace" aria-live="polite"></div><div class="metric" id="value"></div><svg id="density" class="density" viewBox="0 0 300 110" role="img" aria-label="Boat-speed density at the selected wind and wave condition"></svg><div id="bin-controls" hidden><label class="range-label" for="bin">Density sample: <output id="bin-label"></output></label><input id="bin" type="range" min="0" max="16" value="7" step="1"></div><div class="readout" id="readout"></div><p class="small" id="representation-note"></p></div></div>
+<div class="bottom-memory"><h3>Decompressed body</h3><p class="small" id="size-summary"></p><div class="blocks" id="blocks" aria-label="Mode blocks and their decompressed offsets"></div><div class="memory-content"><div><p class="small"><strong>Selected wave matrix</strong> · rows = TWA; columns = TWS.<br>Each button names its flattened cell index k.</p><div class="memory-grid" id="memory-grid" aria-label="Select a wind cell by its payload index"></div></div><div><p class="small"><strong>Bytes around the selected record</strong><br>Left column: hexadecimal offset in the decompressed body.</p><div class="hex" id="hex" aria-label="Hexadecimal bytes with the selected data highlighted"></div><p class="small" id="offset-note"></p><p class="small">Changing the stored-mode checkboxes moves later blocks. Changing the viewed representation alone does not move data. These offsets cannot be added to the LZ4 file offset to locate a value without decompression.</p></div></div></div>
+</div>
+<noscript><div class="callout">JavaScript is disabled. The complete written reference and diagrams remain available. Enable JavaScript for the interactive bowl and byte inspector.</div></noscript>
+<p class="caption">Illustrative axes: TWA = 30°, 60°, …, 330° (11 values); TWS = 6, 12, 18, 24 kn; optional wave axes = 2 × 2 × 2; sampled PDF speeds = 0…16 kn. All three modes use synthetic values, not a measured boat polar. With waves and all modes enabled, C = 352 and L = 14,080 bytes before compression.</p>
+<div class="callout info"><strong>Geometry is derived, not serialized.</strong><p>The connected SOG surface interpolates between stored nodes. The PDF sectors use midpoint wind/angle bounds, visible radial tails, and a smooth density colour field to explain the mapping. Neither mesh triangles, cell walls, colours, nor camera state occupy bytes in <code>.wmpolar</code>. The axes store coordinates, not those display bounds.</p></div>
+</section>
+<section id="example"><span class="num">05 / COMPLETE BYTE EXAMPLE</span><h2>A 61-byte Gaussian-only file</h2>
+<p>This minimal writer-layout example contains one cell: <strong>TWA 90°, TWS 12 kn, μ = 6 kn, σ = 1 kn</strong>, no wave axes, and Gaussian mode only. It demonstrates the envelope and parameter order without SOG/sample scaling ambiguity. The legacy v0.3.12 reader misassigned these axes; the current reader uses the order below.</p>
+<div class="grid2"><div><h3>File bytes, in hexadecimal</h3><pre><code>0000  57 57 4D 50 4F 4C 41 52 01 00 04 00 01 00 00 00
+0010  01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+0020  00 00 00 00 00 00 80 3F 00 00 80 3F 00 00 B4 42
+0030  00 00 40 41 04 00 00 00 40 99 19 44 04</code></pre></div><div><h3>Decoded meaning</h3><pre><code>version = 1; flags = 4
+T = 1; W = 1; H = D = P = B = 0
+sS = 1.0; sF = 1.0
+TWA[0] = 90.0; TWS[0] = 12.0
+E = 52; L = 4
+body = 99 19 44 04
+qμ = 0x1999 = 6553
+qσ = 0x0444 = 1092</code></pre></div></div>
+<div class="table-wrap"><table><thead><tr><th>File region</th><th>Contents</th></tr></thead><tbody><tr><td>[0, 44)</td><td>Fixed header; absent SOG and sampled modes still have their writer-default scale of 1.0.</td></tr><tr><td>[44, 48)</td><td><code>00 00 B4 42</code>: IEEE-754 float32 90.0.</td></tr><tr><td>[48, 52)</td><td><code>00 00 40 41</code>: IEEE-754 float32 12.0.</td></tr><tr><td>[52, 56)</td><td><code>04 00 00 00</code>: uncompressed body byte count.</td></tr><tr><td>[56, 61)</td><td>LZ4 literal-only block: token <code>40</code> (four literal bytes), then <code>99 19 44 04</code>. No match follows the final literals.</td></tr></tbody></table></div>
+<p>The recovered parameters are approximately <strong>5.999634 kn</strong> and <strong>0.999786 kn</strong>. Parameter bytes are low byte first. Header/axis float32 values are portable IEEE-754 bytes, never native struct dumps. LZ4 may have multiple valid encodings of larger bodies; the format identifies decoded content, not a unique compression strategy.</p>
+<h3>Worked offset with all modes present</h3><p>Using the explorer’s default counts, select <code>h=1, d=0, p=1, t=2, w=3</code>. Then <code>waveIndex=5</code>, <code>k=231</code>, <code>C=352</code>, and <code>B=17</code>.</p><pre><code>SOG value:               [462, 464)
+Sampled PDF block base:  704
+Entire sampled curve:    [8558, 8592)         (34 bytes)
+Sample b=7:              [8572, 8574)
+Gaussian block base:     12672
+Gaussian μ then σ:       [13596, 13600)       (4 bytes)
+
+All ranges above are decompressed body offsets, not file offsets.</code></pre>
+</section>
+<section id="reading"><span class="num">06 / IMPLEMENTATION REFERENCE</span><h2>Read the envelope before allocating</h2>
+<p>The following procedure describes the current reader, matching the v1 writer’s axis order and step-size scales.</p>
+<ol><li>Bound the file size and require at least 48 bytes for a header plus decompressed-size prefix. Check the eight-byte magic, version, and nonempty known mode flags.</li><li>Read the six u32 counts at offsets 12–35 and the two f32 scales at 36–43. Use checked arithmetic for every sum/product. Require finite, nonnegative scales; writer-produced scales are positive.</li><li>Require nonempty TWA/TWS, either three empty or three nonempty wave axes, and a nonempty SOG coordinate axis exactly when sampled mode is present.</li><li>Compute <code>E</code>, then read the six f32 axes in <strong>TWA, TWS, height, wave angle, period, SOG sample</strong> order. Check ranges, finiteness, and strict ordering.</li><li>Compute <code>C</code> and the expected <code>L = 2C(S + BF + 2G)</code>. Read the u32 at E and require equality before decompression.</li><li>Decode the LZ4 block starting at E+4 into exactly L bytes, enforcing the output limit. Reject malformed or mismatched output.</li><li>Read mode arrays in SOG → sampled → Gaussian order. SOG/sample numbers reconstruct with <code>q × stored_step</code> for this writer profile. Gaussian parameters reconstruct with <code>q × 60 / 65534</code>. Process sentinels before numerical conversion.</li><li>Validate reconstructed values and array shapes. A format consumer chooses separately how to interpolate axes, integrate sampled densities, handle missing cells, and display normal tails.</li></ol>
+<h3>Current codec limits and validation</h3><div class="table-wrap"><table><thead><tr><th>Rule</th><th>Limit / behavior</th></tr></thead><tbody>
+<tr><td>File byte cap</td><td><code>64 × 1024 × 1024 = 67,108,864</code> bytes.</td></tr><tr><td>Scalar payload cap</td><td><code>C × (S + BF + 2G) ≤ 16,000,000</code> u16 values; at most 32,000,000 decompressed body bytes.</td></tr><tr><td>Cell and axis limits</td><td>C and the total axis-value count are also bounded by 16,000,000 in validation. Use overflow-checked arithmetic before any allocation.</td></tr><tr><td>Scale fields</td><td>Reader accepts finite values ≥ 0, even for absent modes; writer normally emits max/65,534 or 1. Gaussian v1 ignores both scales.</td></tr><tr><td>Unknown data</td><td>Unknown versions and mode bits are rejected. There is no extensible chunk directory for skipping an unknown mode.</td></tr><tr><td>Missingness</td><td>SOG has one sentinel; Gaussian requires both sentinels together; sampled PDF disallows the sentinel. No NaN/Infinity payload representation exists.</td></tr><tr><td>Integrity</td><td>No file checksum. Malformed LZ4 and structural/value validation can detect some corruption, but cannot authenticate the data.</td></tr><tr><td>Wave angle meaning</td><td>Only degrees and range are validated. The reference frame is not serialized.</td></tr><tr><td>Probability constraints</td><td>Sampled densities need not integrate to one; Gaussian σ may be zero. No sample count or fitting confidence is stored.</td></tr>
+</tbody></table></div>
+<p><strong>RAM size is not file size.</strong> The Rust model reconstructs axes/densities as float32 vectors and optional speeds/Gaussians as <code>Option</code> values. Their allocations, capacity, and option representation are separate from the compact u16 body. The current codec also holds compressed and decompressed buffers during processing; it is not a zero-copy or random-access container.</p>
+</section>
+<section id="compatibility"><span class="num">07 / COMPATIBILITY &amp; EXPORT PROFILE</span><h2>Application behavior and legacy readers</h2>
+<h3>1. Corrected axis assignment and scalar scaling</h3>
+<p>The v0.3.12 reader assigned the first five axis arrays to height, wave angle, period, TWA, TWS even though the writer emitted TWA, TWS, height, wave angle, period. This made ordinary wave-independent files fail and could misinterpret wave-conditioned files. The current reader assigns every axis in the writer's order.</p>
+<div class="table-wrap"><table><thead><tr><th>Component</th><th>SOG / sampled-PDF formula</th></tr></thead><tbody><tr><td>Writer (unchanged)</td><td><code>s = float32(maximum / 65534)</code>; <code>q = round(value / s)</code>.</td></tr><tr><td>Current reader and specification</td><td><code>value ≈ q × s</code>.</td></tr><tr><td>Legacy v0.3.12 reader and specification</td><td><code>value = q × s / 65534</code>.</td></tr></tbody></table></div>
+<p>The extra division in the legacy reader reduced SOG and sampled densities by approximately 65,534. The writer's step-size convention is authoritative; no version or writer-byte change is needed to correct the reader. Gaussian mode uses its separate fixed-range formula. A third-party file that used the old written specification's full-range scale cannot be distinguished by a header flag and is not automatically migrated.</p>
+<h3>2. Read-only support for the brief v2 transition</h3>
+<p>The writer emits v1 with three independent bits. The reader also accepts version 2 with a different interpretation:</p>
+<ul><li>Only bits <code>0x0001</code> (SOG) and <code>0x0002</code> are known. In v2, bit 1 means <strong>Gaussian parameters</strong>, not sampled densities. Bit <code>0x0004</code> is invalid.</li><li>There is no sampled-PDF payload. With the Gaussian bit set, B must be zero and the header's PDF scale must satisfy <code>0 &lt; sF ≤ 60</code>.</li><li>Each Gaussian parameter decodes as <code>q × sF / 65534</code>, using the header scale instead of v1's fixed 60. Missing-pair rules and four-byte records are the same.</li><li>This branch shares the corrected axis assignment and SOG step-size decoding. These formulas describe the accepted branch; they do not establish compatibility with every historic producer.</li></ul>
+<h3>3. Configurable export profile</h3>
+<p>Both <strong>Export the polar</strong> and <strong>Export all tabs</strong> offer SOG, Histogram (sampled PDF), and Gaussian PDF independently. Any nonempty combination is valid. The UI and API defaults enable all three modes and 4 × 4 × 2 wave buckets (32 combinations). Pass <code>waves:null</code> to the API or disable <strong>Split by wave conditions</strong> in the UI to omit wave axes.</p>
+<div class="table-wrap"><table><thead><tr><th>Wave axis</th><th>Default membership</th><th>Stored coordinates</th></tr></thead><tbody>
+<tr><td>Height (m)</td><td>[0,1), [1,3), [3,5), [5,∞)</td><td>0.5, 2, 4, 6</td></tr>
+<tr><td>Direction (°)</td><td>[−45,45), [45,135), [135,225), [225,315), cyclic</td><td>0, 90, 180, 270</td></tr>
+<tr><td>Period (s)</td><td>[0,5], (5,∞)</td><td>2.5, 7.5</td></tr>
+</tbody></table></div>
+<ul><li><strong>Customize wave buckets (optional)</strong> exposes height/period cutoffs and direction boundaries. Height/period may have 0–63 positive, increasing cutoffs, below 100 m / 1000 s respectively; zero cutoffs mean one all-values bucket. The last bucket has no upper limit. A height equal to a cutoff enters the next bucket; a period equal to a cutoff stays in the preceding bucket. Direction has 2–65 increasing boundaries spanning exactly 360°, with the first in [−360,360). Sectors include their starting boundary and exclude their ending boundary.</li>
+<li>Wave direction is <code>(wave_from − heading) mod 360</code>, clockwise from the bow, using corrected heading when enabled. The bow sector wraps through 0°, and port/starboard wave directions remain distinct even with symmetric wind polars. Older exports used unsigned 0–180° angles. The container stores no reference-frame flag.</li>
+<li>Finite bins store midpoint coordinates. An open tail stores its lower cutoff plus half the preceding bin width, capped at the binary axis limit; a sole all-values bucket stores 0. Angular midpoints are normalized to [0,360) and sorted, with payload cells reordered to match. Coordinates must remain distinct in float32. <strong>The unchanged v1 layout stores coordinates, not custom cutoff arrays or open-tail bounds.</strong> Exact custom membership cannot in general be recovered from coordinates alone.</li>
+<li>Wave combinations are limited to 4096; the payload is additionally limited to 16,000,000 scalar u16 values. Every combination is recomputed independently, applying visibility, exclusions, source/global/wave filters, priority groups, source weights, confidence, track and polar statistics, interpolation, smoothing and corrections. No interpolation fills across wave combinations. Track samples missing required wave data or heading are omitted. Ordinary 2D polars contribute the same baseline to every combination. Imported wave matrices contribute their SOG coordinates within the selected bucket.</li></ul>
+<div class="table-wrap"><table><thead><tr><th>Mode</th><th>What the exporter computes for each wind/wave cell</th></tr></thead><tbody>
+<tr><td>SOG</td><td>The blended scalar, with any custom wind-grid resampling. Missing cells use the SOG sentinel; head-to-wind rows are defined as zero.</td></tr>
+<tr><td>Histogram / sampled PDF</td><td>2–512 equal-width speed bins over 0–60 kn, stored at their centers. Track speed residuals are centered on the selected track statistic plus source edits and weighted by the source's effective blend contribution. Polar values enter as point masses. The per-bin probability fields use wind interpolation/smoothing and optional resampling. Blend corrections translate the distribution; shifted tails clamp into the endpoint bins. A nonempty curve is normalized and divided by bin width to store density in 1/kn. All-zero curves represent no data. This is an empirical histogram, not samples of the Gaussian fit.</td></tr>
+<tr><td>Gaussian PDF</td><td>The same weighted first/second-moment fit used by the PDF views, preserving within-track variability and between-source disagreement. Standard deviation is at least 0.5 kn. A custom wind grid resamples mean and second moment, then recovers variance. Missing fits use the paired sentinel. The stored parameters describe the full normal; view percentiles may normalize a truncation to 0–60 kn.</td></tr>
+</tbody></table></div>
+<p>The export preview shows the wave-independent wind grid; the chosen wave conditions are recomputed when exporting. Export never changes the original project. The interactive examples in this document use synthetic distributions to demonstrate indexing and bytes; they are not a dataset exported from the app.</p>
+<h3>4. Application import policy</h3>
+<p>The binary codec can read PDF-only files, but the editor requires SOG mode. Its import path discards both sampled and Gaussian PDF data and clears the speed-bin axis. It retains wave-conditioned SOG data; the ordinary 2D polar projection averages available wave values at each wind coordinate.</p>
+</section>
+<section id="sources"><span class="num">08 / PROVENANCE</span><h2>Source references</h2><p>This document describes the <code>v0.3.13</code> release on 13 October 2026. The current export implementation is <code>crates/pe-app/src/matrix_export.rs</code>, with shared controls in <code>ui/src/panels/MatrixExportFields.tsx</code>. The following links refer to that release; opening them requires a network connection. The document and its diagrams do not.</p><ul class="source-list">
+<li><a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/crates/pe-polar/src/matrix.rs#L215">matrix.rs · writer, header and payload construction</a> (lines 215–321).</li>
+<li><a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/crates/pe-polar/src/matrix.rs#L325">matrix.rs · reader and transitional v2 branch</a> (lines 325–483).</li>
+<li><a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/crates/pe-polar/src/matrix.rs#L79">matrix.rs · validation</a> and <a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/crates/pe-polar/src/matrix.rs#L508">quantization helpers</a>.</li>
+<li><a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/crates/pe-core/src/polar.rs#L32">polar.rs · in-memory data model</a>.</li>
+<li><a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/crates/pe-app/src/blend.rs#L965">blend.rs · application export</a> and <a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/crates/pe-app/src/polar_files.rs#L108">polar_files.rs · import policy</a>.</li>
+<li><a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/ui/src/polar/geometry3d.ts#L1">geometry3d.ts · bowl coordinate mapping</a>.</li>
+<li><a href="https://github.com/jweisbaum/PolarExplorer/blob/v0.3.13/spec.md#L1042">spec.md §6.1 · written specification</a>, including the corrected scale formula recorded above.</li>
+</ul></section>
+<footer class="footer">WhirlwindMatrixPolar · Binary v1 reference draft · Implementation profile v0.3.13 · All visual examples are synthetic. One HTML file with embedded CSS, JavaScript, SVG, and WebGL shaders. No remote scripts, fonts, textures, or data.</footer>
+</main></div>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+$('print').addEventListener('click', () => window.print());
+const TA = Array.from({length:11},(_,i)=>30+i*30), WS=[6,12,18,24], HB=[0,2], DB=[0,180], PB=[6,10], B=17, Q=65534;
+const state={mode:'sog',waves:true,h:0,d:0,p:0,t:2,w:1,b:7,stored:{sog:true,pdf:true,gaussian:true},yaw:0.58,elev:0.43,zoom:1};
+let data, gl=null, program, buffers, lines, points, vertexCount=0, lineCount=0, pointCount=0, frame=0;
+const canvas=$('bowl'), stage=$('stage');
+function option(select,values,suffix){select.replaceChildren(...values.map((v,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=v+suffix;return o;}));}
+option($('angle'),TA,'°'); option($('wind'),WS,' kn');
+const hex=n=>n.toString(16).toUpperCase().padStart(2,'0');
+const addr=n=>n.toString(16).toUpperCase().padStart(6,'0');
+const wave=()=>state.waves?(state.h*2+state.d)*2+state.p:0;
+const index=(t=state.t,w=state.w)=> (wave()*TA.length+t)*WS.length+w;
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+function params(h,d,p,t,w){const angle=TA[t]*Math.PI/180;return {mu:Math.fround(1.4+WS[w]*0.35*(0.76+0.24*Math.sin(angle/2))-HB[h]*0.24+0.12*d+0.08*p+0.3*Math.sin(angle)),sd:Math.fround(0.48+WS[w]*0.023+HB[h]*0.12+0.04*p)};}
+function density(v,mu,sd){return Math.exp(-0.5*((v-mu)/sd)**2)/(sd*Math.sqrt(2*Math.PI));}
+function quant(v,s){return clamp(Math.round(v/s),0,Q);}
+function prepare(){
+ const cells=(state.waves?8:1)*TA.length*WS.length, values=[], sampled=[];
+ for(let k=0;k<cells;k++){
+  const w=k%4,t=Math.floor(k/4)%11,z=Math.floor(k/44),p=z%2,d=Math.floor(z/2)%2,h=Math.floor(z/4);
+  const a=params(h,d,p,t,w);values.push(a);for(let b=0;b<B;b++)sampled.push(Math.fround(density(b,a.mu,a.sd)));
+ }
+ const sS=Math.fround(Math.max(...values.map(a=>a.mu))/Q), sF=Math.fround(Math.max(...sampled)/Q);
+ const nS=state.stored.sog?cells*2:0,nF=state.stored.pdf?cells*B*2:0,nG=state.stored.gaussian?cells*4:0;
+ const body=new Uint8Array(nS+nF+nG),view=new DataView(body.buffer);
+ values.forEach((a,k)=>{if(nS)view.setUint16(k*2,quant(a.mu,sS),true);if(nG){view.setUint16(nS+nF+k*4,quant(a.mu,60/Q),true);view.setUint16(nS+nF+k*4+2,quant(a.sd,60/Q),true);}});
+ if(nF)sampled.forEach((v,i)=>view.setUint16(nS+i*2,quant(v,sF),true));
+ data={cells,values,sampled,sS,sF,body,view,nS,nF,nG,bases:{sog:0,pdf:nS,gaussian:nS+nF},sizes:{sog:nS,pdf:nF,gaussian:nG}};
+}
+function record(){const k=index(),base=data.bases[state.mode];return state.mode==='sog'?{start:k*2,len:2}:state.mode==='pdf'?{start:base+2*(k*B+state.b),len:2}:{start:base+4*k,len:4};}
+function selectedParams(){return data.values[index()];}
+function detail(){
+ $('angle').value=String(state.t);$('wind').value=String(state.w);
+ const k=index(),a=selectedParams(),r=record(),q=data.view.getUint16(r.start,true);
+ $('trace').innerHTML=`[h=${state.waves?state.h:0}, d=${state.waves?state.d:0}, p=${state.waves?state.p:0}, t=${state.t}, w=${state.w}]<br>waveIndex = ${wave()}<br>k = (${wave()} × 11 + ${state.t}) × 4 + ${state.w} = <strong>${k}</strong>`;
+ const title={sog:'SOG',pdf:'Sampled density',gaussian:'Gaussian PDF'}[state.mode];
+ $('value').innerHTML=state.mode==='sog'?`${(q*data.sS).toFixed(3)} kn<small>Stored scalar · writer-inverse decoding</small>`:`μ ${a.mu.toFixed(2)} · σ ${a.sd.toFixed(2)}<small>knots · ${title.toLowerCase()} at this condition</small>`;
+ $('bin-controls').hidden=state.mode!=='pdf';$('density').hidden=state.mode==='sog';
+ $('bin-label').textContent=`b=${state.b} · ${state.b} kn`;
+ const bytes=Array.from(data.body.slice(r.start,r.start+r.len),hex).join(' ');
+ const decoded=state.mode==='gaussian'?`μ = ${(q*60/Q).toFixed(6)} kn; σ = ${(data.view.getUint16(r.start+2,true)*60/Q).toFixed(6)} kn`:state.mode==='pdf'?`q = ${q}; f(${state.b}) ≈ ${(q*data.sF).toPrecision(6)} / kn`:`q = ${q}; SOG ≈ ${(q*data.sS).toFixed(6)} kn`;
+ $('readout').textContent=`body[${r.start}…${r.start+r.len-1}] = ${bytes}\n${decoded}`;$('readout').style.whiteSpace='pre-wrap';
+ $('representation-note').textContent=state.mode==='sog'?'One 2-byte speed per condition. The mesh between points is derived; it is not stored.':state.mode==='pdf'?`One curve uses ${B} × 2 = ${B*2} bytes. The speed sample axis is shared by every curve; b is the fastest-changing index.`:'One complete analytic PDF uses 4 bytes: mean, then standard deviation. Radial rendering samples are computed from these two values.';
+ const flags=(state.stored.sog?1:0)+(state.stored.pdf?2:0)+(state.stored.gaussian?4:0),sumAxes=11+4+(state.waves?6:0)+(state.stored.pdf?B:0),E=44+4*sumAxes;
+ $('size-summary').textContent=`Flags 0x${hex(flags).padStart(4,'0')} · ${data.cells} conditions · ${data.body.length.toLocaleString()} payload bytes · axes end at file offset E=${E}. Compression length prefix occupies [${E}, ${E+4}).`;
+ $('blocks').replaceChildren(...['sog','pdf','gaussian'].filter(m=>state.stored[m]).map(m=>{const el=document.createElement('div');el.className=`block ${m}${m===state.mode?' active':''}`;el.style.flexGrow=String(data.sizes[m]);el.style.flexBasis='0';el.textContent=`${{sog:'SOG',pdf:'Sampled PDF',gaussian:'Gaussian PDF'}[m]}\n[${data.bases[m]}, ${data.bases[m]+data.sizes[m]})`;el.style.whiteSpace='pre-line';return el;}));
+ const first=Math.max(0,Math.floor(r.start/16)*16),end=Math.min(data.body.length,first+48);let text='';
+ for(let off=first;off<end;off+=16){text+=addr(off)+'  ';for(let j=off;j<Math.min(off+16,data.body.length);j++){const b=hex(data.body[j]);text+=(j>=r.start&&j<r.start+r.len?`<mark>${b}</mark>`:b)+' ';}text+='\n';}$('hex').innerHTML=text;
+ const formula=state.mode==='sog'?`2 × ${k}`:state.mode==='pdf'?`${data.nS} + 2 × (${k} × ${B} + ${state.b})`:`${data.nS+data.nF} + 4 × ${k}`;
+ $('offset-note').textContent=`Selected record starts at ${formula} = ${r.start} (0x${addr(r.start)}). ${state.mode==='pdf'?`Whole curve: [${data.nS+2*k*B}, ${data.nS+2*(k+1)*B}).`:''}`;
+ document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===state.mode)));
+ $('plot-legend').innerHTML=state.mode==='sog'?'SOG surface · dots are stored wind cells':'Relative density <span class="gradient"></span> low → peak';
+ for(const b of $('memory-grid').querySelectorAll('button'))b.setAttribute('aria-pressed',String(Number(b.dataset.t)===state.t&&Number(b.dataset.w)===state.w));
+ drawDensity();
+}
+function memory(){const frag=document.createDocumentFragment();const head=(text)=>{const el=document.createElement('span');el.className='head';el.textContent=text;frag.append(el);};head('TWA');WS.forEach(v=>head(v+' kn'));
+ TA.forEach((v,t)=>{head(v+'°');WS.forEach((_,w)=>{const b=document.createElement('button');b.type='button';b.textContent=String(index(t,w));b.dataset.t=t;b.dataset.w=w;b.setAttribute('aria-label',`TWA ${v} degrees, TWS ${WS[w]} knots, cell ${index(t,w)}`);b.addEventListener('click',()=>{state.t=t;state.w=w;select();});frag.append(b);});});$('memory-grid').replaceChildren(frag);}
+function drawDensity(){const a=selectedParams(),f=(v)=>state.mode==='pdf'?(()=>{const lo=clamp(Math.floor(v),0,B-1),hi=Math.min(B-1,lo+1),x=clamp(v-lo,0,1);return (data.sampled[index()*B+lo]*(1-x)+data.sampled[index()*B+hi]*x);})():density(v,a.mu,a.sd);
+ let d='';for(let j=0;j<=240;j++){const v=j/240*16,x=26+j/240*258,y=86-f(v)*a.sd*Math.sqrt(2*Math.PI)*66;d+=`${j?'L':'M'}${x.toFixed(2)},${y.toFixed(2)} `;}
+ const x=26+state.b/16*258,y=86-f(state.b)*a.sd*Math.sqrt(2*Math.PI)*66;
+ $('density').innerHTML=`<path d="M26 15V86H284" fill="none" stroke="#becdda"/><path d="${d}L284,86L26,86Z" fill="#0c9c9320"/><path d="${d}" fill="none" stroke="#0b8179" stroke-width="2"/><text x="6" y="13">f(v)</text><text x="23" y="102">0</text><text x="150" y="102">8</text><text x="245" y="102">16 kn</text>${state.mode==='pdf'?`<circle cx="${x}" cy="${y}" r="4" fill="#b3346a"/>`:''}`;
+}
+function select(){detail();buildGeometry();requestDraw();}
+function rebuild(){prepare();memory();select();}
+for(const b of document.querySelectorAll('[data-mode]'))b.addEventListener('click',()=>{state.mode=b.dataset.mode;if(!state.stored[state.mode]){state.stored[state.mode]=true;document.querySelector(`[data-stored="${state.mode}"]`).checked=true;rebuild();}else select();});
+for(const el of document.querySelectorAll('[data-stored]'))el.addEventListener('change',()=>{const m=el.dataset.stored;state.stored[m]=el.checked;if(!Object.values(state.stored).some(Boolean)){state.stored[m]=true;el.checked=true;return;}if(!state.stored[state.mode])state.mode=['sog','pdf','gaussian'].find(m=>state.stored[m]);rebuild();});
+$('waves').addEventListener('change',()=>{state.waves=$('waves').checked;for(const id of ['height','direction','period'])$(id).disabled=!state.waves;rebuild();});
+for(const [id,key] of [['height','h'],['direction','d'],['period','p']])$(id).addEventListener('change',()=>{state[key]=Number($(id).value);memory();select();});
+for(const [id,key] of [['angle','t'],['wind','w']])$(id).addEventListener('change',()=>{state[key]=Number($(id).value);select();});
+$('bin').addEventListener('input',()=>{state.b=Number($('bin').value);detail();});
+$('reset-camera').addEventListener('click',()=>{state.yaw=.58;state.elev=.43;state.zoom=1;requestDraw();});
+// A self-contained 3D renderer. Surface coordinates use the same bowl mapping
+// as PolarExplorer. PDF colour is evaluated per fragment along the radius.
+const vertex=`attribute vec3 pos;attribute vec3 col;attribute vec2 param;uniform vec4 camera;uniform float aspect;uniform float pointSize;varying vec3 world;varying vec3 colour;varying vec2 pdf;
+void main(){float c=cos(camera.x),s=sin(camera.x),ce=cos(camera.y),se=sin(camera.y);float x=c*pos.x-s*pos.y,y=s*pos.x+c*pos.y,z=pos.z-12.0;gl_Position=vec4(x*camera.z/aspect,(ce*z-se*y)*camera.z,-(ce*y+se*z)/70.0,1.0);gl_PointSize=pointSize;world=pos;colour=col;pdf=param;}`;
+const fragment=`precision highp float;varying vec3 world;varying vec3 colour;varying vec2 pdf;uniform float mode;uniform float marker;
+vec3 ramp(float x){x=clamp(x,0.0,1.0);if(x<0.33)return mix(vec3(.19,.14,.36),vec3(.14,.43,.57),x/.33);if(x<.66)return mix(vec3(.14,.43,.57),vec3(.14,.68,.59),(x-.33)/.33);return mix(vec3(.14,.68,.59),vec3(.94,.86,.40),(x-.66)/.34);}
+float bell(float x){return exp(-.5*pow((x-pdf.x)/pdf.y,2.0));}
+void main(){if(marker>.5&&distance(gl_PointCoord,vec2(.5))>.5)discard;vec3 c=colour;if(mode>.5){float r=length(world.xy),f=bell(r);if(mode<1.5)f=mix(bell(floor(r)),bell(ceil(r)),fract(r));c=ramp(f)*colour;}gl_FragColor=vec4(c,1.0);}`;
+function initGL(){try{gl=canvas.getContext('webgl',{antialias:true,alpha:false,preserveDrawingBuffer:true});if(!gl)throw new Error('No WebGL');
+ const make=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+ program=gl.createProgram();gl.attachShader(program,make(gl.VERTEX_SHADER,vertex));gl.attachShader(program,make(gl.FRAGMENT_SHADER,fragment));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));
+ gl.useProgram(program);buffers=gl.createBuffer();lines=gl.createBuffer();points=gl.createBuffer();gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.clearColor(.078,.149,.22,1);
+ }catch(e){gl=null;$('graphics-error').hidden=false;}}
+const place=(a,w,r)=>[r*Math.sin(a*Math.PI/180),r*Math.cos(a*Math.PI/180),w];
+const valueAt=(t,w)=>data.values[(wave()*11+t)*4+w];
+let picks=[];
+function buildGeometry(){if(!gl)return;const tris=[],edges=[],dots=[];picks=[];
+ const push=(arr,p,c,par=[0,1])=>arr.push(...p,...c,...par);
+ const edge=(a,b,c)=>{push(edges,a,c);push(edges,b,c);};
+ const tri=(a,b,c,color,par)=>{push(tris,a,color,par);push(tris,b,color,par);push(tris,c,color,par);};
+ const quad=(a,b,c,d,color,par)=>{tri(a,b,c,color,par);tri(a,c,d,color,par);};
+ // Floor guides and vertical wind scale.
+ const grey=[.25,.37,.46],light=[.39,.54,.65],pink=[1,.42,.68];
+ for(const radius of [5,10,15])for(let a=0;a<360;a+=4)edge(place(a,0,radius),place(a+4,0,radius),grey);
+ for(let a=0;a<360;a+=30)edge([0,0,0],place(a,0,15),grey);
+ edge([0,0,0],[0,0,27],light);for(const w of WS)edge([-.3,0,w],[.3,0,w],light);
+ if(state.mode==='sog'){
+  for(let t=0;t<10;t++)for(let w=0;w<3;w++){
+   const c=[.05+.03*w,.47+.07*w,.52+.065*w];
+   for(let s=0;s<10;s++){const f=s/10,g=(s+1)/10,a=TA[t]+30*f,b=TA[t]+30*g;
+    const r0=valueAt(t,w).mu,r1=valueAt(t+1,w).mu,r2=valueAt(t,w+1).mu,r3=valueAt(t+1,w+1).mu;
+    quad(place(a,WS[w],r0*(1-f)+r1*f),place(b,WS[w],r0*(1-g)+r1*g),place(b,WS[w+1],r2*(1-g)+r3*g),place(a,WS[w+1],r2*(1-f)+r3*f),c,[0,1]);
+   }
+  }
+  for(let t=0;t<11;t++)for(let w=0;w<4;w++){
+   const p=place(TA[t],WS[w],valueAt(t,w).mu),sel=t===state.t&&w===state.w;push(dots,p,sel?pink:[.71,.91,.92]);picks.push({p,t,w});
+   if(w<3)edge(p,place(TA[t],WS[w+1],valueAt(t,w+1).mu),light);
+   if(t<10)for(let s=0;s<10;s++){const f=s/10,g=(s+1)/10,r=valueAt(t,w).mu,next=valueAt(t+1,w).mu;edge(place(TA[t]+30*f,WS[w],r*(1-f)+next*f),place(TA[t]+30*g,WS[w],r*(1-g)+next*g),light);}
+   if(sel){edge([0,0,WS[w]],p,pink);edge(place(TA[t],0,valueAt(t,w).mu),p,pink);}
+  }
+ }else{
+  for(let t=0;t<11;t++)for(let w=0;w<4;w++){
+   const a=valueAt(t,w),lo=Math.max(0,a.mu-3*a.sd),hi=Math.min(16,a.mu+3*a.sd),a0=TA[t]-12,a1=TA[t]+12,w0=WS[w]-2.3,w1=WS[w]+2.3,sel=t===state.t&&w===state.w,c=sel?[1,1,1]:[.65,.7,.75],par=[a.mu,a.sd];
+   picks.push({p:place(TA[t],WS[w],a.mu),t,w});
+   // Curved inner/outer walls plus top/bottom. Colour comes from radius in the fragment shader.
+   for(let s=0;s<12;s++){const x=a0+(a1-a0)*s/12,y=a0+(a1-a0)*(s+1)/12;
+    quad(place(x,w0,lo),place(y,w0,lo),place(y,w1,lo),place(x,w1,lo),c,par);
+    quad(place(x,w0,hi),place(y,w0,hi),place(y,w1,hi),place(x,w1,hi),c,par);
+    quad(place(x,w1,lo),place(y,w1,lo),place(y,w1,hi),place(x,w1,hi),c,par);
+    quad(place(x,w0,lo),place(y,w0,lo),place(y,w0,hi),place(x,w0,hi),c,par);
+    if(sel)for(const z of [w0,w1])for(const r of [lo,hi])edge(place(x,z,r),place(y,z,r),pink);
+   }
+   for(const ang of [a0,a1]){quad(place(ang,w0,lo),place(ang,w0,hi),place(ang,w1,hi),place(ang,w1,lo),c,par);if(sel){for(const z of [w0,w1])edge(place(ang,z,lo),place(ang,z,hi),pink);for(const r of [lo,hi])edge(place(ang,w0,r),place(ang,w1,r),pink);}}
+  }
+ }
+ const upload=(buffer,arr)=>{gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(arr),gl.STATIC_DRAW);};upload(buffers,tris);upload(lines,edges);upload(points,dots);vertexCount=tris.length/8;lineCount=edges.length/8;pointCount=dots.length/8;
+}
+function projection(p){const w=canvas.clientWidth,h=canvas.clientHeight,c=Math.cos(state.yaw),s=Math.sin(state.yaw),ce=Math.cos(state.elev),se=Math.sin(state.elev),x=c*p[0]-s*p[1],y=s*p[0]+c*p[1],z=p[2]-12,scale=.059*state.zoom*Math.min(1,w/h);return {x:w/2+x*scale*h/2,y:h/2-(ce*z-se*y)*scale*h/2,depth:ce*y+se*z};}
+function labels(){const list=[];const add=(p,text,cls='')=>{const q=projection(p);if(q.x<10||q.x>canvas.clientWidth-10||q.y<30||q.y>canvas.clientHeight-25)return;const el=document.createElement('span');el.className='axis-label '+cls;el.style.left=q.x+'px';el.style.top=q.y+'px';el.textContent=text;list.push(el);};
+ for(const w of WS)add([-.8,0,w],w+' kn');for(const a of [0,90,180,270])add(place(a,0,16),a+'°');add(place(90,0,10),'10 kn');add(place(90,0,5),'5 kn');
+ const p=selectedParams();add(place(TA[state.t],WS[state.w],p.mu),`k=${index()}`,'pick');$('labels').replaceChildren(...list);
+}
+function draw(){frame=0;if(!gl)return;const dpr=Math.min(devicePixelRatio||1,2),w=canvas.clientWidth,h=canvas.clientHeight;canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);gl.viewport(0,0,canvas.width,canvas.height);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(program);
+ const uniform=(name)=>gl.getUniformLocation(program,name);gl.uniform4f(uniform('camera'),state.yaw,state.elev,.059*state.zoom*Math.min(1,w/h),0);gl.uniform1f(uniform('aspect'),w/h);gl.uniform1f(uniform('pointSize'),7*dpr);
+ const bind=buffer=>{gl.bindBuffer(gl.ARRAY_BUFFER,buffer);for(const [name,size,off] of [['pos',3,0],['col',3,12],['param',2,24]]){const loc=gl.getAttribLocation(program,name);gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,size,gl.FLOAT,false,32,off);}};
+ gl.uniform1f(uniform('marker'),0);gl.uniform1f(uniform('mode'),state.mode==='sog'?0:state.mode==='pdf'?1:2);bind(buffers);gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(1,1);gl.drawArrays(gl.TRIANGLES,0,vertexCount);gl.disable(gl.POLYGON_OFFSET_FILL);
+ gl.uniform1f(uniform('mode'),0);bind(lines);gl.drawArrays(gl.LINES,0,lineCount);bind(points);gl.uniform1f(uniform('marker'),1);gl.drawArrays(gl.POINTS,0,pointCount);labels();
+}
+function requestDraw(){if(!frame)frame=requestAnimationFrame(draw);}
+let drag=null;
+canvas.addEventListener('pointerdown',e=>{drag={id:e.pointerId,x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,moved:false};canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)>4)drag.moved=true;state.yaw+=dx*.008;state.elev=clamp(state.elev+dy*.006,.08,1.35);drag.x=e.clientX;drag.y=e.clientY;requestDraw();});
+canvas.addEventListener('pointerup',e=>{if(!drag||drag.id!==e.pointerId)return;if(!drag.moved){const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,score=Infinity;for(const p of picks){const q=projection(p.p),dist=Math.hypot(q.x-x,q.y-y);if(dist<(state.mode==='sog'?20:42)&&dist<score){score=dist;best=p;}}if(best){state.t=best.t;state.w=best.w;select();}}drag=null;if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);});
+canvas.addEventListener('pointercancel',()=>{drag=null;});canvas.addEventListener('lostpointercapture',()=>{drag=null;});
+canvas.addEventListener('wheel',e=>{e.preventDefault();state.zoom=clamp(state.zoom*Math.exp(-e.deltaY*.001),.65,1.5);requestDraw();},{passive:false});
+canvas.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key))return;e.preventDefault();if(e.key==='ArrowLeft')state.yaw-=.1;if(e.key==='ArrowRight')state.yaw+=.1;if(e.key==='ArrowUp')state.elev=clamp(state.elev+.08,.08,1.35);if(e.key==='ArrowDown')state.elev=clamp(state.elev-.08,.08,1.35);if(e.key==='+')state.zoom=clamp(state.zoom*1.1,.65,1.5);if(e.key==='-')state.zoom=clamp(state.zoom/1.1,.65,1.5);requestDraw();});
+initGL();rebuild();new ResizeObserver(requestDraw).observe(stage);
+})();
+</script>
+</body>
+</html>

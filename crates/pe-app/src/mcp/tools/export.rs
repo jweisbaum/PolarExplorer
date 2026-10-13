@@ -17,8 +17,16 @@ pub struct ExportPreviewParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
     pub boat: Option<u64>,
-    /// "expedition" (.txt), "adrena" (.pol) or "csv".
+    /// expedition, adrena, csv, qtvlm, opencpn, luckgrib, or whirlwind_matrix_polar.
     pub format: String,
+    /// Matrix export options for whirlwind_matrix_polar: sog, sampled_pdf,
+    /// gaussian_pdf, sog_bins (2–512), and optional waves. Defaults include all
+    /// modes and 4×4×2 wave bins. waves:null omits waves. Custom height/period
+    /// objects use {cutoffs:[...]}; angle uses {edges:[...]} spanning 360°.
+    /// Defaults: height [1,3,5] m, period [5] s, angle [-45,45,135,225,315]°
+    /// clockwise from the bow. Omitted fields retain their defaults.
+    #[serde(default)]
+    pub matrix: Option<Value>,
     /// Custom axes to read the blend onto instead of the output grid, an
     /// object: {"twa": [52, 60, 75, 90], "tws": [6, 8, 10]}.
     #[serde(default)]
@@ -32,8 +40,16 @@ pub struct ExportPolarParams {
     pub boat: Option<u64>,
     /// Where to write the file: absolute, or beginning with `~/`.
     pub path: String,
-    /// "expedition" (.txt), "adrena" (.pol) or "csv".
+    /// expedition, adrena, csv, qtvlm, opencpn, luckgrib, or whirlwind_matrix_polar.
     pub format: String,
+    /// Matrix export options for whirlwind_matrix_polar: sog, sampled_pdf,
+    /// gaussian_pdf, sog_bins (2–512), and optional waves. Defaults include all
+    /// modes and 4×4×2 wave bins. waves:null omits waves. Custom height/period
+    /// objects use {cutoffs:[...]}; angle uses {edges:[...]} spanning 360°.
+    /// Defaults: height [1,3,5] m, period [5] s, angle [-45,45,135,225,315]°
+    /// clockwise from the bow. Omitted fields retain their defaults.
+    #[serde(default)]
+    pub matrix: Option<Value>,
     /// Custom axes, as export_preview's.
     #[serde(default)]
     pub axes: Option<Value>,
@@ -48,8 +64,16 @@ pub struct ExportAllParams {
     /// The folder to write every boat's polar into: absolute, or beginning
     /// with `~/`.
     pub directory: String,
-    /// "expedition", "adrena" or "csv".
+    /// expedition, adrena, csv, qtvlm, opencpn, luckgrib, or whirlwind_matrix_polar.
     pub format: String,
+    /// Matrix export options for whirlwind_matrix_polar: sog, sampled_pdf,
+    /// gaussian_pdf, sog_bins (2–512), and optional waves. Defaults include all
+    /// modes and 4×4×2 wave bins. waves:null omits waves. Custom height/period
+    /// objects use {cutoffs:[...]}; angle uses {edges:[...]} spanning 360°.
+    /// Defaults: height [1,3,5] m, period [5] s, angle [-45,45,135,225,315]°
+    /// clockwise from the bow. Omitted fields retain their defaults.
+    #[serde(default)]
+    pub matrix: Option<Value>,
 }
 
 fn axes(raw: Option<Value>) -> std::result::Result<Option<ExportAxes>, ToolError> {
@@ -65,24 +89,41 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     )]
     async fn export_preview(&self, Parameters(p): Parameters<ExportPreviewParams>) -> ToolResult {
         let axes = axes(p.axes)?;
+        let matrix = p
+            .matrix
+            .filter(|v| !v.is_null())
+            .map(|v| typed("matrix", v))
+            .transpose()?;
         let preview = self
             .run("export_preview", move |app| {
-                crate::blend::export_preview(app.state(), p.boat, p.format, axes)
+                crate::blend::export_preview(app.state(), p.boat, p.format, axes, matrix)
             })
             .await?;
         json(&preview)
     }
 
     #[tool(
-        description = "Writes the boat's blend as an Expedition (.txt), Adrena (.pol), qtVlm (.csv), OpenCPN (.pol), LuckGrib (.tsv) or CSV (.csv) polar to `path`, recomputed from the sources at this moment. A file already there is replaced only with overwrite: true. Answers the file written and its size. The project does not need saving first."
+        description = "Writes the boat's blend as an Expedition (.txt), Adrena (.pol), qtVlm (.csv), OpenCPN (.pol), LuckGrib (.tsv), CSV (.csv) or WhirlwindMatrixPolar (.wmpolar) polar to `path`, recomputed from the sources at this moment. A file already there is replaced only with overwrite: true. Answers the file written and its size. The project does not need saving first."
     )]
     async fn export_polar(&self, Parameters(p): Parameters<ExportPolarParams>) -> ToolResult {
         let path = absolute(&p.path)?;
         may_write(std::path::Path::new(&path), p.overwrite)?;
         let axes = axes(p.axes)?;
+        let matrix = p
+            .matrix
+            .filter(|v| !v.is_null())
+            .map(|v| typed("matrix", v))
+            .transpose()?;
         let written = self
             .run("export_polar", move |app| {
-                crate::blend::export_polar(app.state(), p.boat, path, p.format, axes)
+                tauri::async_runtime::block_on(crate::blend::export_polar(
+                    app.state(),
+                    p.boat,
+                    path,
+                    p.format,
+                    axes,
+                    matrix,
+                ))
             })
             .await?;
         json(&written)
@@ -93,12 +134,18 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     )]
     async fn export_all(&self, Parameters(p): Parameters<ExportAllParams>) -> ToolResult {
         let directory = absolute(&p.directory)?;
+        let matrix = p
+            .matrix
+            .filter(|v| !v.is_null())
+            .map(|v| typed("matrix", v))
+            .transpose()?;
         let written = self
             .run("export_all", move |app| {
                 tauri::async_runtime::block_on(crate::boats::export_all_polars(
                     app.state(),
                     directory,
                     p.format,
+                    matrix,
                 ))
             })
             .await?;

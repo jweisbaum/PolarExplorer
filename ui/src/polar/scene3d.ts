@@ -19,7 +19,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import { CARTESIAN_TWA_SCALE, dotPositions, hatchLines, lassoSelect, project, surfaceMesh, type Layout, type PolarGrid } from "./geometry3d";
 import { cellAt, cellRect, type Rect } from "./waveSplit";
-import { intersectPdfBox, pdfBoxBounds, pdfBoxEdges, pdfProxyGeometry, type PdfBox, type PdfVolumeInput } from "./pdfVolume";
+import { intersectPdfBox, pdfBoxBounds, pdfBoxContains, pdfBoxEdges, pdfProxyGeometry, type PdfBox, type PdfVolumeInput } from "./pdfVolume";
 import { PDF_VOLUME_VERTEX, PDF_VOLUME_FRAGMENT, PDF_OUTLINE_VERTEX, PDF_OUTLINE_FRAGMENT } from "./pdfVolumeShader";
 export type { PdfVolumeInput } from "./pdfVolume";
 
@@ -76,6 +76,10 @@ export interface SceneInput {
   surfaces: readonly SurfaceInput[];
   /** Continuous probability fields grouped by wind-condition cell. */
   pdfVolumes?: readonly PdfVolumeInput[];
+  /** Composite dots over opaque PDF volumes so interior samples stay visible. */
+  overlayDots?: boolean;
+  /** Fade points outside the selected PDF volume, including other wave copies. */
+  pdfPointFocus?: { windCell: number; copy: number } | null;
   layout: Layout;
 }
 
@@ -139,14 +143,18 @@ attribute vec3 color;
 attribute float selected;
 attribute float shape;
 attribute float cell;
+attribute float opacity;
 uniform float size;
 // The copy being drawn, or -1 when the scene is one view.
 uniform float drawCell;
+uniform float focusedCopy;
 varying vec3 vColor;
 varying float vShape;
+varying float vOpacity;
 void main() {
   vColor = mix(color, vec3(1.0), selected * 0.85);
   vShape = shape;
+  vOpacity = focusedCopy > -0.5 && drawCell > -0.5 && abs(drawCell - focusedCopy) > 0.5 ? 0.12 : opacity;
   // A dot of another copy, or of none, is put outside the clip volume: every
   // copy is one draw of all the dots, and the vertex stage keeps its own.
   if (drawCell > -0.5 && (cell < -1.5 || (cell > -0.5 && abs(cell - drawCell) > 0.5))) {
@@ -161,13 +169,14 @@ void main() {
 const FRAGMENT = `
 varying vec3 vColor;
 varying float vShape;
+varying float vOpacity;
 void main() {
   vec2 d = gl_PointCoord - vec2(0.5);
   float r2 = dot(d, d);
   if (vShape > 2.5) {
     // A square with a light rim: an edited node.
     float edge = max(abs(d.x), abs(d.y));
-    gl_FragColor = vec4(edge > 0.36 ? vec3(1.0) : vColor, 1.0);
+    gl_FragColor = vec4(edge > 0.36 ? vec3(1.0) : vColor, vOpacity);
     return;
   }
   if (r2 > 0.25) discard;
@@ -176,7 +185,7 @@ void main() {
   } else if (vShape > 0.5) {
     if (r2 < 0.1) discard;
   }
-  gl_FragColor = vec4(vColor, 1.0);
+  gl_FragColor = vec4(vColor, vOpacity);
 }`;
 
 function pdfOutlineMaterial(color: number, opacity: number): THREE.ShaderMaterial {
@@ -275,12 +284,21 @@ export class PolarScene {
     // copies of the dots before these mean nothing for them.
     this.cellOf = new Float32Array(n).fill(-1);
     if (this.cells) this.cells = { ...this.cells, of: new Int16Array(n).fill(-1) };
+    const focusedBox = input.overlayDots && input.pdfPointFocus
+      ? input.pdfVolumes?.flatMap(volume => volume.boxes).find(box => box.windCell === input.pdfPointFocus!.windCell
+        && Math.max(0, box.copy) === input.pdfPointFocus!.copy)
+      : undefined;
+    const opacity = new Float32Array(n).fill(1);
+    if (focusedBox) for (let k = 0; k < n; k++) {
+      if (!pdfBoxContains(focusedBox, input.samples[k * 3]!, input.samples[k * 3 + 1]!, input.samples[k * 3 + 2]!)) opacity[k] = 0.12;
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(input.colors, 3));
     geometry.setAttribute("selected", new THREE.BufferAttribute(this.selected, 1));
     geometry.setAttribute("shape", new THREE.BufferAttribute(input.shapes ?? new Float32Array(n), 1));
     geometry.setAttribute("cell", new THREE.BufferAttribute(this.cellOf, 1));
+    geometry.setAttribute("opacity", new THREE.BufferAttribute(opacity, 1));
     geometry.computeBoundingSphere();
     if (this.dots) {
       this.scene.remove(this.dots);
@@ -290,8 +308,11 @@ export class PolarScene {
     this.dots = new THREE.Points(geometry, new THREE.ShaderMaterial({
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
-      uniforms: { size: { value: 4 * this.renderer.getPixelRatio() }, drawCell: { value: -1 } },
+      uniforms: { size: { value: 4 * this.renderer.getPixelRatio() }, drawCell: { value: -1 },
+        focusedCopy: { value: focusedBox?.copy ?? -1 } },
+      transparent: !!input.overlayDots, depthTest: !input.overlayDots, depthWrite: !input.overlayDots,
     }));
+    this.dots.renderOrder = input.overlayDots ? 20 : 0;
     this.scene.add(this.dots);
     const t1 = performance.now();
 

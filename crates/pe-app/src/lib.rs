@@ -20,6 +20,7 @@ pub mod error;
 pub mod grib;
 pub mod library;
 pub mod map_tracks;
+pub mod matrix_export;
 pub mod mcp;
 pub mod menu;
 pub mod orc;

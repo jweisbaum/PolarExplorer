@@ -1,5 +1,10 @@
 /** The 3D polar stage (spec.md 10). */
 const catalogue: Record<string, string> = {
+  "Points and PDF": "Punten en PDF",
+  "Points and polars": "Punten en polairen",
+  "Show polars, PDFs, or dots with PDFs.": "Polairen, PDF’s of punten samen met PDF’s tonen.",
+  "Dots are drawn over PDFs. Click dots to select them; click between dots to inspect a PDF cell.": "Punten worden over de PDF’s getekend. Klik op punten om ze te selecteren; klik ertussen om een PDF-cel te bekijken.",
+
   "3D layout": "3D-indeling",
   "Draw the polar as a tower (angle, radius, height) or on straight axes.": "De polar tekenen als toren (hoek, straal, hoogte) of op rechte assen.",
   "polar tower": "polartoren",

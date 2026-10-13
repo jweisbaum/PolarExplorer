@@ -248,6 +248,18 @@ samples appear.
 Hover over a 3D dot to see its source, TWA, TWS and BSP. Track dots also show UTC
 time, waves and current.
 
+In either 2D or 3D, choose **Display → Points and PDF** to show dots over the
+probability density gradient. Dot colours, hover, click selection, Lasso,
+Box and Exclude/Include remain available. PDFs update with the current filters,
+exclusions, source weights and blend settings. In 3D, dots remain visible over
+the opaque PDF volumes. With the Rotate tool active, click between dots to
+expand a PDF cell and see its percentiles; **Show all cells** or Escape returns
+to the full view. Choose **Probability density (PDF)** to show PDFs alone.
+**Points and polars** uses the same point styling as **Points and PDF**.
+Selecting a PDF cell in 3D dims points outside its box; clearing the cell
+selection restores their visibility. Weight adjustments update the PDF in
+place without blanking the view or resetting your 3D camera.
+
 Use **Wave range filters** at the bottom centre of the 3D screen to set lower
 and upper limits for wave height, angle off the bow, and period. Each row has one
 slider with two round handles: drag the start or end handle, or focus it and use
@@ -356,10 +368,40 @@ In **Compare**, choose A and B from sources or the blend. The difference is
 **A − B**: positive values mean A is faster. Empty coverage is distinguished
 from zero difference. Use the heatmap or 3D view to inspect disagreements.
 
-Choose **Export…**, select Expedition, Adrena or CSV, and use the project grid
+Choose **Export…**, select a format, and use the project grid
 or a custom grid. Inspect the preview, then choose a destination. The blend is
 recomputed for every export; exporting does not save the project or replace
 its sources. Given the same project and options, export bytes are reproducible.
+
+For **WhirlwindMatrixPolar (.wmpolar)**, the **Matrix data modes** section
+starts collapsed in both export dialogs. Expand it to adjust the settings.
+All three data modes start enabled:
+boat speed (SOG), histogram (sampled PDF), and Gaussian PDF. The default wave
+buckets are:
+
+- Height: 0–<1 m, 1–<3 m, 3–<5 m, and ≥5 m.
+- Direction clockwise from the bow: −45–<45°, 45–<135°, 135–<225°, and
+  225–<315°. The first bucket includes the bow and wraps through 0°.
+- Period: 0–5 seconds and >5 seconds.
+
+That gives 32 wave combinations. No configuration is required. To change them,
+open **Customize wave buckets (optional)** and edit the comma-separated
+height/period cutoffs or the direction boundaries. Add or remove cutoffs to
+change the number of buckets; leave height or period blank for a single
+all-values bucket. Directions must cover a full 360° turn. **Reset wave
+buckets** restores the defaults. Uncheck **Split by wave conditions** for a
+wave-independent polar, or uncheck any unwanted data modes. Histogram mode
+also lets you set the number of speed bins over 0–60 kn. The same defaults
+and controls appear in **Export all tabs**.
+
+Each wave combination has its own wind matrices and distributions, computed
+using the source weights, filters, exclusions and blend settings. Track
+samples without complete wave data are omitted
+from wave-conditioned exports. Ordinary polars provide a baseline for every
+wave combination. A histogram retains the admitted speed distribution, shifted
+to follow the chosen statistics and corrections; Gaussian mode stores its
+weighted mean and standard deviation. PDF-only files can be exported, but
+PolarExplorer import requires SOG mode.
 
 ## Let an AI client drive PolarExplorer
 

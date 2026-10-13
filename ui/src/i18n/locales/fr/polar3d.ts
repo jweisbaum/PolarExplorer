@@ -1,5 +1,10 @@
 /** The 3D polar stage (spec.md 10). */
 const catalogue: Record<string, string> = {
+  "Points and PDF": "Points et PDF",
+  "Points and polars": "Points et polaires",
+  "Show polars, PDFs, or dots with PDFs.": "Afficher les polaires, les PDF ou les points avec les PDF.",
+  "Dots are drawn over PDFs. Click dots to select them; click between dots to inspect a PDF cell.": "Les points sont dessinés par-dessus les PDF. Cliquez sur les points pour les sélectionner ; cliquez entre eux pour examiner une cellule PDF.",
+
   "3D layout": "Disposition 3D",
   "Draw the polar as a tower (angle, radius, height) or on straight axes.": "Dessiner la polaire en tour (angle, rayon, hauteur) ou sur des axes droits.",
   "polar tower": "tour polaire",

@@ -41,7 +41,7 @@ import {
 } from "./view3d";
 
 type Tool = "rotate" | "lasso" | "box" | "drag";
-type DisplayMode = "points" | "pdf";
+type DisplayMode = "points" | "pdf" | "combined";
 
 /** Shift snaps a dragged node to this step, knots (spec.md 10.4). */
 export const DRAG_SNAP_KN = 0.05;
@@ -264,7 +264,10 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const [waveRanges, updateWaveRanges] = useLiveEdit(project.blend.wave_ranges, (ranges) => api.setWaveRanges(ranges).then(onProject), project.id);
   const [mode, setMode] = useState<ColourMode>("source");
   const [displayMode, setDisplayMode] = useState<DisplayMode>("points");
+  const showPdf = displayMode !== "points";
+  const showDots = displayMode !== "pdf";
   const [pdfFit, setPdfFit] = useState<PolarPdfResult | null>(null);
+  const pdfScope = useRef("");
   const [pdfFocus, setPdfFocus] = useState<{ windCell: number; copy: number } | null>(null);
   const [pdfHover, setPdfHover] = useState<({ windCell: number; copy: number; sog: number; x: number; y: number }) | null>(null);
   const [tool, setTool] = useState<Tool>("rotate");
@@ -426,13 +429,18 @@ export default function PolarView({ project, settings, onProject, compact = fals
   // A scene held from another project is never a base: it is dropped in the
   // same effect, before the fetch, so no effect order can send its key.
   const heldProject = useRef<number | null>(null);
+  const heldWeights = useRef<readonly (readonly [number, number])[]>([]);
+  const keepViewForPacket = useRef<ScenePacket | null>(null);
   useEffect(() => {
     const id = ++request.current;
     if (heldProject.current !== project.id) {
       held.current = null;
       heldProject.current = project.id;
+      heldWeights.current = [];
+      keepViewForPacket.current = null;
     }
     const base = held.current;
+    const weights = project.sources.map(source => [source.id, source.weight] as const);
     void api.polarScene(focus, base)
       .catch((error: unknown) => {
         if (error instanceof ScenePacketError && base !== null) return api.polarScene(focus, null);
@@ -440,6 +448,10 @@ export default function PolarView({ project, settings, onProject, compact = fals
       })
       .then((next) => {
         if (request.current !== id) return;
+        const before = heldWeights.current;
+        const sameSources = before.length === weights.length && before.every(([id], i) => weights[i]![0] === id);
+        keepViewForPacket.current = sameSources && before.some(([, weight], i) => weights[i]![1] !== weight) ? next : null;
+        heldWeights.current = weights;
         held.current = next;
         setPacket(next);
       })
@@ -626,8 +638,12 @@ export default function PolarView({ project, settings, onProject, compact = fals
   );
   useEffect(() => {
     let cancelled = false;
-    setPdfFit(null);
-    if (displayMode !== "pdf") return;
+    // A document revision replaces the field in place, without an empty frame.
+    // New projects and split arrangements must not reuse a previous scope's PDFs.
+    const scope = `${project.id}:${splitOn ? `${waveCount}:${waveSense}` : "single"}`;
+    if (pdfScope.current !== scope || !showPdf) setPdfFit(null);
+    pdfScope.current = scope;
+    if (!showPdf) return;
     void api.polarPdf({ samples: toggles.samples, nodes: toggles.nodes,
       filtered: toggles.filtered, excluded: toggles.excluded,
       source: hideOthers ? focus : null,
@@ -635,11 +651,11 @@ export default function PolarView({ project, settings, onProject, compact = fals
     }).then((next) => { if (!cancelled) setPdfFit(next); })
       .catch((error: unknown) => { if (!cancelled) reportFailure(error); });
     return () => { cancelled = true; };
-  }, [api, project.id, project.revision, displayMode, toggles.samples, toggles.nodes,
+  }, [api, project.id, project.revision, showPdf, toggles.samples, toggles.nodes,
     toggles.filtered, toggles.excluded, hideOthers, focus, splitOn, waveCount, waveSense]);
   const pdf = useMemo(
-    () => displayMode === "pdf" ? buildPdfDensity(pdfFit, splitOn, pdfFocus) : EMPTY_PDF,
-    [displayMode, pdfFit, splitOn, pdfFocus],
+    () => showPdf ? buildPdfDensity(pdfFit, splitOn, pdfFocus) : EMPTY_PDF,
+    [showPdf, pdfFit, splitOn, pdfFocus],
   );
   const focusedPdfStats = pdfFocus
     ? pdf.cells.find((cell) => cell.windCell === pdfFocus.windCell && cell.copy === pdfFocus.copy) ?? null
@@ -697,7 +713,8 @@ export default function PolarView({ project, settings, onProject, compact = fals
     const current = scene.current;
     if (!current) return;
     current.setData({ samples: displayDots.points, colors: displayDots.colors, shapes: displayDots.shapes, layout, surfaces,
-      pdfVolumes: displayMode === "pdf" ? pdf.volumes : [] });
+      pdfVolumes: pdf.volumes, overlayDots: displayMode === "combined",
+      pdfPointFocus: displayMode === "combined" ? pdfFocus : null });
     // New points are in every copy until told otherwise: say whose they are.
     const held = cellsRef.current;
     current.setCells(held.cells && held.cells.length === displayDots.points.length / 3
@@ -741,13 +758,15 @@ export default function PolarView({ project, settings, onProject, compact = fals
       // An outlier excluded or filtered out, or one let back in: the camera
       // follows the box, keeping its angle (asked 2026-10-04).
       if (restoringSingleView.current) restoringSingleView.current = false;
-      else current.setView(rescaleView(current.getView(), framedFor.current, bounds));
+      else if (!pdfFocus && keepViewForPacket.current !== packet) current.setView(rescaleView(current.getView(), framedFor.current, bounds));
       if (!comparisonRef.current) rememberSingleView(current.getView());
       framedFor.current = bounds;
     }
     draw();
-  }, [dots, displayDots, packet, layout, surfaces, pdf, displayMode, bounds, unit, draw, project.blend.asymmetric]);
+  }, [dots, displayDots, packet, layout, surfaces, pdf, pdfFocus, displayMode, bounds, unit, draw, project.blend.asymmetric]);
 
+  // Focus changes frame the cell once. Refits preserve subsequent rotation,
+  // pan and zoom instead of re-running the focus camera on every weight edit.
   useEffect(() => {
     const current = scene.current;
     if (!current) return;
@@ -759,7 +778,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
       pdfViewBeforeFocus.current = null;
     }
     draw();
-  }, [pdfFocus, pdf, draw]);
+  }, [pdfFocus, layout, splitOn, draw]);
 
   useEffect(() => {
     scene.current?.setPdfHighlight(pdfHover, pdfFocus);
@@ -809,7 +828,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
     dots.refs.forEach((g, d) => local.set(g, d));
     current.setSelection(selection.flatMap((g) => (local.has(g) ? [local.get(g)!] : [])));
     draw();
-  }, [selection, dots, displayMode, draw]);
+  }, [selection, dots, displayMode, pdf, surfaces, layout, bounds, unit, draw]);
 
   const camera = (preset: CameraPreset) => {
     const current = scene.current;
@@ -836,6 +855,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
   };
 
   function chooseTool(next: Tool) {
+    clearHover();
     setTool(next);
     scene.current?.setRotateEnabled(next === "rotate");
   }
@@ -847,7 +867,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
     gesture.current = null;
     drag.current = null;
     setPath(null);
-    if (next === "pdf") {
+    if (next !== "points") {
       setTool("rotate");
       scene.current?.setRotateEnabled(true);
     }
@@ -923,21 +943,6 @@ export default function PolarView({ project, settings, onProject, compact = fals
     if (tool !== "rotate") event.currentTarget.setPointerCapture?.(event.pointerId);
   };
   const onPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (displayMode === "pdf") {
-      if (!event.buttons) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        hoverPoint.current = { x: event.clientX - rect.left, y: event.clientY - rect.top, width: rect.width, height: rect.height };
-        if (hoverFrame.current === null) hoverFrame.current = setTimeout(() => {
-          hoverFrame.current = null;
-          const at = hoverPoint.current;
-          if (!at) return;
-          const hit = scene.current?.pickPdfCell(at.x, at.y) ?? null;
-          setPdfHover(hit ? { ...hit, x: Math.max(8, Math.min(at.x + 12, at.width - 280)),
-            y: Math.max(8, Math.min(at.y + 12, at.height - 140)) } : null);
-        }, 16);
-      }
-      return;
-    }
     if (!gesture.current && !drag.current && event.buttons === 0) {
       const rect = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - rect.left, y = event.clientY - rect.top;
@@ -948,12 +953,15 @@ export default function PolarView({ project, settings, onProject, compact = fals
         hoverFrame.current = null;
         const at = hoverPoint.current;
         if (!at) return;
-        const hit = scene.current?.pick(at.x, at.y, PICK_RADIUS_PX) ?? -1;
+        const hit = showDots ? scene.current?.pick(at.x, at.y, PICK_RADIUS_PX) ?? -1 : -1;
         const tipX = Math.max(8, Math.min(at.x + 12, at.width - 280)), tipY = Math.max(8, Math.min(at.y + 12, at.height - 260));
         setNoHoverMatch(false);
         setHover(hit < 0 ? null : { index: dots.refs[hit]!, x: tipX, y: tipY });
-        // A dot wins; otherwise the blend's surface, if it is under the pointer.
-        const surface = hit < 0 ? scene.current?.pickSurface(at.x, at.y) ?? null : null;
+        const pdfHit = showPdf && hit < 0 && tool === "rotate"
+          ? scene.current?.pickPdfCell(at.x, at.y) ?? null : null;
+        setPdfHover(pdfHit ? { ...pdfHit, x: tipX, y: Math.max(8, Math.min(at.y + 12, at.height - 140)) } : null);
+        // A dot wins; otherwise inspect the PDF or the visible blend surface.
+        const surface = !showPdf && hit < 0 ? scene.current?.pickSurface(at.x, at.y) ?? null : null;
         const cell = surface ? hoverBlend(surface, tipX, tipY) : null;
         if (!surface) clearBlendHover();
         // In a split view the same wind is marked in the other copies, with
@@ -974,9 +982,11 @@ export default function PolarView({ project, settings, onProject, compact = fals
         } else if (!surface) {
           setMarks([]);
         }
-        sync?.publish({ kind: "hover", boat: project.id, point: hit < 0 ? null : { twa: dots.points[hit * 3]!, tws: dots.points[hit * 3 + 1]! } });
-        // The linked panes show their own blend at the same wind (spec.md 10.1).
-        sync?.publish({ kind: "blend", boat: project.id, point: cell });
+        if (showDots) {
+          sync?.publish({ kind: "hover", boat: project.id, point: hit < 0 ? null : { twa: dots.points[hit * 3]!, tws: dots.points[hit * 3 + 1]! } });
+          // The linked panes show their own blend at the same wind (spec.md 10.1).
+          sync?.publish({ kind: "blend", boat: project.id, point: cell });
+        }
       }, 16);
       return;
     }
@@ -1025,7 +1035,12 @@ export default function PolarView({ project, settings, onProject, compact = fals
     if (Math.hypot(x - g.x, y - g.y) < CLICK_SLOP_PX) {
       const hit = current.pick(x, y, PICK_RADIUS_PX);
       if (hit >= 0) select(combine(selection, [dots.refs[hit]!], add));
-      else if (!add) select([]);
+      else if (showPdf && tool === "rotate" && !add) {
+        const pdfHit = current.pickPdfCell(x, y);
+        setPdfFocus(focused => pdfHit && (focused?.windCell !== pdfHit.windCell || focused?.copy !== pdfHit.copy) ? pdfHit : null);
+        if (!pdfHit) select([]);
+        event.currentTarget.parentElement?.focus({ preventScroll: true });
+      } else if (!add) select([]);
       return;
     }
     if (tool === "lasso") select(combine(selection, toGlobal(current.lasso(g.path)), add));
@@ -1061,7 +1076,8 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const unavailableModeTip = msg("Colouring by wave height, current or time needs track samples with their wind, which arrives with the environment fetch");
   const noFilteredTip = msg("No sample with wind is filtered out");
   const noExcludedTip = msg("Nothing is excluded");
-  const empty = displayMode === "pdf" ? pdf.volumes.length === 0 : packet.nodes.count === 0 && packet.samples.count === 0;
+  const empty = showPdf ? pdf.volumes.length === 0 && (!showDots || dots.refs.length === 0)
+    : packet.nodes.count === 0 && packet.samples.count === 0;
 
   return (
     <div className={`view3d${compact ? " compact-comparison" : ""}`} tabIndex={-1}
@@ -1069,8 +1085,10 @@ export default function PolarView({ project, settings, onProject, compact = fals
         if (event.key === "Escape" && pdfFocus) { event.stopPropagation(); setPdfFocus(null); return; }
         if (event.key === "Escape" && selection.length > 0) { event.stopPropagation(); select([]); }
       }}>
-      <canvas ref={canvas} className={`view3d-canvas tool-${tool}${displayMode === "pdf" ? " pdf-interactive" : ""}`}
-        onPointerEnter={() => setHint(later(displayMode === "pdf"
+      <canvas ref={canvas} className={`view3d-canvas tool-${tool}${showPdf ? " pdf-interactive" : ""}`}
+        onPointerEnter={() => setHint(later(displayMode === "combined"
+          ? msg("Dots are drawn over PDFs. Click dots to select them; click between dots to inspect a PDF cell.")
+          : displayMode === "pdf"
           ? msg("Hover a cell to highlight it. Click to expand its PDF and show percentiles; press Escape to return. Drag to turn, right-drag to pan, scroll to zoom.")
           : msg("Drag to turn, right-drag to pan, scroll to zoom. Click a dot to select it; Shift adds.")))}
         onPointerLeave={() => {
@@ -1125,15 +1143,16 @@ export default function PolarView({ project, settings, onProject, compact = fals
       )}
       {unavailable !== null && <p className="view3d-unavailable muted">{t(unavailable)}</p>}
       {unavailable === null && empty && (
-        <p className="view3d-empty muted">{displayMode === "pdf" ? t("No visible points pass the current filters to form a PDF.") : t("The 3D view shows the project's visible polars and samples.")}</p>
+        <p className="view3d-empty muted">{showPdf ? t("No visible points pass the current filters to form a PDF.") : t("The 3D view shows the project's visible polars and samples.")}</p>
       )}
 
       <div className="view3d-toolbar">
         <select data-feature="view3d:display" aria-label={t("Display")} value={displayMode}
-          title={t("Show individual samples and polar nodes, or their filtered probability density functions")}
+          title={t("Show polars, PDFs, or dots with PDFs.")}
           onChange={(event) => chooseDisplay(event.target.value as DisplayMode)}>
           <option value="points">{t("Points and polars")}</option>
           <option value="pdf">{t("Probability density (PDF)")}</option>
+          <option value="combined">{t("Points and PDF")}</option>
         </select>
         <select data-feature="view3d:layout" aria-label={t("Layout")} value={layout}
           title={t("Polar tower: angle and radius are TWA and BSP, height is TWS. Cartesian: TWA, TWS and BSP on straight axes.")}
@@ -1147,7 +1166,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
             </button>
           ))}
         </span>
-        {displayMode === "points" && <span className="view3d-group" role="group" aria-label={t("Tool")}>
+        {showDots && <span className="view3d-group" role="group" aria-label={t("Tool")}>
           {TOOLS.filter((tl) => tl.id !== "drag" || focus !== null).map((tl) => (
             <button key={tl.id} className={tool === tl.id ? "small selected" : "small"} aria-pressed={tool === tl.id}
               data-feature={`view3d:tool-${tl.id}`} title={t(tl.tip)} onClick={() => chooseTool(tl.id)}>
@@ -1226,7 +1245,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
             {t("Polar nodes")}
           </label>
           <label title={t("Each visible polar source as a translucent surface")}>
-            <input type="checkbox" data-feature="view3d:show-surfaces" checked={toggles.surfaces} disabled={displayMode === "pdf"}
+            <input type="checkbox" data-feature="view3d:show-surfaces" checked={toggles.surfaces} disabled={showPdf}
               onChange={(event) => setToggles({ ...toggles, surfaces: event.target.checked })} />
             {t("Surfaces")}
           </label>
@@ -1240,7 +1259,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
               onChange={(event) => setToggles({ ...toggles, excluded: event.target.checked })} />
             {t("Excluded points")}
           </label>
-          {displayMode === "points" && <label className="view3d-colour">
+          {showDots && <label className="view3d-colour">
             {t("Colour")}
             <select data-feature="view3d:colour" value={shownMode}
               title={modes.hs && modes.current && modes.time ? t("What the dots' colour shows") : t(unavailableModeTip)}
@@ -1250,15 +1269,15 @@ export default function PolarView({ project, settings, onProject, compact = fals
               ))}
             </select>
           </label>}
-          {displayMode === "points" && legendRange && (
+          {showDots && legendRange && (
             <div className={`view3d-ramp${shownMode === "time" ? " view3d-ramp-time" : ""}`}>
               <span>{legendValue(legendRange[0])}</span><span className="view3d-ramp-bar" /><span>{legendValue(legendRange[1])}</span>
             </div>
           )}
-          {displayMode === "points" && shownMode === "timeOfDay" && <DayBandLegend className="view3d-bands" />}
+          {showDots && shownMode === "timeOfDay" && <DayBandLegend className="view3d-bands" />}
         </fieldset>
 
-        {displayMode === "pdf" && <div className="view3d-pdf-legend" role="status">
+        {showPdf && <div className="view3d-pdf-legend" role="status">
           {focusedPdfStats ? <>
             <strong>{t("TWA {twa}°, TWS {tws}", { twa: focusedPdfStats.twa.toFixed(0), tws: speed(focusedPdfStats.tws) })}</strong>
             <span>{t("{count} samples", { count: focusedPdfStats.count })}</span>
@@ -1272,7 +1291,9 @@ export default function PolarView({ project, settings, onProject, compact = fals
             <span>{t("{count} wind-condition PDFs", { count: pdf.count })}</span>
             <div className="view3d-ramp"><span>0</span><span className="view3d-ramp-bar" aria-hidden="true" />
               <span>{t("{value} per knot", { value: pdf.maxDensity.toFixed(3) })}</span></div>
-            <span>{t("Hover to highlight; click a cell to expand it.")}</span>
+            <span>{displayMode === "combined"
+              ? t("Dots are drawn over PDFs. Click dots to select them; click between dots to inspect a PDF cell.")
+              : t("Hover to highlight; click a cell to expand it.")}</span>
           </>}
         </div>}
 
@@ -1282,7 +1303,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
             : t("Across: TWA (°) · Depth: TWS ({unit}) · Height: BSP ({unit})", { unit: symbol })}
         </div>
 
-        {displayMode === "points" && <section className="view3d-selection" aria-label={t("Selection")}>
+        {showDots && <section className="view3d-selection" aria-label={t("Selection")}>
           <h3>{summary.count === 0 ? t("Nothing selected") : t("{count} selected", { count: summary.count })}</h3>
           {summary.count > 0 && (
             <>

@@ -30,6 +30,8 @@ import {
   type Crossing, type DotColourMode, type Hover, type PolarPoint, type SourceStyle,
 } from "./plotGeometry";
 
+type DisplayMode = "polar" | "pdf" | "combined";
+
 /** A point within this many pixels of the pointer counts as hovered. */
 const HOVER_DISTANCE_PX = 16;
 /** How close a hovered blend point must be to an output-grid value to be that cell's, degrees or knots. */
@@ -38,10 +40,18 @@ const ON_GRID = 1e-6;
 const PIN_SNAP_PX = 8;
 /** Beyond this many dots each is a small square rather than a circle: far cheaper to fill. */
 const MANY_DOTS = 20_000;
+const pdfRasters = new WeakMap<PdfHeat, { key: string; canvas: HTMLCanvasElement }>();
+
 /** Draw the shared weighted Gaussian field as a smooth translucent heatmap. */
 function drawPdfHeat(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number,
   layout: ReturnType<typeof fitLayout>, maxBsp: number, asymmetric: boolean, heat: PdfHeat | null) {
   if (!heat || !(layout.scale > 0)) return;
+  const key = [width, height, dpr, layout.centerX, layout.centerY, layout.scale, maxBsp, asymmetric].join(":");
+  const cached = pdfRasters.get(heat);
+  if (cached?.key === key) {
+    ctx.drawImage(cached.canvas, 0, 0, width, height);
+    return;
+  }
   const { maxDensity, densityAt } = heat;
 
   // Rasterize at device resolution, then composite the transparent heat over
@@ -75,6 +85,7 @@ function drawPdfHeat(ctx: CanvasRenderingContext2D, width: number, height: numbe
   raster.width = pixelWidth;
   raster.height = pixelHeight;
   raster.getContext("2d")?.putImageData(image, 0, 0);
+  pdfRasters.set(heat, { key, canvas: raster });
   ctx.drawImage(raster, 0, 0, width, height);
 }
 
@@ -100,6 +111,11 @@ function strokeCurve(ctx: CanvasRenderingContext2D, curve: PolarCurve, layout: R
 export function plotMaxBsp(result: PolarPlotResult | null, dots: DotPacket): number {
   if (!result) return maxBoatSpeed([], dots);
   return Math.max(maxBoatSpeed(result.curves, dots), maxBoatSpeed(result.blend, null));
+}
+
+/** The same extent is used for painting and every pointer/selection projection. */
+function displayMaxBsp(result: PolarPlotResult | null, dots: DotPacket, mode: DisplayMode, heat: PdfHeat | null): number {
+  return Math.max(mode === "pdf" ? 0 : plotMaxBsp(result, dots), mode === "polar" ? 0 : heat?.maxBsp ?? 0);
 }
 
 /** The blend's curves with their label in the interface language. */
@@ -142,7 +158,7 @@ export function signed(value: number, digits: number): string {
  */
 function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: DotPacket, hover: Hover | null,
   colours: ReadonlyMap<number, SourceStyle>, selected: ReadonlySet<number>, unit: SpeedUnit, asymmetric: boolean,
-  dotColour: DotColourMode, measuring: Measuring | null, centred: boolean, pdfMode: boolean, heat: PdfHeat | null) {
+  dotColour: DotColourMode, measuring: Measuring | null, centred: boolean, displayMode: DisplayMode, heat: PdfHeat | null) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -161,10 +177,11 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
 
   const curves = result?.curves ?? [];
   const blend = result?.blend ?? [];
-  const observedMaxBsp = plotMaxBsp(result, dots);
+  const pdfMode = displayMode !== "polar";
+  const showDots = displayMode !== "pdf";
   // Gaussian tails extend beyond the fastest observed value. Keep room for
   // those tails in PDF mode instead of clipping them at the plot's rim.
-  const maxBsp = pdfMode ? (heat?.maxBsp ?? 0) : observedMaxBsp;
+  const maxBsp = displayMaxBsp(result, dots, displayMode, heat);
   if (maxBsp <= 0) return;
   const layout = fitLayout(width, height, maxBsp, 28, asymmetric, centred);
 
@@ -205,7 +222,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
 
   const many = dots.count > MANY_DOTS;
   const dotColours = dots.sources.map((id) => colours.get(id)?.colour ?? line);
-  for (let k = 0; !pdfMode && k < dots.count; k++) {
+  for (let k = 0; showDots && k < dots.count; k++) {
     const { x, y } = projectPoint(dots.points[k * 3]!, dots.points[k * 3 + 2]!, layout);
     const colour = dotFill(dots, k, dotColour, dotColours);
     const flags = dots.flags[k]!;
@@ -228,7 +245,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
     }
   }
   ctx.globalAlpha = 1;
-  if (!pdfMode && selected.size > 0) {
+  if (showDots && selected.size > 0) {
     ctx.strokeStyle = accent;
     ctx.lineWidth = 1.5;
     for (let k = 0; k < dots.count; k++) {
@@ -240,7 +257,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
     }
   }
 
-  if (!pdfMode && hover) {
+  if (showDots && hover) {
     ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -360,7 +377,10 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
   const [showExcluded, setShowExcluded] = useState(false);
   const [dotColour, setDotColour] = useState<DotColourMode>("source");
   const [pdfFit, setPdfFit] = useState<PolarPdfResult | null>(null);
-  const [pdfMode, setPdfMode] = useState(false);
+  const pdfProject = useRef(project.id);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("polar");
+  const pdfMode = displayMode !== "polar";
+  const showDots = displayMode !== "pdf";
   // The Measure tool (spec.md 9.2): on or off, where the pointer is, and
   // the pinned point A. View state only; nothing of it is saved.
   const [measure, setMeasure] = useState(false);
@@ -444,7 +464,9 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
 
   useEffect(() => {
     let cancelled = false;
-    setPdfFit(null);
+    // Keep the last completed field while weights/filters recompute it.
+    if (pdfProject.current !== project.id || !pdfMode) setPdfFit(null);
+    pdfProject.current = project.id;
     if (!pdfMode) return;
     void api.polarPdf({ samples: true, nodes: true, filtered: showFiltered,
       excluded: showExcluded, source: null, split: null,
@@ -479,7 +501,7 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
     void api.setExcluded([], selectedDots.ids, excluded).then(next => onProject?.(next)).catch(reportFailure);
   };
   const cancelSelection = () => { selecting.current = null; setSelectionPath(null); };
-  useEffect(cancelSelection, [project.id, project.revision, tws, rangeEnabled, rangeLow, rangeHigh, pdfMode, hidden, showFiltered, showExcluded]);
+  useEffect(cancelSelection, [project.id, project.revision, tws, rangeEnabled, rangeLow, rangeHigh, displayMode, heat, hidden, showFiltered, showExcluded]);
 
   const sourcesById = useMemo(() => {
     const map = new Map<number, SourceStyle>();
@@ -494,15 +516,18 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
     return { ...result, curves: result.curves.filter((curve) => curve.tws >= min && curve.tws <= max),
       blend: result.blend.filter((curve) => curve.tws >= min && curve.tws <= max) };
   }, [result, rangeEnabled, rangeLow, rangeHigh]);
-  const allCurves = useMemo(() => [...(shownResult?.curves ?? []), ...blendCurves(shownResult, t)], [shownResult, t]);
+  const maxBsp = useMemo(() => displayMaxBsp(shownResult, dots, displayMode, heat), [shownResult, dots, displayMode, heat]);
+  // A new PDF fit can move every dot even when the sample packet is unchanged.
+  useEffect(() => { setHover(null); }, [maxBsp]);
+  const allCurves = useMemo(() => pdfMode ? [] : [...(shownResult?.curves ?? []), ...blendCurves(shownResult, t)], [shownResult, t, pdfMode]);
   const measuring: Measuring | null = useMemo(
     () => (measure && cursor ? { cursor, crossings: crossings(allCurves, cursor.twa), pin } : null),
     [measure, cursor, pin, allCurves],
   );
 
   const redraw = useCallback(() => {
-    if (canvas.current) draw(canvas.current, shownResult, dots, hover, sourcesById, selection.ids, unit, project.blend.asymmetric, shownDotColour, measuring, variant === "stage", pdfMode, heat);
-  }, [shownResult, dots, hover, sourcesById, selection, unit, project.blend.asymmetric, shownDotColour, measuring, variant, pdfMode, heat]);
+    if (canvas.current) draw(canvas.current, shownResult, dots, hover, sourcesById, selection.ids, unit, project.blend.asymmetric, shownDotColour, measuring, variant === "stage", displayMode, heat);
+  }, [shownResult, dots, hover, sourcesById, selection, unit, project.blend.asymmetric, shownDotColour, measuring, variant, displayMode, heat]);
 
   useEffect(redraw, [redraw]);
 
@@ -526,24 +551,24 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
   /** The pointer's place on the plot, or null where the fan is not (the port side of a symmetric plot). */
   const pointed = useCallback((event: MouseEvent<HTMLCanvasElement>): { point: PolarPoint; scale: number } | null => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
+    const layout = fitLayout(rect.width, rect.height, maxBsp, 28, project.blend.asymmetric, variant === "stage");
     const x = event.clientX - rect.left;
     if (!project.blend.asymmetric && x < layout.centerX - 1) return null;
     const point = unproject(x, event.clientY - rect.top, layout);
     // A symmetric plot's angles stop at 180°: a hair to the left of the axis is the axis.
     if (!project.blend.asymmetric && point.twa > 180) point.twa = point.twa > 270 ? 0 : 180;
     return { point, scale: layout.scale };
-  }, [shownResult, dots, project.blend.asymmetric]);
+  }, [maxBsp, project.blend.asymmetric, variant]);
 
   const onMove = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-    if (!shownResult || pdfMode || selecting.current) return;
+    if (!shownResult || !showDots || selecting.current) return;
     if (measure) {
       // Measuring replaces the hover: the readout says more than a tooltip.
       setCursor(pointed(event)?.point ?? null);
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
+    const layout = fitLayout(rect.width, rect.height, maxBsp, 28, project.blend.asymmetric, variant === "stage");
     const hit = nearestPoint(
       allCurves, dots, sourcesById,
       event.clientX - rect.left, event.clientY - rect.top, layout, HOVER_DISTANCE_PX,
@@ -564,7 +589,7 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
       .then((cell) => { if (blendAsked.current === key) setBlendCell(cell); })
       // A cell that cannot be read keeps the plain tooltip.
       .catch(() => undefined);
-  }, [shownResult, dots, sourcesById, allCurves, measure, pointed, pdfMode, project.id, project.revision, project.blend.twa, project.blend.tws, project.blend.asymmetric, api]);
+  }, [shownResult, dots, sourcesById, allCurves, measure, pointed, showDots, maxBsp, variant, project.id, project.revision, project.blend.twa, project.blend.tws, project.blend.asymmetric, api]);
   const leave = useCallback(() => {
     setHover(null);
     setCursor(null);
@@ -575,10 +600,10 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
   /** Pins point A where the pointer is: on a curve's own value when the click is on its mark. */
   const onClick = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
     if (suppressClick.current) { suppressClick.current = false; return; }
-    if (pdfMode) return;
+    if (!showDots) return;
     if (!measure) {
       const rect = event.currentTarget.getBoundingClientRect();
-      const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
+      const layout = fitLayout(rect.width, rect.height, maxBsp, 28, project.blend.asymmetric, variant === "stage");
       const x = event.clientX - rect.left, y = event.clientY - rect.top;
       let closest: number | null = null, distance = HOVER_DISTANCE_PX ** 2;
       for (let k = 0; k < dots.count; k++) {
@@ -601,7 +626,7 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
     const snapped = near !== undefined && Math.abs(near.bsp - at.point.bsp) * at.scale <= PIN_SNAP_PX;
     setPin({ twa: at.point.twa, bsp: snapped ? near.bsp : at.point.bsp });
     setCursor(at.point);
-  }, [measure, pointed, allCurves, pdfMode, dots, shownResult, selection.ids, selectSamples, project.blend.asymmetric, variant]);
+  }, [measure, pointed, allCurves, showDots, maxBsp, dots, selection.ids, selectSamples, project.blend.asymmetric, variant]);
 
   const chooseTool = (next: "lasso" | "box") => {
     cancelSelection();
@@ -610,7 +635,7 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
   };
   const onSelectionDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     suppressClick.current = false;
-    if (event.button !== 0 || tool === "select" || measure || pdfMode) return;
+    if (event.button !== 0 || tool === "select" || measure || !showDots) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left, y = event.clientY - rect.top;
     selecting.current = { pointer: event.pointerId, x, y, path: [x, y], tool };
@@ -639,7 +664,7 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (Math.hypot(x - g.x, y - g.y) < 4 && g.path.length < 10) return;
     suppressClick.current = true;
-    const layout = fitLayout(rect.width, rect.height, plotMaxBsp(shownResult, dots), 28, project.blend.asymmetric, variant === "stage");
+    const layout = fitLayout(rect.width, rect.height, maxBsp, 28, project.blend.asymmetric, variant === "stage");
     const screen = new Float32Array(dots.count * 2);
     for (let k = 0; k < dots.count; k++) {
       const point = projectPoint(dots.points[k * 3]!, dots.points[k * 3 + 2]!, layout);
@@ -786,16 +811,17 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
         </span>
         <label className="polar-plot-display">
           {t("Display")}
-          <select data-feature="plot:display" value={pdfMode ? "pdf" : "polar"}
-            title={t("Show the polar curves or probability density")}
+          <select data-feature="plot:display" value={displayMode}
+            title={t("Show polars, PDFs, or dots with PDFs.")}
             onChange={(event) => {
-              const nextPdf = event.target.value === "pdf";
-              setPdfMode(nextPdf);
+              const next = event.target.value as DisplayMode;
+              setDisplayMode(next);
               setHover(null);
-              if (nextPdf) { setMeasure(false); setPin(null); setCursor(null); }
+              if (next !== "polar") { setMeasure(false); setPin(null); setCursor(null); }
             }}>
-            <option value="polar">{t("Polar")}</option>
+            <option value="polar">{t("Points and polars")}</option>
             <option value="pdf">{t("Probability density (PDF)")}</option>
+            <option value="combined">{t("Points and PDF")}</option>
           </select>
         </label>
         {pdfMode && <span className="polar-plot-pdf-legend" title={t("Density is probability per knot of boat speed")}>
@@ -831,14 +857,14 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
         </button>
       </div>
       <div className="polar-plot-selection-tools">
-        <button className="small" data-feature="plot:lasso" aria-pressed={!measure && tool === "lasso"} disabled={pdfMode}
+        <button className="small" data-feature="plot:lasso" aria-pressed={!measure && tool === "lasso"} disabled={!showDots}
           title={t("Draw round dots to select them; Shift adds to the selection")} onClick={() => chooseTool("lasso")}>{t("Lasso")}</button>
-        <button className="small" data-feature="plot:box" aria-pressed={!measure && tool === "box"} disabled={pdfMode}
+        <button className="small" data-feature="plot:box" aria-pressed={!measure && tool === "box"} disabled={!showDots}
           title={t("Drag a box round dots to select them; Shift adds to the selection")} onClick={() => chooseTool("box")}>{t("Box")}</button>
         <span role="status">{t("{count} selected", { count: selectedDots.ids.length })}</span>
-        <button className="small" data-feature="plot:exclude" disabled={pdfMode || readOnly || !selectedDots.included}
+        <button className="small" data-feature="plot:exclude" disabled={!showDots || readOnly || !selectedDots.included}
           title={t("Remove the selected dots from the blend (undoable)")} onClick={() => excludeSelection(true)}>{t("Exclude")}</button>
-        <button className="small" data-feature="plot:include" disabled={pdfMode || readOnly || !selectedDots.excluded}
+        <button className="small" data-feature="plot:include" disabled={!showDots || readOnly || !selectedDots.excluded}
           title={t("Put the selected dots back into the blend (undoable)")} onClick={() => excludeSelection(false)}>{t("Include")}</button>
         <button className="small" data-feature="plot:clear-selection" disabled={!selection.ids.size}
           title={t("Select nothing (Escape)")} onClick={() => clearSamples("plot")}>{t("Clear")}</button>
@@ -848,7 +874,7 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
         <div className="plot-placeholder muted">{t("The polar plot appears here once the project has a source.")}</div>
       ) : (
         <div className="polar-plot-canvas-wrap" ref={wrap}>
-          <canvas ref={canvas} className={measure ? "measuring" : tool !== "select" && !pdfMode ? "selecting" : undefined}
+          <canvas ref={canvas} className={measure ? "measuring" : tool !== "select" && showDots ? "selecting" : undefined}
             onMouseMove={onMove} onMouseLeave={leave} onClick={onClick}
             onPointerDown={onSelectionDown} onPointerMove={onSelectionMove} onPointerUp={onSelectionUp}
             onPointerCancel={cancelSelection} onLostPointerCapture={cancelSelection} />
@@ -910,7 +936,7 @@ export default function PolarPlot({ project, onProject, units = DEFAULT_UNITS, v
               })}</div>
             </div>
           )}
-          {result && (pdfMode ? !hasPdfData : !hasAnyPoint) && (
+          {result && (displayMode === "combined" ? !hasPdfData && dots.count === 0 : pdfMode ? !hasPdfData : !hasAnyPoint) && (
             <div className="polar-plot-empty muted">{pdfMode ? t("No visible points pass the current filters to form a PDF.") : t("No source has data at this wind speed.")}</div>
           )}
         </div>

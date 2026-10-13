@@ -377,6 +377,15 @@ fn file_name(name: &str) -> String {
 }
 
 pub fn export_all(state: &AppState, directory: &Path, format: &str) -> Result<BoatExportResult> {
+    export_all_with_matrix(state, directory, format, None)
+}
+
+fn export_all_with_matrix(
+    state: &AppState,
+    directory: &Path,
+    format: &str,
+    matrix: Option<&crate::matrix_export::MatrixExportOptions>,
+) -> Result<BoatExportResult> {
     let extension = match format {
         "expedition" => "txt",
         "adrena" => "pol",
@@ -404,7 +413,7 @@ pub fn export_all(state: &AppState, directory: &Path, format: &str) -> Result<Bo
         } else {
             &boat.boat.name
         };
-        let bytes = match crate::blend::export_bytes(boat, format, None) {
+        let bytes = match crate::blend::export_bytes_with_matrix(boat, format, None, matrix) {
             Ok(bytes) => bytes,
             Err(error) => {
                 result.failures.push((name.clone(), error.to_string()));
@@ -451,9 +460,12 @@ pub async fn export_all_polars(
     state: tauri::State<'_, AppState>,
     directory: String,
     format: String,
+    matrix: Option<crate::matrix_export::MatrixExportOptions>,
 ) -> Result<BoatExportResult> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || export_all(&state, Path::new(&directory), &format))
-        .await
-        .map_err(|error| AppError::Internal(format!("The fleet export task failed: {error}")))?
+    tauri::async_runtime::spawn_blocking(move || {
+        export_all_with_matrix(&state, Path::new(&directory), &format, matrix.as_ref())
+    })
+    .await
+    .map_err(|error| AppError::Internal(format!("The fleet export task failed: {error}")))?
 }

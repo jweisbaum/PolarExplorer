@@ -89,6 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     pe_app::catalogues::CatalogueSettings::export_all(&cfg)?;
     BlendSettingsInput::export_all(&cfg)?;
     ExportAxes::export_all(&cfg)?;
+    pe_app::matrix_export::MatrixExportOptions::export_all(&cfg)?;
     ExportPreview::export_all(&cfg)?;
     ExportProblemView::export_all(&cfg)?;
     ExportResult::export_all(&cfg)?;

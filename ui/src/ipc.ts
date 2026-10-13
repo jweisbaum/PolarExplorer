@@ -31,6 +31,7 @@ import type { CsvMappingInput } from "./generated/CsvMappingInput";
 import type { EditOp } from "./generated/EditOp";
 import type { EditSurface } from "./generated/EditSurface";
 import type { EnvJobsStatus } from "./generated/EnvJobsStatus";
+import type { MatrixExportOptions } from "./generated/MatrixExportOptions";
 import type { ExportAxes } from "./generated/ExportAxes";
 import type { ExportPreview } from "./generated/ExportPreview";
 import type { ExportResult } from "./generated/ExportResult";
@@ -134,7 +135,7 @@ export function boatApi(boatContext?: number) {
   deleteBoat: (projectId: number, boatId: number) => call<ProjectSummary>("delete_boat", { projectId, boatId }),
   restoreBoat: (projectId: number) => call<ProjectSummary>("restore_boat", { projectId }),
   renameBoat: (name: string) => call<ProjectSummary>("rename_boat", { name }),
-  exportAllPolars: (directory: string, format: string) => call<import("./generated/BoatExportResult").BoatExportResult>("export_all_polars", { directory, format }),
+  exportAllPolars: (directory: string, format: string, matrix: MatrixExportOptions | null = null) => call<import("./generated/BoatExportResult").BoatExportResult>("export_all_polars", { directory, format, ...(matrix ? { matrix } : {}) }),
   exportLockedProject: (path: string) => call<string>("export_locked_boat_project", { path }),
   exportTab: (path: string) => call<string>("export_boat_tab", { path }),
   /** The ORC scrape's progress; fetches nothing. */
@@ -249,11 +250,11 @@ export function boatApi(boatContext?: number) {
    */
   blendCellSplit: (twaIndex: number, twsIndex: number, split: WaveSplit, cell: number) =>
     call<import("./generated/BlendCell").BlendCell>("blend_cell_split", { twaIndex, twsIndex, split, cell }),
-  exportPreview: (format: string, axes: ExportAxes | null = null) =>
-    call<ExportPreview>("export_preview", { format, axes }),
+  exportPreview: (format: string, axes: ExportAxes | null = null, matrix: MatrixExportOptions | null = null) =>
+    call<ExportPreview>("export_preview", { format, axes, ...(matrix ? { matrix } : {}) }),
   /** Writes the blend to `path`, recomputed from the sources. */
-  exportPolar: (path: string, format: string, axes: ExportAxes | null = null) =>
-    call<ExportResult>("export_polar", { path, format, axes }),
+  exportPolar: (path: string, format: string, axes: ExportAxes | null = null, matrix: MatrixExportOptions | null = null) =>
+    call<ExportResult>("export_polar", { path, format, axes, ...(matrix ? { matrix } : {}) }),
 
   // Polar files (spec.md 6).
 

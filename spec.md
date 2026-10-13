@@ -1051,10 +1051,12 @@ uncompressed byte count prepended.
 
 The SOG payload has one u16 per `[wave height][wave angle][wave period][TWA]
 [TWS]` cell (wave dimensions omitted when their counts are all zero). Values
-decode as `u16 × SOG scale / 65534`; `65535` means missing. The sampled PDF
+decode as `u16 × SOG scale`; `65535` means missing. The sampled PDF
 mode has one u16 density value per `[wave height][wave angle][wave period]
 [TWA][TWS][SOG bin]` cell; each bin axis value is speed in knots and density
-values decode as `u16 × PDF scale / 65534`. The Gaussian PDF mode has two u16
+values decode as `u16 × PDF scale`. Each stored scale is a quantization
+step: the maximum present value in that entire mode divided by 65534
+(as f32), or 1 when there are no positive values. The Gaussian PDF mode has two u16
 parameters (mean and standard deviation in knots) per
 `[wave height][wave angle][wave period][TWA][TWS]` cell. They use the fixed
 60-knot range and decode as `u16 × 60 / 65534`; `65535` in both fields means
@@ -1074,10 +1076,76 @@ brief version 2 transition format that stored Gaussian parameters under the
 PDF flag remains readable. LZ4 compression and little-endian values keep
 bytes consistent across operating systems.
 
-Exporting a current blend writes the SOG mode with empty wave axes and no PDF
-mode, because the current blend has no wave-conditioned speed or PDF data.
-The binary codec supports any combination of all three modes. The current
-polar importer keeps only SOG data and rejects files without it.
+The **Matrix data modes** section in both export dialogs is collapsible and
+starts closed. Its defaults apply while closed; validation errors remain
+visible outside the collapsed section.
+Both single-tab and **Export all tabs** dialogs offer independent SOG,
+**Histogram (sampled PDF)** and **Gaussian PDF** selections. All three modes
+and wave splitting start enabled. The default 32 wave combinations use:
+
+- Height: `[0,1)`, `[1,3)`, `[3,5)`, `[5,∞)` metres.
+- Direction: `[-45,45)`, `[45,135)`, `[135,225)`, `[225,315)` degrees,
+  measured clockwise from the bow. The first bin wraps through 0°.
+- Period: `[0,5]`, `(5,∞)` seconds.
+
+**Customize wave buckets (optional)** is collapsed initially. Comma-separated
+height/period cutoffs add or remove bins (0–63 cutoffs, yielding 1–64 bins).
+Cutoffs are positive, strictly increasing, below 100 m / 1000 s respectively;
+final bins have no upper limit. Heights at a cutoff enter the next bin;
+periods at a cutoff stay in the preceding bin. Empty cutoffs mean one bin.
+Direction boundaries contain 2–65 strictly increasing entries spanning one
+full 360° turn, starting in `[-360,360)`. A sector includes its starting
+boundary and excludes its ending boundary. Counts are derived from the
+entered boundaries. **Reset wave buckets** restores the defaults. Disabling
+**Split by wave conditions** exports empty wave axes. These defaults also
+apply to omitted API matrix settings; `waves:null` explicitly disables waves.
+
+Wave directions use `(wave_from − heading) mod 360`, retaining port/starboard
+information even for symmetric wind polars; current-corrected heading is used
+when that blend setting is enabled. Finite height/period bins store midpoint
+coordinates; the final coordinate is its cutoff plus half the preceding bin
+width, capped at the binary axis limit. One all-values bin stores 0. Direction
+coordinates are sector midpoints normalized to `[0,360)` and sorted; the
+payload follows that same order. Default coordinates are height
+`[0.5,2,4,6]`, direction `[0,90,180,270]`, period `[2.5,7.5]`.
+Coordinates must stay distinct at float32 precision. The v1 binary layout is
+unchanged: it stores representative coordinates, not the custom cutoffs or
+open-tail bounds. Its angle reference frame is an application convention,
+not serialized metadata. Older exports used unsigned angles over 0–180°.
+
+Every wave combination is derived separately from the admitted samples:
+source visibility, exclusions, global/source/wave filters, priority groups,
+weights, confidence, track/polar statistics, interpolation, smoothing and
+corrections apply. Track samples missing any required wave value or heading, or having negative
+height/period values, do not enter wave-conditioned exports. Ordinary
+2D polars contribute the same baseline to each wave combination; imported wave
+matrices contribute the SOG coordinates falling within that combination.
+Wind interpolation never fills across wave combinations.
+
+Histogram mode uses 2–512 equal-width speed bins over 0–60 kn. Within each
+wind/wave cell, each track's admitted speed residuals are centered on its
+selected statistic plus source edits, weighted by its effective blend
+contribution, then combined with polar point values. Each probability field
+uses the blend's wind interpolation/smoothing and optional custom wind grid.
+Blend corrections translate the result; shifted tails clamp to the first or
+last speed bin. Nonempty curves are normalized, divided by bin width, and
+stored as density at the speed-bin centers. Empty curves are all zero.
+Gaussian mode uses the same weighted moment fit as the PDF views, with a
+minimum standard deviation of 0.5 kn; custom wind grids resample first and
+second moments. Gaussian records encode the full normal distribution; view
+percentiles may additionally truncate and normalize to 0–60 kn.
+
+The exporter limits wave combinations to 4096 and payload scalars to
+16,000,000; histogram working grids obey the latter cap as well. The preview
+shows the wave-independent wind grid; the selected wave conditions are
+recomputed on export. An empty result is refused. Export runs off the UI
+thread and never edits its source project. The polar importer keeps only SOG,
+clears both PDF modes and their speed axis, and rejects files without SOG.
+
+The reader now follows the writer's axis order and step-size scale convention.
+This corrects the v0.3.12 reader's axis assignment and extra scale division;
+the v1 writer layout is unchanged. See the standalone HTML reference in
+`docs/whirlwind-matrix-polar-format.html` for offsets and compatibility notes.
 
 ---
 
@@ -1881,8 +1949,9 @@ The MCP service's `view://stage` still names the stage `"plot"`.
   **Include** use the same undoable overlays as 3D (§10.3), updating both
   views, the blend, PDFs and exports. Only currently drawn selected dots
   are affected. Show **Excluded** to select and restore excluded samples.
-  Selection gestures are separate from Measure and disabled in PDF mode;
-  read-only tabs allow selection but cannot change exclusions.
+  Selection gestures are separate from Measure and disabled in PDF-only mode;
+  **Points and PDF** keeps click, lasso and box selection available.
+  Read-only tabs allow selection but cannot change exclusions.
 - **Wave range filters** (§10.2) sit at the bottom centre of the 2D stage,
   matching 3D, with the plot fitted above them. Height, bow-relative
   angle and period share the tab's saved ranges with 3D, including reset and
@@ -2007,7 +2076,8 @@ colour dots by source / by Hs / by current speed / by time / by time of day.
 Polar nodes have no environment, so they keep their source colour in every
 colour mode.
 
-The **Display** selector also offers **Probability density (PDF)**. Both 2D
+The **Display** selector in both views offers **Probability density (PDF)**
+and **Points and PDF**, alongside the existing polar/points display. Both 2D
 and 3D use one shared Rust calculation on the output-grid TWA/TWS cells. It
 uses the blend's source weights, per-track statistic, minimum sample count,
 confidence cap (`n_full`), polar statistic, interpolation and smoothing.
@@ -2031,19 +2101,39 @@ so rear cells and hidden edges do not draw through nearer cells. Colour shows
 probability density; only the context cells fade when a cell is selected.
 Track and global filters, excluded and filtered-point
 toggles, wave ranges, and Split Wave Angle determine the inputs. Changing any
-of them rebuilds the PDFs. PDF mode hides
+of them rebuilds the PDFs. PDF-only mode hides
 the raw surfaces, disables point selection and editing gestures, and retains
 the current layout and camera controls. Hovering a wind cell highlights it
 and shows its TWA, TWS and sample count. Clicking emphasizes and zooms to that
 cell, dims the other cells, and shows the weighted Gaussian’s P10, P25, P50,
 P75 and P90 boat speeds; **Show all cells** or Escape restores the full PDF view.
 
+**Points and PDF** draws the same PDFs together with the visible sample dots
+and, in 3D, polar-node dots. Source and blend surfaces/curves are hidden.
+Dot colouring, hover, click/lasso/box selection and undoable exclusion remain
+available, with the same shared selection and read-only restrictions as the
+points display. Both views name the regular display **Points and polars**.
+Within each view, point colour, size, shape and selection styling are the
+same in the two point displays. In 3D the dots are composited over the opaque
+PDF volumes so the samples inside a volume remain visible. Selecting a PDF
+box fades points outside its angle, wind-speed and boat-speed bounds to 12%
+opacity, including points in other wave copies. Clearing the cell selection
+restores them; point selection and exclusion remain available while dimmed.
+Dot hover and clicks take priority; in the Rotate tool, hovering or clicking
+between dots inspects or focuses the PDF cell. Lasso and Box select dots only.
+Changing exclusions, filters, weights or blend settings refreshes the PDFs.
+The previous PDF stays visible while a replacement is computed. Weight changes
+preserve the 3D camera, and refreshing a selected cell does not repeat its
+initial zoom or undo subsequent rotation, pan or zoom.
+
 In 2D PDF mode, selecting a wind speed interpolates the conditional densities
 at that wind speed. A wind range averages the same PDFs over its intersecting
 wind bins, preserving their between-wind spread; it never refits an unweighted
 pool of dots. Angular and radial colour interpolation produces a smooth field,
-and the plot extent includes the Gaussian tails. Changing a source weight or
-any blend setting refreshes both views and their percentile readouts.
+and the plot extent includes the Gaussian tails. In **Points and PDF**, the extent
+also includes the visible dots; rendering and selection share that extent.
+The heat raster is reused while hovering or selecting dots. Changing a source
+weight or any blend setting refreshes both views and their percentile readouts.
 
 **Time of day** is the band of the local solar day a sample was sailed in,
 by local mean solar time: UTC shifted by the sample's longitude at 15° an
@@ -2409,8 +2499,9 @@ that have a value in that cell:
 
 ### 12.4 Export
 
-- **Export…** on the Blend entry opens a dialog: the format (Expedition
-  `.txt`, Adrena `.pol` or CSV `.csv`, §6), the grid (the project's output
+- **Export…** on the Blend entry opens a dialog: the format (WhirlwindMatrixPolar
+  `.wmpolar` first, Expedition `.txt`, Adrena `.pol`, CSV `.csv`, qtVlm
+  `.csv`, OpenCPN `.pol` or LuckGrib `.tsv`, §6), the grid (the project's output
   grid, or custom axes typed as in §12.2 — the blend read onto them
   by the project's interpolation rule, never extrapolated, and with the 0° row no anchor, as in the
   fill: an output 0° row is 0 kn, and an angle between 0° and the blend's
@@ -2418,6 +2509,10 @@ that have a value in that cell:
   that is where the blend is made), and a preview of the grid as it would be
   written (filled cells muted, empty ones blank). **Save…** opens the native
   save dialog with the format's extension; the file is written atomically.
+- WhirlwindMatrixPolar adds the mode and wave-bin controls of §6.1 in both
+  this dialog and **Export all tabs**. Bulk export uses the same selections
+  for every tab, each on its own wind grid. Its format dropdown also offers
+  **Read-only project** (`.pelocked`).
 - Export always recomputes the blend from the sources and overlays, never
   from what the views have cached (invariant 2).
 - Export refuses, naming the problem, a grid two of whose axis values would

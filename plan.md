@@ -6,6 +6,90 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-13: v0.3.13 release preflight — complete.**
+Workspace, npm, Tauri and lockfile versions now name 0.3.13 for configurable
+wave-conditioned matrix exports, the standalone format reference, combined
+point/PDF displays and camera/point-style fixes. The release documentation
+archive includes the HTML reference, with source links pinned to this tag.
+The tag/version guard, TypeScript/Vite build, pe-app library clippy with
+warnings denied, workspace formatting, offline policy and whitespace checks
+passed. No local tests were added or run. The previous v0.3.12 release did
+not publish because its Rust/UI test jobs failed; this tag uses the same
+release gates and is published only after all five platform builds succeed.
+
+**2026-10-13: Stable PDF refresh and consistent point displays — implemented.**
+Both views keep the last completed PDF visible during weight/filter refreshes.
+Weight changes preserve the 3D camera, and a selected PDF cell frames only on
+selection or layout changes, preserving subsequent rotation, pan and zoom.
+Renamed the display options to Points and polars and Points and PDF, with
+translations and help-search entries. Removed the PDF-only point rim so the
+same sizes, colours, shapes and selection styles apply in both point modes.
+In 3D, selecting a PDF box dims points outside its angle/wind/speed volume to
+12% opacity; other wave copies also fade. Clearing the PDF selection restores
+full point opacity without changing point selection or exclusions.
+TypeScript/Vite production build and diff whitespace checks passed. No tests
+added or run; no visual walkthrough performed.
+
+**2026-10-13: Combined dots and PDF display — implemented.**
+Both Display menus now offer Dots + PDF, retaining dot hover, click/lasso/box
+selection and shared undoable exclusions while drawing the current weighted
+PDFs. In 3D dots are composited over the opaque PDF volumes with contrasting
+rims; dot picking takes priority and clicks between dots still focus PDF
+cells. In 2D painting and picking share the extent of both dots and Gaussian
+tails, and the heat raster is cached across hover/selection redraws.
+Added translations in all eight locales, help-search keywords and guide/spec
+documentation. TypeScript/Vite production build, offline policy check and diff
+whitespace checks passed. No tests added or run; no visual walkthrough performed.
+
+**2026-10-13: Collapsible matrix export settings — implemented.**
+The shared Matrix data modes section now uses a native details disclosure,
+closed initially in both export dialogs. All matrix settings are inside it;
+validation errors remain visible outside so a disabled export is explained.
+Existing defaults and disabled-while-exporting behavior are preserved.
+Registered the disclosure in help search and updated the guide/specification.
+TypeScript/Vite production build and diff whitespace checks passed. No tests
+added or run.
+
+**2026-10-13: Matrix export presets and optional custom cutoffs — implemented.**
+UI and backend defaults enable all three modes and 32 wave combinations:
+height [0,1)/[1,3)/[3,5)/[5,∞) m; clockwise bow-relative sectors
+[-45,45)/[45,135)/[135,225)/[225,315)°; period [0,5]/(5,∞) s.
+Replaced uniform count/range settings with explicit cutoffs and circular
+boundaries. The shared dialogs show a bucket summary, collapsed optional
+customization and reset; wave splitting and each mode remain optional.
+The backend preserves full-circle direction and matches sorted axis order.
+Final height/period bins are open-ended. Updated generated IPC types, MCP
+help, translations, feature registry, guide, specification and HTML reference.
+The v1 binary layout is unchanged and continues to store representative
+coordinates, not cutoff metadata. Bindings generation, TypeScript/Vite build,
+pe-app library clippy with warnings denied, formatting, offline check, HTML
+JavaScript syntax and diff whitespace checks pass. No tests added or run.
+
+**2026-10-13: Configurable wave/PDF matrix exports — implemented.**
+Both export dialogs now share mode selection (SOG, weighted histogram,
+Gaussian) and optional wave height/angle/period bin counts and bounds.
+Rust derives each wave combination independently with filters, exclusions,
+priority groups, source weights and blend settings. Histogram resolution is
+configurable; custom wind grids resample the scalar and distribution fields.
+Empty/oversized requests are refused, and export work runs off the UI thread.
+The v1 reader's axis order and SOG/sample scale decoding now match the writer;
+no format-version change. Import drops both PDF modes as requested. Updated
+bindings, MCP arguments, translated controls, help registry, specification,
+user guide and the standalone HTML reference. TypeScript/Vite build, generated
+bindings, formatting, offline policy check, diff whitespace check and embedded
+HTML JavaScript syntax check pass. The final pe-app library clippy run also
+passes with warnings denied. No tests were added or run; no browser preview
+was available.
+
+**2026-10-13: Standalone WhirlwindMatrixPolar reference — drafted.**
+`docs/whirlwind-matrix-polar-format.html` documents the v0.3.12 writer's
+exact header, axes, compression wrapper and three mode payloads, with byte
+diagrams, a complete hex example and an offline interactive 3D bowl linked
+to cell indices and decompressed byte offsets. It records the existing
+reader/writer axis-order and scalar-scale mismatches explicitly. The later
+configurable-export change above corrects the codec and updates this reference.
+Embedded JavaScript syntax was checked. Browser preview was unavailable in this session; no tests were added or run.
+
 **2026-10-13: v0.3.12 release preflight — complete.**
 All workspace, npm and Tauri versions and lockfiles now name 0.3.12 for the
 shared dot exclusions, wave filters, source controls/search and Compare

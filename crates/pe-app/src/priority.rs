@@ -59,6 +59,14 @@ struct TrackFlags {
 /// Shared masks for the map, track details, plots and blend. An empty group
 /// list has the exact previous individual/global filtering behavior.
 pub fn filter_flags(project: &Project) -> BTreeMap<u64, Vec<bool>> {
+    filter_flags_where(project, |_| true)
+}
+
+/// Re-evaluate priority groups inside a wave export cell before binning.
+pub(crate) fn filter_flags_where(
+    project: &Project,
+    admitted: impl Fn(&pe_core::track::Sample) -> bool,
+) -> BTreeMap<u64, Vec<bool>> {
     let groups = &project.blend.priority_groups;
     let columns = project.grid.tws.len();
     let mut counts = vec![vec![0u32; project.grid.twa.len() * columns]; groups.len()];
@@ -67,7 +75,10 @@ pub fn filter_flags(project: &Project) -> BTreeMap<u64, Vec<bool>> {
         .iter()
         .filter_map(|source| {
             let track = source.track()?;
-            let hard = crate::derived::hard_filters(project, source, track);
+            let mut hard = crate::derived::hard_filters(project, source, track);
+            for (flag, sample) in hard.iter_mut().zip(&track.samples) {
+                *flag |= !admitted(sample);
+            }
             if groups.is_empty() {
                 return Some(TrackFlags {
                     id: source.id.raw(),

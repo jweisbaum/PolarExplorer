@@ -369,11 +369,11 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
         }
         axes.push(axis);
     }
+    let th = axes.remove(0);
+    let ts = axes.remove(0);
     let h = axes.remove(0);
     let a = axes.remove(0);
     let p = axes.remove(0);
-    let th = axes.remove(0);
-    let ts = axes.remove(0);
     let speed_bins = axes.remove(0);
     let wind_cells = checked_product(&[
         h.len().max(1),
@@ -423,7 +423,7 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
         for _ in 0..sog_count {
             let q = read_u16(&raw, cursor)?;
             cursor += 2;
-            values.push((q != MISSING).then_some(q as f32 * sog_scale / LEVELS));
+            values.push((q != MISSING).then_some(q as f32 * sog_scale));
         }
         sog = Some(values);
     }
@@ -437,7 +437,7 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
             if q == MISSING {
                 return Err(MatrixError::Values);
             }
-            values.push(q as f32 * pdf_scale / LEVELS);
+            values.push(q as f32 * pdf_scale);
         }
         pdf = Some(values);
     }

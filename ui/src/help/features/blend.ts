@@ -10,7 +10,20 @@ const list = ["section:sources"];
 const settings = { topic: "blend", reveal: list, landing: "sources:blend-settings" };
 const exporting = { topic: "blend", reveal: list, landing: "sources:export" };
 
+const matrixDescription = msg("Choose the matrix modes and the number and bounds of wave bins in either export dialog.");
+const matrixFeatures: Feature[] = [
+  ["toggle", msg("Matrix data modes")],
+  ["sog", msg("Boat speed (SOG)")], ["histogram", msg("Histogram (sampled PDF)")],
+  ["gaussian", msg("Gaussian PDF")], ["waves", msg("Split by wave conditions")],
+  ["speed-bins", msg("Boat-speed bins (0–60 kn)")],
+  ["height-cutoffs", msg("Wave height cutoffs (m)")], ["period-cutoffs", msg("Wave period cutoffs (s)")],
+  ["direction-edges", msg("Wave direction boundaries (°)")],
+  ["customize", msg("Customize wave buckets (optional)")], ["reset", msg("Reset wave buckets")],
+].map(([id, label]) => ({ id: `matrix-export:${id}`, label: label!, description: matrixDescription,
+  keywords: [msg("export"), msg("Bins"), "WhirlwindMatrixPolar"], ...exporting }));
+
 const features: Feature[] = [
+  ...matrixFeatures,
   { id: "blend-settings:twa", label: msg("Output grid wind angles"),
     description: msg("In Blend settings: the true wind angles the blend is made on, 0 to 180, at least 0.01 apart."),
     keywords: [msg("output grid"), "TWA", msg("axis")], ...settings },

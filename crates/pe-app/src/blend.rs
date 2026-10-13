@@ -30,6 +30,7 @@ use ts_rs::TS;
 use crate::commands::AppState;
 use crate::derived::{Derivations, Derived};
 use crate::error::{AppError, Context, Result};
+use crate::matrix_export::MatrixExportOptions;
 use crate::polar_edit::{parse_statistic, statistic_name};
 use crate::projects::ProjectSummary;
 
@@ -963,25 +964,29 @@ pub fn preview_of(
 /// The bytes an export of `project` writes (pure; no session): recomputed
 /// from the sources, refused with the problem named.
 pub fn export_bytes(project: &Project, format: &str, axes: Option<&ExportAxes>) -> Result<Vec<u8>> {
+    export_bytes_with_matrix(project, format, axes, None)
+}
+
+pub fn export_bytes_with_matrix(
+    project: &Project,
+    format: &str,
+    axes: Option<&ExportAxes>,
+    matrix: Option<&MatrixExportOptions>,
+) -> Result<Vec<u8>> {
     let format = parse_format(format)?;
-    let (blend, custom) = export_grid(project, axes)?;
-    let polar = custom.unwrap_or(blend.polar);
     if format == PolarFileFormat::WhirlwindMatrixPolar {
-        pe_polar::export::check(&polar).map_err(|problem| AppError::Export {
-            code: problem.code(),
-            message: problem.to_string(),
-        })?;
-        let matrix =
-            <pe_polar::WhirlwindMatrixPolar as pe_polar::MatrixPolarExt>::from_polar(&polar)
-                .map_err(|error| AppError::BadOption {
-                    field: "WhirlwindMatrixPolar",
-                    value: error.to_string(),
-                })?;
+        let matrix = crate::matrix_export::build(
+            project,
+            axes,
+            matrix.unwrap_or(&MatrixExportOptions::default()),
+        )?;
         return pe_polar::matrix::write(&matrix).map_err(|error| AppError::BadOption {
             field: "WhirlwindMatrixPolar",
             value: error.to_string(),
         });
     }
+    let (blend, custom) = export_grid(project, axes)?;
+    let polar = custom.unwrap_or(blend.polar);
     pe_polar::export(format, &polar)
         .map(String::into_bytes)
         .map_err(|problem| AppError::Export {
@@ -997,8 +1002,22 @@ pub fn export_preview(
     boat_context: Option<u64>,
     format: String,
     axes: Option<ExportAxes>,
+    matrix: Option<MatrixExportOptions>,
 ) -> Result<ExportPreview> {
     let state = state.scoped(boat_context);
+    if format == "whirlwind_matrix_polar"
+        && let Some(options) = &matrix
+    {
+        state.with_session(|session| {
+            let project = &session.require_open()?.project;
+            options.validate(
+                axes.as_ref()
+                    .map_or(project.grid.twa.len() * project.grid.tws.len(), |a| {
+                        a.twa.len() * a.tws.len()
+                    }),
+            )
+        })?;
+    }
     preview(&state, &format, axes.as_ref())
 }
 
@@ -1020,15 +1039,27 @@ pub struct ExportResult {
 /// Writes the blend to `path` in `format` (spec.md 6, 12), recomputed from
 /// the sources (invariant 2), on the project's grid or `axes`.
 #[tauri::command]
-pub fn export_polar(
+pub async fn export_polar(
     state: tauri::State<'_, AppState>,
     boat_context: Option<u64>,
     path: String,
     format: String,
     axes: Option<ExportAxes>,
+    matrix: Option<MatrixExportOptions>,
 ) -> Result<ExportResult> {
     let state = state.scoped(boat_context);
-    export_to(&state, &path, &format, axes.as_ref())
+    tauri::async_runtime::spawn_blocking(move || {
+        let project = state.with_session(|session| Ok(session.require_open()?.project.clone()))?;
+        let bytes = export_bytes_with_matrix(&project, &format, axes.as_ref(), matrix.as_ref())?;
+        pe_core::io::write_atomic(&PathBuf::from(&path), &bytes)
+            .doing("write the polar to", &path)?;
+        Ok(ExportResult {
+            path,
+            bytes: count(bytes.len()),
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("Exporting the polar: {e}")))?
 }
 
 /// [`export_polar`] without a Tauri handle.

@@ -10,6 +10,7 @@ import { msg, useT } from "../i18n";
 
 import { pickExportPath } from "../project/dialogs";
 import { formatAxis, parseAxis } from "./axes";
+import MatrixExportFields, { defaultMatrixExport, matrixExportError } from "./MatrixExportFields";
 
 /** The formats offered (spec.md 6): each writer's layout and extension. */
 export const EXPORT_FORMATS: readonly { id: string; label: string }[] = [
@@ -60,6 +61,8 @@ export default function ExportDialog({ project, onClose }: {
   const api = useBoatApi();
   const t = useT();
   const [format, setFormat] = useState("whirlwind_matrix_polar");
+  const [matrix, setMatrix] = useState(defaultMatrixExport);
+  const matrixFormat = format === "whirlwind_matrix_polar";
   const [custom, setCustom] = useState(false);
   const [twaText, setTwaText] = useState(formatAxis(project.blend.twa));
   const [twsText, setTwsText] = useState(formatAxis(project.blend.tws));
@@ -69,11 +72,11 @@ export default function ExportDialog({ project, onClose }: {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+      if (event.key === "Escape") { event.preventDefault(); if (!busy) onClose(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, busy]);
 
   const twa = parseAxis(twaText, "twa", project.blend.asymmetric);
   const tws = parseAxis(twsText, "tws");
@@ -84,22 +87,27 @@ export default function ExportDialog({ project, onClose }: {
   );
   const customInvalid = custom && axes === null;
 
+  const windCells = (axes?.twa.length ?? project.blend.twa.length) * (axes?.tws.length ?? project.blend.tws.length);
+  const matrixInvalid = matrixFormat && matrixExportError(matrix, windCells) !== null;
+
   useEffect(() => {
-    if (customInvalid) { setPreview(null); return; }
+    if (matrixInvalid || customInvalid) { setPreview(null); return; }
     let live = true;
     setError(null);
-    api.exportPreview(format, axes)
+    setPreview(null);
+    const timer = window.setTimeout(() => { void api.exportPreview(format, axes, matrixFormat ? matrix : null)
       .then((next) => { if (live) setPreview(next); })
       .catch((failure) => { if (live) { setPreview(null); setError(failure); } });
-    return () => { live = false; };
-  }, [format, axes, customInvalid, project.revision]);
+    }, 200);
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [format, axes, customInvalid, matrixInvalid, matrixFormat, matrix, project.revision]);
 
   const save = async () => {
-    const path = await pickExportPath(format, project.name);
-    if (path === null) return;
     setBusy(true);
     try {
-      const written = await api.exportPolar(path, format, axes);
+      const path = await pickExportPath(format, project.name);
+      if (path === null) return;
+      const written = await api.exportPolar(path, format, axes, matrixFormat ? matrix : null);
       setHint(later(msg("Exported the polar to {path}"), { path: written.path }));
       onClose();
     } catch (failure) {
@@ -111,10 +119,10 @@ export default function ExportDialog({ project, onClose }: {
   };
 
   const title = t("Export the polar");
-  const canSave = !busy && preview !== null && preview.problem === null;
+  const canSave = !busy && !matrixInvalid && !customInvalid && preview !== null && preview.problem === null;
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal settings export-dialog" role="dialog" aria-label={title} onClick={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" onClick={() => { if (!busy) onClose(); }}>
+      <div className="modal settings export-dialog" role="dialog" aria-label={title} aria-busy={busy} onClick={(event) => event.stopPropagation()}>
         <h2>{title}</h2>
         <p className="modal-summary muted">{t("The blend of the visible sources, recomputed from them now.")}</p>
 
@@ -129,7 +137,9 @@ export default function ExportDialog({ project, onClose }: {
           </select>
         </label>
 
-        <fieldset className="export-grid">
+        {matrixFormat && <MatrixExportFields value={matrix} onChange={setMatrix} disabled={busy} windCells={windCells} />}
+
+        <fieldset className="export-grid" disabled={busy}>
           <legend>{t("Grid")}</legend>
           <label>
             <input type="radio" name="export-grid" data-feature="export:project-grid" checked={!custom}
@@ -159,14 +169,15 @@ export default function ExportDialog({ project, onClose }: {
 
         {error !== null && <p className="modal-error" role="alert" title={describeError(error).detail}>{describeError(error).text}</p>}
         {preview?.problem && <p className="modal-error" role="alert">{problemText(preview.problem, t)}</p>}
-        {preview && <ExportTable preview={preview} />}
+        {matrixFormat && <p className="muted">{t("Wind-grid preview; each wave condition is recomputed separately on export.")}</p>}
+        {preview && <ExportTable preview={preview} matrixFormat={matrixFormat} />}
 
         <div className="modal-actions">
-          <button onClick={onClose} title={t("Close without exporting")}>{t("Cancel")}</button>
+          <button disabled={busy} onClick={onClose} title={t("Close without exporting")}>{t("Cancel")}</button>
           <span className="spacer" />
           <button className="primary" disabled={!canSave} title={t("Choose where to save the file")}
             onClick={() => void save()}>
-            {t("Save…")}
+            {busy ? t("Exporting…") : t("Save…")}
           </button>
         </div>
       </div>
@@ -175,11 +186,12 @@ export default function ExportDialog({ project, onClose }: {
 }
 
 /** The grid that would be written: filled cells muted, empty ones blank. */
-function ExportTable({ preview }: { preview: ExportPreview }) {
+function ExportTable({ preview, matrixFormat }: { preview: ExportPreview; matrixFormat: boolean }) {
   const t = useT();
   return (
     <div className="export-preview" data-feature="export:preview"
-      title={t("The grid as it would be written. Muted cells were filled between known values; blank cells stay empty.")}>
+      title={matrixFormat ? t("Wind-grid preview; each wave condition is recomputed separately on export.")
+        : t("The grid as it would be written. Muted cells were filled between known values; blank cells stay empty.")}>
       <table>
         <thead>
           <tr>

@@ -22,6 +22,16 @@ export interface PdfVolumeInput {
 
 const RAD = Math.PI / 180;
 
+/** Membership in the displayed volume, including its circular angular bounds. */
+export function pdfBoxContains(box: PdfBox, twa: number, tws: number, speed: number): boolean {
+  const epsilon = 1e-5; // Packed point coordinates are float32.
+  const offset = ((twa - box.angle[0]) % 360 + 360) % 360;
+  const angle = box.angle[0] + (offset > 360 - epsilon ? 0 : offset);
+  return angle <= box.angle[1] + epsilon
+    && tws >= box.wind[0] - epsilon && tws <= box.wind[1] + epsilon
+    && speed >= box.speed[0] - epsilon && speed <= box.speed[1] + epsilon;
+}
+
 /** Exact world bounds, including extrema between the angular endpoints. */
 export function pdfBoxBounds(box: PdfBox, layout: Layout): { min: Vec3; max: Vec3 } {
   if (layout === "cartesian") return {

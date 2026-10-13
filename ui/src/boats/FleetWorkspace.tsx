@@ -17,6 +17,7 @@ import { FleetSyncProvider } from "./synchronization";
 import type { BoatViewState } from "./synchronization";
 import ConfirmDialog from "../project/ConfirmDialog";
 import { publishSearchSources } from "../panels/sourceSearch";
+import MatrixExportFields, { defaultMatrixExport, matrixExportError } from "../panels/MatrixExportFields";
 
 type Layout = 1 | 2 | 4;
 
@@ -56,6 +57,9 @@ export default function FleetWorkspace({ project, settings, onSettings, onProjec
   const [changingBoats, setChangingBoats] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [format, setFormat] = useState("whirlwind_matrix_polar");
+  const [matrix, setMatrix] = useState(defaultMatrixExport);
+  const matrixFormat = format === "whirlwind_matrix_polar";
+  const matrixInvalid = matrixFormat && matrixExportError(matrix) !== null;
   const readOnlyProject = format === "read_only_project";
   const [lockedProjectPath, setLockedProjectPath] = useState<string | null>(null);
   const [result, setResult] = useState<BoatExportResult | null>(null);
@@ -189,7 +193,7 @@ export default function FleetWorkspace({ project, settings, onSettings, onProjec
         if (path) setLockedProjectPath(await api.exportLockedProject(path));
       } else {
         const directory = await pickExportDirectory();
-        if (directory) setResult(await api.exportAllPolars(directory, format));
+        if (directory) setResult(await api.exportAllPolars(directory, format, matrixFormat ? matrix : null));
       }
     }
     catch (error) { reportFailure(error); }
@@ -314,7 +318,7 @@ export default function FleetWorkspace({ project, settings, onSettings, onProjec
     {deleting && <ConfirmDialog title={t("Delete {boat}", { boat: deleting.name })}
       body={t("Remove this polar and its sources from the project? You can undo this deletion while the project remains open.")}
       confirmLabel={t("Delete Polar")} onConfirm={() => void remove()} onCancel={() => setDeleting(null)} />}
-    {exporting && <div className="modal-backdrop"><section className="modal boat-export-dialog" role="dialog" aria-modal="true" aria-label={t("Export all tabs")}>
+    {exporting && <div className="modal-backdrop"><section className="modal boat-export-dialog" role="dialog" aria-modal="true" aria-label={t("Export all tabs")} aria-busy={busy}>
       <h2>{t("Export all tabs")}</h2>
       <label className="boat-export-format">{t("Format")} <select data-feature="boats:export-format" value={format} disabled={busy}
         onChange={event => { setFormat(event.target.value); setResult(null); setLockedProjectPath(null); }}>
@@ -323,11 +327,12 @@ export default function FleetWorkspace({ project, settings, onSettings, onProjec
         <option value="qtvlm">{t("qtVlm")}</option><option value="opencpn">{t("OpenCPN")}</option><option value="luckgrib">{t("LuckGrib")}</option>
         <option value="read_only_project">{t("Read-only project")}</option>
       </select></label>
+      {matrixFormat && <MatrixExportFields value={matrix} onChange={value => { setMatrix(value); setResult(null); }} disabled={busy} />}
       {lockedProjectPath && <p role="status">{t("Exported read-only project to {path}.", { path: lockedProjectPath })}</p>}
       {result && <><p role="status">{t("Exported {count} boat polars.", { count: result.paths.length })}</p>
         {result.failures.length > 0 && <ul>{result.failures.map(([name, error], i) => <li key={i}>{name}: {error}</li>)}</ul>}</>}
       <div className="modal-actions"><button data-feature="boats:export-close" disabled={busy} onClick={() => setExporting(false)}>{t("Close")}</button>
-        <button className="primary" data-feature="boats:export-confirm" disabled={busy} onClick={() => void exportAll()}>{readOnlyProject ? t("Export project…") : t("Choose export folder…")}</button></div>
+        <button className="primary" data-feature="boats:export-confirm" disabled={busy || matrixInvalid} onClick={() => void exportAll()}>{busy ? t("Exporting…") : readOnlyProject ? t("Export project…") : t("Choose export folder…")}</button></div>
     </section></div>}
   </div>;
 }

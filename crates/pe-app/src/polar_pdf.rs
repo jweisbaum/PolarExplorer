@@ -178,7 +178,7 @@ fn view_sources(
         .collect()
 }
 
-fn fit(
+pub(crate) fn fit(
     project: &Project,
     derived: &BTreeMap<u64, Arc<Derived>>,
     include_excluded: bool,

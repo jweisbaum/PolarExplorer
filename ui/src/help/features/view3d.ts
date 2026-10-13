@@ -9,8 +9,8 @@ const onStage = ["stage:3d"];
 const topic = "polar-3d";
 
 const features: Feature[] = [
-  { id: "view3d:display", label: msg("3D display mode"), description: msg("Show the individual points and polar surfaces, or build probability density functions from the points currently shown and their active filters."),
-    keywords: [msg("PDF"), msg("probability density"), msg("distribution")], topic, reveal: onStage },
+  { id: "view3d:display", label: msg("3D display mode"), description: msg("Show polars, PDFs, or dots with PDFs."),
+    keywords: [msg("PDF"), msg("probability density"), msg("distribution"), msg("Points and PDF")], topic, reveal: onStage },
   { id: "view3d:wave-height-move", label: msg("Move wave height range"), description: msg("Drag to move both limits. Arrow keys move the range; Home and End move it to either end."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic, reveal: onStage },
   { id: "view3d:wave-angle-move", label: msg("Move wave angle range"), description: msg("Drag to move both limits. Arrow keys move the range; Home and End move it to either end."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic, reveal: onStage },
   { id: "view3d:wave-period-move", label: msg("Move wave period range"), description: msg("Drag to move both limits. Arrow keys move the range; Home and End move it to either end."), keywords: [msg("filters"), msg("samples"), msg("waves")], topic, reveal: onStage },

@@ -1375,3 +1375,23 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 /* A wave range row reads min, slider, max from the left, as its scale does;
    only its name stays right to left. */
 [dir="rtl"] .wave-range-row .wave-range-label { direction: rtl; text-align: right; }
+
+/* Shared matrix export controls in the tab and fleet dialogs. */
+.matrix-export { min-width: 0; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px; margin: 8px 0; }
+.matrix-export > summary { cursor: pointer; }
+.matrix-export-fields { min-width: 0; border: 0; padding: 14px 0 0; margin: 0; display: grid; gap: 14px; }
+.matrix-export p { margin: 0; font-size: 12px; }
+.matrix-export-modes { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.matrix-export-modes label, .matrix-wave-toggle { display: flex; gap: 6px; align-items: center; }
+.matrix-speed-bins { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.matrix-speed-bins input { width: 90px; }
+.matrix-wave-summary { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; font-size: 12px; }
+.matrix-wave-summary dt { color: var(--muted); }
+.matrix-wave-summary dd { margin: 0; overflow-wrap: anywhere; }
+.matrix-wave-custom summary { cursor: pointer; font-size: 12px; }
+.matrix-wave-grid { display: grid; gap: 12px; padding-top: 14px; }
+.matrix-wave-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.matrix-wave-grid input { width: 100%; min-width: 0; box-sizing: border-box; }
+.matrix-wave-grid button { justify-self: start; }
+@media (max-width: 520px) { .matrix-wave-summary { grid-template-columns: 1fr; gap: 4px; } .matrix-wave-summary dd { margin-bottom: 8px; } }
+.modal.boat-export-dialog { width: min(680px, 94vw); max-width: none; }

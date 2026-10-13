@@ -176,7 +176,7 @@ pub const TABLE: &[(&str, Handler)] = &[
     command!(rename_boat, crate::boats::rename_boat, { boat_context: u64, name: String }),
     command!(delete_boat, crate::boats::delete_boat, { project_id: u64, boat_id: u64 }),
     command!(restore_boat, crate::boats::restore_boat, { project_id: u64 }),
-    command!(async export_all_polars, crate::boats::export_all_polars, { directory: String, format: String }),
+    command!(async export_all_polars, crate::boats::export_all_polars, { directory: String, format: String, matrix: Option<crate::matrix_export::MatrixExportOptions> }),
     command!(async open_tracker_project, crate::boats::tracker_project::open_tracker_project, { tracker: String, url: String, discard_unsaved: bool, match_mode: Option<crate::boats::tracker_project::BoatMatchMode>, classes: Option<Vec<String>> }),
     command!(confirm_tracker_project, crate::boats::tracker_project::confirm_tracker_project, { project_id: u64 }),
     command!(discard_tracker_project, crate::boats::tracker_project::discard_tracker_project, { project_id: u64 }),
@@ -252,7 +252,7 @@ pub const TABLE: &[(&str, Handler)] = &[
     command!(set_priority_filters, crate::blend::set_priority_filters, { boat_context: Option<u64>, groups: Vec<crate::tracks::TrackFilters>, minimum: u32 }),
     command!(blend_cell, crate::blend::blend_cell, { boat_context: Option<u64>, twa_index: u32, tws_index: u32 }),
     command!(blend_cell_split, crate::blend::blend_cell_split, { boat_context: Option<u64>, twa_index: u32, tws_index: u32, split: crate::wave_split::WaveSplit, cell: u32 }),
-    command!(export_preview, crate::blend::export_preview, { boat_context: Option<u64>, format: String, axes: Option<crate::blend::ExportAxes> }),
+    command!(export_preview, crate::blend::export_preview, { boat_context: Option<u64>, format: String, axes: Option<crate::blend::ExportAxes>, matrix: Option<crate::matrix_export::MatrixExportOptions> }),
 ];
 
 /// The commands that leave a different project open, or none: `invoke`

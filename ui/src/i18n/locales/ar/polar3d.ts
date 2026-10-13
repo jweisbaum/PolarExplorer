@@ -1,5 +1,10 @@
 /** The 3D polar stage (spec.md 10). */
 const catalogue: Record<string, string> = {
+  "Points and PDF": "النقاط وPDF",
+  "Points and polars": "النقاط والمنحنيات القطبية",
+  "Show polars, PDFs, or dots with PDFs.": "عرض المنحنيات القطبية أو دوال الكثافة الاحتمالية أو النقاط معها.",
+  "Dots are drawn over PDFs. Click dots to select them; click between dots to inspect a PDF cell.": "تُرسم النقاط فوق دوال الكثافة الاحتمالية. انقر على النقاط لتحديدها، وبين النقاط لفحص خلية كثافة احتمالية.",
+
   "3D layout": "التخطيط ثلاثي الأبعاد",
   "Draw the polar as a tower (angle, radius, height) or on straight axes.": "رسم المنحنى القطبي على هيئة برج (زاوية، نصف قطر، ارتفاع) أو على محاور مستقيمة.",
   "polar tower": "البرج القطبي",
