@@ -1,5 +1,6 @@
 import { useBoatApi } from "../boats/context";
 import { useFleetSync, correspondingCell, correspondingDot, type HoverPoint } from "../boats/synchronization";
+import type { BoatViewState } from "../boats/synchronization";
 import WaveRangeControls from "./WaveRangeControls";
 import BlendCellTooltip from "./BlendCellTooltip";
 import PolarDotTooltip from "./PolarDotTooltip";
@@ -26,19 +27,20 @@ import { onThemeChange } from "../settings/themes";
 import EditPanel, { cellCode } from "./EditPanel";
 import { useEditFocus, useBoatEditing } from "./editFocus";
 import { place, type Layout } from "./geometry3d";
-import { PolarScene, type SurfaceHit } from "./scene3d";
+import { PolarScene, type SurfaceHit, type View } from "./scene3d";
 import {
   bucketCentre, CELL_NONE, cellRect, cellTotals, correspondingInCells, uncrowded, waveCells, WAVE_SPLIT_COUNTS, type Rect, type WaveSense,
 } from "./waveSplit";
 import { emptyScene, ScenePacketError, type ScenePacket, type SplitPacket } from "./scenePacket";
 import {
   availableModes, buildGuides, buildSurfaces, combine, DEFAULT_TOGGLES, drawnOnly, editCells, emptyKeys,
-  exclusionTargets, modeValues, focusIndex, hasExcluded, hasFiltered, keysOf, mergeDots, nearestIndex, nodeDots, nodesAtCells, sampleDots, presetView, range, rescaleView, resolveKeys, sampleIdsOf, sceneBounds,
+  buildPdfDensity, exclusionTargets, modeValues, focusIndex, hasExcluded, hasFiltered, keysOf, mergeDots, nearestIndex, nodeDots, nodesAtCells, sampleDots, presetView, range, rescaleView, resolveKeys, sampleIdsOf, sceneBounds,
   SPEED_FACTOR, SPEED_SYMBOL, summarise, type CameraPreset, type ColourMode, type Focus, type GuideLabel, type SelectionKeys,
   type Bounds, type Toggles,
 } from "./view3d";
 
 type Tool = "rotate" | "lasso" | "box" | "drag";
+type DisplayMode = "points" | "pdf";
 
 /** Shift snaps a dragged node to this step, knots (spec.md 10.4). */
 export const DRAG_SNAP_KN = 0.05;
@@ -86,6 +88,21 @@ let dragGestures = 0;
 /** A direction in whole degrees where it is whole, to a tenth where it is not (22.5°). */
 const degrees = (angle: number) => (Number.isInteger(angle) ? String(angle) : angle.toFixed(1));
 
+/** Standard normal CDF, using a compact erf approximation for hover feedback. */
+function normalCdf(value: number): number {
+  const sign = value < 0 ? -1 : 1;
+  const x = Math.abs(value) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return 0.5 * (1 + sign * erf);
+}
+
+/** Percentile within the displayed Gaussian truncated to the supported SOG range. */
+function pdfPercentileAt(sog: number, stats: { mean: number; stddev: number; mass: number }): number {
+  const below = normalCdf((sog - stats.mean) / stats.stddev) - normalCdf(-stats.mean / stats.stddev);
+  return Math.max(0, Math.min(100, (below / stats.mass) * 100));
+}
+
 /**
  * The big arrow of a Split Wave Angle copy (spec.md 10.5): a boat seen from
  * above, bow up, and the waves against it. From: the arrow comes in from
@@ -103,6 +120,9 @@ function copyBsp(split: SplitPacket, cell: number, twa: number, tws: number): nu
 
 /** A copy narrower than this (CSS px) is drawn compactly, without axis labels. */
 const SMALL_COPY = 150;
+const NO_DOT_CELLS = new Int16Array(0);
+const NO_PDF_DOTS = { points: new Float32Array(0), colors: new Float32Array(0), shapes: new Float32Array(0) };
+const EMPTY_PDF = { volumes: [], count: 0, maxDensity: 0, cells: [] };
 
 /**
  * A copy's glyph: a boat drawn bow up, the big arrow of its waves (pointing
@@ -179,14 +199,22 @@ function cssColour(name: string, fallback: string): string {
  * The WebGL renderer, its geometries and the orbit controls are disposed on
  * unmount, as the map disposes its own.
  */
-export default function PolarView({ project, settings, onProject, compact = false, comparison = false }: {
+export default function PolarView({ project, settings, onProject, compact = false, comparison = false, active = false, viewState }: {
   compact?: boolean;
   /** A pane of split or four-way view: no Split Wave Angle there (spec.md 10.5). */
   comparison?: boolean;
+  /** The pane whose starting camera establishes a linked comparison view. */
+  active?: boolean;
+  /** Fleet-owned camera and axes layout, retained while this canvas unmounts. */
+  viewState?: BoatViewState;
   project: ProjectSummary;
   settings: AppSettings | null;
   onProject: (summary: ProjectSummary) => void;
 }) {
+  const internalViewState = useRef<BoatViewState>({ camera: null, layout: null });
+  const savedViewState = viewState ?? internalViewState.current;
+  const savedViewStateRef = useRef(savedViewState);
+  savedViewStateRef.current = savedViewState;
   const { editSource } = useBoatEditing();
   const { selectSamples, focusMap } = useBoatSelection();
   const api = useBoatApi();
@@ -198,6 +226,16 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const canvas = useRef<HTMLCanvasElement>(null);
   const labelsHost = useRef<HTMLDivElement>(null);
   const scene = useRef<PolarScene | null>(null);
+  /** This boat's own camera, kept while the fleet cameras are linked. */
+  const singleView = useRef<View | null>(savedViewState.camera);
+  /** And the axes arrangement that goes with that camera. */
+  const singleLayout = useRef<Layout | null>(savedViewState.layout);
+  const restoringSingleView = useRef(false);
+  const comparisonRef = useRef(comparison);
+  comparisonRef.current = comparison;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const boundsRef = useRef<Bounds | null>(null);
   const frame = useRef(0);
   const hoverFrame = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverPoint = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -210,15 +248,22 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const framedFor = useRef<Bounds | null>(null);
   const selectionKeys = useRef<SelectionKeys>(emptyKeys());
   const shared = useSampleSelection();
+  const rememberSingleView = (view: View) => {
+    singleView.current = view;
+    savedViewStateRef.current.camera = view;
+  };
 
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [packet, setPacket] = useState<ScenePacket>(emptyScene);
-  const [layout, setLayout] = useState<Layout>("tower");
+  const [layout, setLayout] = useState<Layout>(() => savedViewState.layout ?? "tower");
   linkedLayout.current = layout;
   const [noHoverMatch, setNoHoverMatch] = useState(false);
   const [toggles, setToggles] = useState<Toggles>(DEFAULT_TOGGLES);
   const [waveRanges, updateWaveRanges] = useLiveEdit(project.blend.wave_ranges, (ranges) => api.setWaveRanges(ranges).then(onProject), project.id);
   const [mode, setMode] = useState<ColourMode>("source");
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("points");
+  const [pdfFocus, setPdfFocus] = useState<{ windCell: number; copy: number } | null>(null);
+  const [pdfHover, setPdfHover] = useState<({ windCell: number; copy: number; sog: number; x: number; y: number }) | null>(null);
   const [tool, setTool] = useState<Tool>("rotate");
   const [selection, setSelection] = useState<number[]>([]);
   const [path, setPath] = useState<number[] | null>(null);
@@ -227,6 +272,8 @@ export default function PolarView({ project, settings, onProject, compact = fals
   // cell last asked of Rust and holds its answer, so moving within one cell
   // asks nothing more, and an answer for a cell since left is dropped.
   const [blendHover, setBlendHover] = useState<{ cell: BlendCell; x: number; y: number } | null>(null);
+  const pdfViewBeforeFocus = useRef<View | null>(null);
+  const pdfPointerDown = useRef<{ x: number; y: number } | null>(null);
   const blendAsked = useRef<{ key: string; cell: BlendCell | null }>({ key: "", cell: null });
   const clearBlendHover = useCallback(() => {
     blendAsked.current = { key: "", cell: null };
@@ -237,6 +284,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
     hoverFrame.current = null;
     hoverPoint.current = null;
     setHover(null);
+    setPdfHover(null);
     setNoHoverMatch(false);
     setMarks([]);
     clearBlendHover();
@@ -330,8 +378,15 @@ export default function PolarView({ project, settings, onProject, compact = fals
       surfaceAt: (x: number, y: number) => made.pickSurface(x, y),
     }));
     made.setBackground(cssColour("--inset", "#1f2c3c"));
-    made.enableControls(element, draw, () => syncRef.current?.publish({ kind: "camera", boat: project.id, view: made.getView(), layout: linkedLayout.current }));
-    made.setView(syncRef.current?.camera?.view ?? presetView("top", sceneBounds(emptyScene(), "tower"), made.camera.fov, "origin"));
+    made.enableControls(element, draw, () => {
+      const view = made.getView();
+      if (!comparisonRef.current) rememberSingleView(view);
+      syncRef.current?.publish({ kind: "camera", boat: project.id, view, layout: linkedLayout.current });
+    });
+    const initialView = (comparisonRef.current ? syncRef.current?.camera?.view : savedViewStateRef.current.camera)
+      ?? presetView("top", sceneBounds(emptyScene(), "tower"), made.camera.fov, "origin");
+    made.setView(initialView);
+    if (!comparisonRef.current) rememberSingleView(initialView);
     const resize = () => {
       // Hidden with its stage (kept mounted): keep the size it had.
       if (element.clientWidth === 0 || element.clientHeight === 0) return;
@@ -423,6 +478,36 @@ export default function PolarView({ project, settings, onProject, compact = fals
     () => sceneBounds(packet, layout, waveRanges, toggles),
     [packet, layout, waveRanges, toggles.excluded, toggles.filtered],
   );
+  boundsRef.current = bounds;
+  // The active boat chooses a fresh isometric starting camera as comparison
+  // begins. Every pane receives that same view; each keeps its own saved
+  // single-view camera to restore when comparison ends.
+  useEffect(() => {
+    const current = scene.current;
+    if (!current) return;
+    if (comparison) {
+      if (activeRef.current) {
+        const view = presetView("iso", boundsRef.current ?? sceneBounds(emptyScene(), "tower"), current.camera.fov, "origin");
+        if (!singleView.current) rememberSingleView(current.getView());
+        if (!singleLayout.current) {
+          singleLayout.current = layout;
+          savedViewStateRef.current.layout = layout;
+        }
+        current.setView(view);
+        syncRef.current?.publish({ kind: "camera", boat: project.id, view, layout: linkedLayout.current });
+      }
+    } else if (singleView.current) {
+      restoringSingleView.current = singleLayout.current !== null && singleLayout.current !== layout;
+      current.setView(singleView.current);
+      if (singleLayout.current) {
+        setLayout(singleLayout.current);
+        savedViewStateRef.current.layout = singleLayout.current;
+      }
+      draw();
+    }
+  // Deliberately run only when the fleet enters or leaves comparison mode.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comparison]);
   const modes = useMemo(() => availableModes(packet), [packet]);
   const filteredExist = useMemo(() => hasFiltered(packet), [packet]);
   const excludedExist = useMemo(() => hasExcluded(packet), [packet]);
@@ -440,8 +525,8 @@ export default function PolarView({ project, settings, onProject, compact = fals
     [focus, focused, hideOthers],
   );
   const surfaces = useMemo(
-    () => (toggles.surfaces ? buildSurfaces(packet, blendColour, focusStyle, blendLine, splitOn ? splitBlends : null) : []),
-    [packet, blendColour, focusStyle, blendLine, toggles.surfaces, splitOn, splitBlends],
+    () => (displayMode === "points" && toggles.surfaces ? buildSurfaces(packet, blendColour, focusStyle, blendLine, splitOn ? splitBlends : null) : []),
+    [packet, blendColour, focusStyle, blendLine, toggles.surfaces, splitOn, splitBlends, displayMode],
   );
   /**
    * Shows a cell of this boat's output grid, asked of Rust once per cell and
@@ -536,13 +621,28 @@ export default function PolarView({ project, settings, onProject, compact = fals
     () => (splitOn ? waveCells(packet.nodes.count, packet.samples.waveBearing, dots.refs, waveCount, waveSense) : null),
     [splitOn, packet, dots, waveCount, waveSense],
   );
+  const pdf = useMemo(
+    () => displayMode === "pdf"
+      ? buildPdfDensity(dots.points, project.blend.twa, project.blend.tws, layout, cells, waveCount, pdfFocus)
+      : EMPTY_PDF,
+    [displayMode, dots.points, project.blend.twa, project.blend.tws, layout, cells, waveCount, pdfFocus],
+  );
+  const focusedPdfStats = pdfFocus
+    ? pdf.cells.find((cell) => cell.windCell === pdfFocus.windCell && cell.copy === pdfFocus.copy) ?? null
+    : null;
+  const hoveredPdfStats = pdfHover
+    ? pdf.cells.find((cell) => cell.windCell === pdfHover.windCell && cell.copy === pdfHover.copy) ?? null
+    : null;
+  const displayDots = displayMode === "pdf" ? NO_PDF_DOTS : dots;
   const totals = useMemo(() => (cells ? cellTotals(cells, waveCount) : null), [cells, waveCount]);
   // The samples drawn in no copy: their waves' direction is not known.
   const unplaced = useMemo(() => (cells ? cells.reduce((n, cell) => n + (cell === CELL_NONE ? 1 : 0), 0) : 0), [cells]);
-  cellsRef.current = { cells, waveCount, region };
+  const displayCells = displayMode === "pdf" ? (splitOn ? NO_DOT_CELLS : null) : cells;
+  cellsRef.current = { cells: displayCells, waveCount, region };
   useEffect(() => {
     if (!sync) { setNoHoverMatch(false); return; }
     return sync.subscribe(event => {
+      if (displayMode === "pdf" && event.kind !== "camera") return;
       if (event.boat === project.id) return;
       if (event.kind === "camera") {
         clearHover();
@@ -570,8 +670,8 @@ export default function PolarView({ project, settings, onProject, compact = fals
         setHover({ index: dots.refs[local]!, ...at });
       }
     });
-  }, [sync, project.id, dots, draw, clearHover]);
-  useEffect(() => { clearHover(); return () => { if (hoverFrame.current !== null) clearTimeout(hoverFrame.current); }; }, [dots, layout, clearHover]);
+  }, [sync, project.id, dots, displayMode, draw, clearHover]);
+  useEffect(() => { clearHover(); return () => { if (hoverFrame.current !== null) clearTimeout(hoverFrame.current); }; }, [dots, layout, displayMode, clearHover]);
   // Only what is drawn is counted and acted on: a dot the toggles hide
   // cannot be seen to be selected.
   const acting = useMemo(
@@ -582,10 +682,11 @@ export default function PolarView({ project, settings, onProject, compact = fals
   useEffect(() => {
     const current = scene.current;
     if (!current) return;
-    current.setData({ samples: dots.points, colors: dots.colors, shapes: dots.shapes, layout, surfaces });
-    // New dots are in every copy until told otherwise: say whose they are.
+    current.setData({ samples: displayDots.points, colors: displayDots.colors, shapes: displayDots.shapes, layout, surfaces,
+      pdfVolumes: displayMode === "pdf" ? pdf.volumes : [] });
+    // New points are in every copy until told otherwise: say whose they are.
     const held = cellsRef.current;
-    current.setCells(held.cells && held.cells.length === dots.refs.length
+    current.setCells(held.cells && held.cells.length === displayDots.points.length / 3
       ? { of: held.cells, count: held.waveCount, region: held.region } : null);
     const guides = buildGuides(bounds, layout, unit, project.blend.asymmetric);
     current.setGuides(guides.segments, cssColour("--muted", "#b3c9de"));
@@ -619,25 +720,46 @@ export default function PolarView({ project, settings, onProject, compact = fals
         }
       }
       current.setView(view);
+      if (!comparisonRef.current) rememberSingleView(current.getView());
       fitted.current = true;
       framedFor.current = bounds;
     } else if (fitted.current && framedFor.current && framedFor.current !== bounds) {
       // An outlier excluded or filtered out, or one let back in: the camera
       // follows the box, keeping its angle (asked 2026-10-04).
-      current.setView(rescaleView(current.getView(), framedFor.current, bounds));
+      if (restoringSingleView.current) restoringSingleView.current = false;
+      else current.setView(rescaleView(current.getView(), framedFor.current, bounds));
+      if (!comparisonRef.current) rememberSingleView(current.getView());
       framedFor.current = bounds;
     }
     draw();
-  }, [dots, packet, layout, surfaces, bounds, unit, draw, project.blend.asymmetric]);
+  }, [dots, displayDots, packet, layout, surfaces, pdf, displayMode, bounds, unit, draw, project.blend.asymmetric]);
+
+  useEffect(() => {
+    const current = scene.current;
+    if (!current) return;
+    if (pdfFocus) {
+      if (!pdfViewBeforeFocus.current) pdfViewBeforeFocus.current = current.getView();
+      current.focusPdfCell(pdfFocus.windCell, pdfFocus.copy);
+    } else if (pdfViewBeforeFocus.current) {
+      current.setView(pdfViewBeforeFocus.current);
+      pdfViewBeforeFocus.current = null;
+    }
+    draw();
+  }, [pdfFocus, pdf, draw]);
+
+  useEffect(() => {
+    scene.current?.setPdfHighlight(pdfHover, pdfFocus);
+    draw();
+  }, [pdfHover, pdfFocus, pdf, draw]);
 
   // The grid of copies follows the split's settings and the room there is.
   useEffect(() => {
     const current = scene.current;
     if (!current) return;
-    current.setCells(cells && cells.length === dots.refs.length ? { of: cells, count: waveCount, region } : null);
+    current.setCells(displayCells && displayCells.length === displayDots.points.length / 3 ? { of: displayCells, count: waveCount, region } : null);
     setMarks([]);
     draw();
-  }, [cells, waveCount, region, dots, draw]);
+  }, [cells, displayCells, waveCount, region, dots, displayDots, draw]);
 
   // The room there is: measured while the split is on, and again whenever
   // the stage is resized or a panel over it opens, closes or changes size.
@@ -668,17 +790,19 @@ export default function PolarView({ project, settings, onProject, compact = fals
   useEffect(() => {
     const current = scene.current;
     if (!current) return;
+    if (displayMode === "pdf") { current.setSelection([]); return; }
     const local = new Map<number, number>();
     dots.refs.forEach((g, d) => local.set(g, d));
     current.setSelection(selection.flatMap((g) => (local.has(g) ? [local.get(g)!] : [])));
     draw();
-  }, [selection, dots, draw]);
+  }, [selection, dots, displayMode, draw]);
 
   const camera = (preset: CameraPreset) => {
     const current = scene.current;
     if (!current) return;
     clearHover();
     current.setView(presetView(preset, bounds, current.camera.fov, "origin"));
+    if (!comparisonRef.current) rememberSingleView(current.getView());
     sync?.publish({ kind: "camera", boat: project.id, view: current.getView(), layout });
     draw();
   };
@@ -688,6 +812,11 @@ export default function PolarView({ project, settings, onProject, compact = fals
     const current = scene.current;
     const nextBounds = sceneBounds(packet, next, waveRanges, toggles);
     if (current) current.setView(presetView("iso", nextBounds, current.camera.fov, "origin"));
+    if (current && !comparisonRef.current) {
+      rememberSingleView(current.getView());
+      singleLayout.current = next;
+      savedViewStateRef.current.layout = next;
+    }
     framedFor.current = nextBounds;
     if (current) sync?.publish({ kind: "camera", boat: project.id, view: current.getView(), layout: next });
   };
@@ -696,6 +825,20 @@ export default function PolarView({ project, settings, onProject, compact = fals
     setTool(next);
     scene.current?.setRotateEnabled(next === "rotate");
   }
+
+  const chooseDisplay = (next: DisplayMode) => {
+    clearHover();
+    setPdfFocus(null);
+    pdfPointerDown.current = null;
+    gesture.current = null;
+    drag.current = null;
+    setPath(null);
+    if (next === "pdf") {
+      setTool("rotate");
+      scene.current?.setRotateEnabled(true);
+    }
+    setDisplayMode(next);
+  };
 
   /** Sends a dragged node's speed: one call in flight, the newest value next. */
   const sendDrag = (value: number) => {
@@ -748,6 +891,13 @@ export default function PolarView({ project, settings, onProject, compact = fals
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     clearHover();
+    if (displayMode === "pdf") {
+      const rect = event.currentTarget.getBoundingClientRect();
+      pdfPointerDown.current = event.button === 0
+        ? { x: event.clientX - rect.left, y: event.clientY - rect.top }
+        : null;
+      return;
+    }
     if (event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left, y = event.clientY - rect.top;
@@ -759,6 +909,21 @@ export default function PolarView({ project, settings, onProject, compact = fals
     if (tool !== "rotate") event.currentTarget.setPointerCapture?.(event.pointerId);
   };
   const onPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (displayMode === "pdf") {
+      if (!event.buttons) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        hoverPoint.current = { x: event.clientX - rect.left, y: event.clientY - rect.top, width: rect.width, height: rect.height };
+        if (hoverFrame.current === null) hoverFrame.current = setTimeout(() => {
+          hoverFrame.current = null;
+          const at = hoverPoint.current;
+          if (!at) return;
+          const hit = scene.current?.pickPdfCell(at.x, at.y) ?? null;
+          setPdfHover(hit ? { ...hit, x: Math.max(8, Math.min(at.x + 12, at.width - 280)),
+            y: Math.max(8, Math.min(at.y + 12, at.height - 140)) } : null);
+        }, 16);
+      }
+      return;
+    }
     if (!gesture.current && !drag.current && event.buttons === 0) {
       const rect = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - rect.left, y = event.clientY - rect.top;
@@ -819,6 +984,17 @@ export default function PolarView({ project, settings, onProject, compact = fals
     setPath([...g.path]);
   };
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (displayMode === "pdf") {
+      const down = pdfPointerDown.current;
+      pdfPointerDown.current = null;
+      if (!down || Math.hypot(event.clientX - event.currentTarget.getBoundingClientRect().left - down.x,
+        event.clientY - event.currentTarget.getBoundingClientRect().top - down.y) >= CLICK_SLOP_PX) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const hit = scene.current?.pickPdfCell(event.clientX - rect.left, event.clientY - rect.top) ?? null;
+      setPdfFocus((current) => hit && (current?.windCell !== hit.windCell || current?.copy !== hit.copy) ? hit : null);
+      event.currentTarget.parentElement?.focus({ preventScroll: true });
+      return;
+    }
     if (drag.current) {
       drag.current = null;
       setDragValue(null);
@@ -870,13 +1046,18 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const unavailableModeTip = msg("Colouring by wave height, current or time needs track samples with their wind, which arrives with the environment fetch");
   const noFilteredTip = msg("No sample with wind is filtered out");
   const noExcludedTip = msg("Nothing is excluded");
-  const empty = packet.nodes.count === 0 && packet.samples.count === 0;
+  const empty = displayMode === "pdf" ? pdf.volumes.length === 0 : packet.nodes.count === 0 && packet.samples.count === 0;
 
   return (
     <div className={`view3d${compact ? " compact-comparison" : ""}`} tabIndex={-1}
-      onKeyDown={(event) => { if (event.key === "Escape" && selection.length > 0) { event.stopPropagation(); select([]); } }}>
-      <canvas ref={canvas} className={`view3d-canvas tool-${tool}`}
-        onPointerEnter={() => setHint(later(msg("Drag to turn, right-drag to pan, scroll to zoom. Click a dot to select it; Shift adds.")))}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && pdfFocus) { event.stopPropagation(); setPdfFocus(null); return; }
+        if (event.key === "Escape" && selection.length > 0) { event.stopPropagation(); select([]); }
+      }}>
+      <canvas ref={canvas} className={`view3d-canvas tool-${tool}${displayMode === "pdf" ? " pdf-interactive" : ""}`}
+        onPointerEnter={() => setHint(later(displayMode === "pdf"
+          ? msg("Hover a cell to highlight it. Click to expand its PDF and show percentiles; press Escape to return. Drag to turn, right-drag to pan, scroll to zoom.")
+          : msg("Drag to turn, right-drag to pan, scroll to zoom. Click a dot to select it; Shift adds.")))}
         onPointerLeave={() => {
           setHint(null); clearHover();
           sync?.publish({ kind: "hover", boat: project.id, point: null });
@@ -905,6 +1086,15 @@ export default function PolarView({ project, settings, onProject, compact = fals
       )}
       {hover && <PolarDotTooltip packet={packet} index={hover.index} sources={project.sources}
         units={settings?.units ?? DEFAULT_UNITS} x={hover.x} y={hover.y} />}
+      {hoveredPdfStats && pdfHover && <div className="view3d-tooltip" role="tooltip"
+        style={{ left: pdfHover.x, top: pdfHover.y }}>
+        {t("TWA {twa}°, TWS {tws}", { twa: hoveredPdfStats.twa.toFixed(0), tws: speed(hoveredPdfStats.tws) })}
+        <br />{t("{count} samples", { count: hoveredPdfStats.count })}
+        {pdfFocus?.windCell === pdfHover.windCell && pdfFocus.copy === pdfHover.copy && <>
+          <br />{t("SOG: {speed}", { speed: speed(pdfHover.sog) })}
+          <br />{t("Percentile: {percentile}%", { percentile: pdfPercentileAt(pdfHover.sog, hoveredPdfStats).toFixed(1) })}
+        </>}
+      </div>}
       {!hover && blendHover && <BlendCellTooltip cell={blendHover.cell} sources={project.sources} colour={blendColour}
         unit={unit} smoothing={project.blend.smoothing} x={blendHover.x} y={blendHover.y} />}
       {noHoverMatch && <div className="view3d-tooltip" role="tooltip" style={{ left: 12, top: 58 }}>{t("No point at matching wind conditions")}</div>}
@@ -920,10 +1110,16 @@ export default function PolarView({ project, settings, onProject, compact = fals
       )}
       {unavailable !== null && <p className="view3d-unavailable muted">{t(unavailable)}</p>}
       {unavailable === null && empty && (
-        <p className="view3d-empty muted">{t("The 3D view shows the project's visible polars and samples.")}</p>
+        <p className="view3d-empty muted">{displayMode === "pdf" ? t("No visible points pass the current filters to form a PDF.") : t("The 3D view shows the project's visible polars and samples.")}</p>
       )}
 
       <div className="view3d-toolbar">
+        <select data-feature="view3d:display" aria-label={t("Display")} value={displayMode}
+          title={t("Show individual samples and polar nodes, or their filtered probability density functions")}
+          onChange={(event) => chooseDisplay(event.target.value as DisplayMode)}>
+          <option value="points">{t("Points and polars")}</option>
+          <option value="pdf">{t("Probability density (PDF)")}</option>
+        </select>
         <select data-feature="view3d:layout" aria-label={t("Layout")} value={layout}
           title={t("Polar tower: angle and radius are TWA and BSP, height is TWS. Cartesian: TWA, TWS and BSP on straight axes.")}
           onChange={(event) => chooseLayout(event.target.value as Layout)}>
@@ -936,14 +1132,14 @@ export default function PolarView({ project, settings, onProject, compact = fals
             </button>
           ))}
         </span>
-        <span className="view3d-group" role="group" aria-label={t("Tool")}>
+        {displayMode === "points" && <span className="view3d-group" role="group" aria-label={t("Tool")}>
           {TOOLS.filter((tl) => tl.id !== "drag" || focus !== null).map((tl) => (
             <button key={tl.id} className={tool === tl.id ? "small selected" : "small"} aria-pressed={tool === tl.id}
               data-feature={`view3d:tool-${tl.id}`} title={t(tl.tip)} onClick={() => chooseTool(tl.id)}>
               {t(tl.label)}
             </button>
           ))}
-        </span>
+        </span>}
         {!comparison && (
           <span className="view3d-group wave-split-controls" role="group" aria-label={t("Split Wave Angle")}>
             <button className={splitOn ? "small selected" : "small"} aria-pressed={splitOn} data-feature="view3d:wave-split"
@@ -1015,7 +1211,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
             {t("Polar nodes")}
           </label>
           <label title={t("Each visible polar source as a translucent surface")}>
-            <input type="checkbox" data-feature="view3d:show-surfaces" checked={toggles.surfaces}
+            <input type="checkbox" data-feature="view3d:show-surfaces" checked={toggles.surfaces} disabled={displayMode === "pdf"}
               onChange={(event) => setToggles({ ...toggles, surfaces: event.target.checked })} />
             {t("Surfaces")}
           </label>
@@ -1029,7 +1225,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
               onChange={(event) => setToggles({ ...toggles, excluded: event.target.checked })} />
             {t("Excluded points")}
           </label>
-          <label className="view3d-colour">
+          {displayMode === "points" && <label className="view3d-colour">
             {t("Colour")}
             <select data-feature="view3d:colour" value={shownMode}
               title={modes.hs && modes.current && modes.time ? t("What the dots' colour shows") : t(unavailableModeTip)}
@@ -1038,14 +1234,32 @@ export default function PolarView({ project, settings, onProject, compact = fals
                 <option key={id} value={id} disabled={!modes[id]}>{t(MODE_NAMES[id])}</option>
               ))}
             </select>
-          </label>
-          {legendRange && (
+          </label>}
+          {displayMode === "points" && legendRange && (
             <div className={`view3d-ramp${shownMode === "time" ? " view3d-ramp-time" : ""}`}>
               <span>{legendValue(legendRange[0])}</span><span className="view3d-ramp-bar" /><span>{legendValue(legendRange[1])}</span>
             </div>
           )}
-          {shownMode === "timeOfDay" && <DayBandLegend className="view3d-bands" />}
+          {displayMode === "points" && shownMode === "timeOfDay" && <DayBandLegend className="view3d-bands" />}
         </fieldset>
+
+        {displayMode === "pdf" && <div className="view3d-pdf-legend" role="status">
+          {focusedPdfStats ? <>
+            <strong>{t("TWA {twa}°, TWS {tws}", { twa: focusedPdfStats.twa.toFixed(0), tws: speed(focusedPdfStats.tws) })}</strong>
+            <span>{t("{count} samples", { count: focusedPdfStats.count })}</span>
+            <div className="view3d-pdf-percentiles">
+              {[10, 25, 50, 75, 90].map((percentile, i) => (
+                <span key={percentile}>{t("P{percentile}", { percentile })}: {speed(focusedPdfStats.percentiles[i]!)}</span>
+              ))}
+            </div>
+            <button className="small" onClick={() => setPdfFocus(null)}>{t("Show all cells")}</button>
+          </> : <>
+            <span>{t("{count} wind-condition PDFs", { count: pdf.count })}</span>
+            <div className="view3d-ramp"><span>0</span><span className="view3d-ramp-bar" aria-hidden="true" />
+              <span>{t("{value} per knot", { value: pdf.maxDensity.toFixed(3) })}</span></div>
+            <span>{t("Hover to highlight; click a cell to expand it.")}</span>
+          </>}
+        </div>}
 
         <div className="view3d-legend" aria-label={t("Axes")}>
           {layout === "tower"
@@ -1053,7 +1267,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
             : t("Across: TWA (°) · Depth: TWS ({unit}) · Height: BSP ({unit})", { unit: symbol })}
         </div>
 
-        <section className="view3d-selection" aria-label={t("Selection")}>
+        {displayMode === "points" && <section className="view3d-selection" aria-label={t("Selection")}>
           <h3>{summary.count === 0 ? t("Nothing selected") : t("{count} selected", { count: summary.count })}</h3>
           {summary.count > 0 && (
             <>
@@ -1092,7 +1306,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
               {t("Clear")}
             </button>
           </div>
-        </section>
+        </section>}
       </div>
     </div>
   );

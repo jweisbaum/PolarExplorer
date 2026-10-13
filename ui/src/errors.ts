@@ -27,6 +27,7 @@ function lineFor(kind: string): string | null {
     case "core": return t("The project refused this change: it is not valid.");
     case "schema-too-new": return t("This project was saved by a newer version of PolarExplorer. Update PolarExplorer to open it.");
     case "no-project": return t("No project is open.");
+    case "read-only-tab": return t("This tab or project is read only and cannot be changed.");
     case "never-saved": return t("This project has not been saved yet.");
     case "unsaved-changes": return t("The project has unsaved changes.");
     case "bad-option": return t("That value is not accepted.");

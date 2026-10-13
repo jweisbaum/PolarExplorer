@@ -32,8 +32,8 @@ pub struct BlendSetParams {
     /// or 0–360 when asymmetric; knots 0–70), min_samples (the samples a
     /// track cell needs), n_full (the samples for full confidence),
     /// polar_statistic ("min", "median", "mean", "max", "p90"),
-    /// smoothing (true/false), default_statistic ("median", "mean", "p75",
-    /// "p90", "p95", "max": what a newly imported track starts with),
+    /// smoothing (true/false), default_statistic ("min", "median", "mean",
+    /// "p75", "p90", "max": what a newly imported track starts with),
     /// use_corrected (correct for current), asymmetric
     /// (independent port and starboard), interpolation ("linear" or
     /// "monotone_spline").

@@ -40,8 +40,8 @@ const features: Feature[] = [
   { id: "tracks:unknown-current", label: msg("Exclude unknown current"), description: msg("Exclude samples without current speed or direction."), keywords: [msg("filters"), msg("track")], topic, reveal: details },
 
   { id: "tracks:import-file", label: msg("Import track files"),
-    description: msg("Import GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns."),
-    keywords: [msg("import"), "GeoJSON", "CSV", msg("race"), msg("positions"), msg("column mapping"), msg("boat picker"),
+    description: msg("Import GPX, GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns."),
+    keywords: [msg("import"), "GPX", "GeoJSON", "CSV", msg("race"), msg("positions"), msg("column mapping"), msg("boat picker"),
       msg("time format"), msg("speed unit")], topic, reveal: section },
   { id: "tracks:yellowbrick", label: msg("YellowBrick import"), description: msg("Import boats from a YellowBrick race: paste its yb.tl link or race key, pick boats from the whole fleet."),
     keywords: [msg("tracker"), msg("race"), "yb.tl", msg("fleet")], topic: trackers, reveal: section },

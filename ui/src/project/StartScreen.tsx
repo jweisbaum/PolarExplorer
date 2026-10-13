@@ -156,7 +156,7 @@ export default function StartScreen({
         <section className="start-open">
           <h2>{t("Open")}</h2>
           <button onClick={() => void browse()} disabled={busy} data-feature="start:browse"
-            title={t("Open a saved .wpsproj project")}>
+            title={t("Open a saved .wpsproj project or a read-only .pelocked project")}>
             {t("Open…")}
           </button>
 

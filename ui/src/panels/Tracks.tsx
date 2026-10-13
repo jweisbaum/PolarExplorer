@@ -29,7 +29,7 @@ import { dateRange, describeImportLine, describeTrackFailure, envStatusText, fro
 /**
  * The Tracks section of the left navigation (spec.md 7.1): the tracker
  * buttons (YellowBrick, Geovoile and Blue Water Tracks all open the shared
- * tracker dialog, spec.md 7.2), File… for GeoJSON and CSV, the result of
+ * tracker dialog, spec.md 7.2), File… for GPX, GeoJSON and CSV, the result of
  * the last import, and every track with its colour, boat, event, dates,
  * samples used, weather status and actions. Each track unfolds to its
  * sample filters and heading and speed derivation (spec.md 7.4, 7.6),
@@ -62,7 +62,7 @@ export default function Tracks({ project, onProject, units = DEFAULT_UNITS, meta
   // A ticked track already queued or fetching is left out: asking again
   // would only queue it twice (M17a).
   const jobs = useEnvJobs();
-  const selectedIds = tracks.filter((s) => selected.has(s.id) && envJobOf(jobs, s.id) === undefined).map((s) => s.id);
+  const selectedIds = tracks.filter((s) => selected.has(s.id) && s.track!.env_status !== "ready" && envJobOf(jobs, s.id) === undefined).map((s) => s.id);
   const clearSelection = useCallback(() => setSelected(new Set()), []);
   const fetchWeather = async (ids: number[], restart: boolean, fromSelection = false) => {
     if (starting.current || ids.length === 0) return;
@@ -132,16 +132,16 @@ export default function Tracks({ project, onProject, units = DEFAULT_UNITS, meta
           {t("Blue Water…")}
         </button>
         <button data-feature="tracks:import-file" onClick={() => void chooseFiles()}
-          title={t("Import GeoJSON and CSV tracks; several files at once")}>
+          title={t("Import GPX, GeoJSON and CSV tracks; several files at once")}>
           {t("File…")}
         </button>
       </div>
       <BoatTrackSearch key={project.id} onImport={afterImport} metadataDirectory={metadataDirectory} />
       {tracks.length > 0 && (
         <div className="section-actions">
-          <button data-feature="tracks:select-all" disabled={tracks.every(source => selected.has(source.id))}
+          <button data-feature="tracks:select-all" disabled={tracks.every(source => source.track!.env_status === "ready" || selected.has(source.id))}
             title={t("Select all imported tracks for weather download")}
-            onClick={() => setSelected(new Set(tracks.map(source => source.id)))}>
+            onClick={() => setSelected(new Set(tracks.filter(source => source.track!.env_status !== "ready").map(source => source.id)))}>
             {t("Select all")}
           </button>
           <button data-feature="tracks:fetch-weather-selected" disabled={isStarting || selectedIds.length === 0}

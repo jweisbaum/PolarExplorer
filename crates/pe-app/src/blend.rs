@@ -413,7 +413,7 @@ pub struct BlendSummary {
     pub n_full: u32,
     /// Smoothing over the filled grid.
     pub smoothing: bool,
-    /// The statistic new tracks start with: `median`, `mean`, `p75`, `p90`.
+    /// The track statistic used for the blend: `min`, `median`, `mean`, `p75`, `p90` or `max`.
     pub default_statistic: String,
     /// `min`, `median`, `mean`, `max` or `p90` across polar sources.
     pub polar_statistic: String,
@@ -618,7 +618,7 @@ pub struct BlendSettingsInput {
     pub n_full: u32,
     /// Smooth the filled grid.
     pub smoothing: bool,
-    /// `median`, `mean`, `p75` or `p90`.
+    /// `min`, `median`, `mean`, `p75`, `p90` or `max`.
     pub default_statistic: String,
     /// `min`, `median`, `mean`, `max` or `p90` across polar sources.
     #[serde(default)]
@@ -766,7 +766,7 @@ impl From<&ExportProblem> for ExportProblemView {
             cell: None,
         };
         match problem {
-            ExportProblem::Empty => {}
+            ExportProblem::Empty | ExportProblem::BinaryMatrix => {}
             ExportProblem::AxisCollision {
                 axis,
                 first,
@@ -815,6 +815,10 @@ fn parse_format(format: &str) -> Result<PolarFileFormat> {
         "expedition" => Ok(PolarFileFormat::Expedition),
         "adrena" => Ok(PolarFileFormat::Adrena),
         "csv" => Ok(PolarFileFormat::Csv),
+        "qtvlm" => Ok(PolarFileFormat::QtVlm),
+        "opencpn" => Ok(PolarFileFormat::OpenCpn),
+        "luckgrib" => Ok(PolarFileFormat::LuckGrib),
+        "whirlwind_matrix_polar" => Ok(PolarFileFormat::WhirlwindMatrixPolar),
         other => Err(AppError::BadOption {
             field: "Export format",
             value: other.to_owned(),
@@ -827,6 +831,10 @@ fn format_name(format: PolarFileFormat) -> &'static str {
         PolarFileFormat::Expedition => "expedition",
         PolarFileFormat::Adrena => "adrena",
         PolarFileFormat::Csv => "csv",
+        PolarFileFormat::QtVlm => "qtvlm",
+        PolarFileFormat::OpenCpn => "opencpn",
+        PolarFileFormat::LuckGrib => "luckgrib",
+        PolarFileFormat::WhirlwindMatrixPolar => "whirlwind_matrix_polar",
     }
 }
 
@@ -872,9 +880,15 @@ pub fn preview_of(
             .collect()
     });
     let polar = custom.unwrap_or(blend.polar);
-    let (text, problem) = match pe_polar::export(format, &polar) {
-        Ok(text) => (text, None),
-        Err(problem) => (String::new(), Some(ExportProblemView::from(&problem))),
+    let (text, problem) = match format {
+        PolarFileFormat::WhirlwindMatrixPolar => match pe_polar::export::check(&polar) {
+            Ok(()) => (String::new(), None),
+            Err(problem) => (String::new(), Some(ExportProblemView::from(&problem))),
+        },
+        _ => match pe_polar::export(format, &polar) {
+            Ok(text) => (text, None),
+            Err(problem) => (String::new(), Some(ExportProblemView::from(&problem))),
+        },
     };
     Ok(ExportPreview {
         format: format_name(format).to_owned(),
@@ -893,6 +907,22 @@ pub fn export_bytes(project: &Project, format: &str, axes: Option<&ExportAxes>) 
     let format = parse_format(format)?;
     let (blend, custom) = export_grid(project, axes)?;
     let polar = custom.unwrap_or(blend.polar);
+    if format == PolarFileFormat::WhirlwindMatrixPolar {
+        pe_polar::export::check(&polar).map_err(|problem| AppError::Export {
+            code: problem.code(),
+            message: problem.to_string(),
+        })?;
+        let matrix =
+            <pe_polar::WhirlwindMatrixPolar as pe_polar::MatrixPolarExt>::from_polar(&polar)
+                .map_err(|error| AppError::BadOption {
+                    field: "WhirlwindMatrixPolar",
+                    value: error.to_string(),
+                })?;
+        return pe_polar::matrix::write(&matrix).map_err(|error| AppError::BadOption {
+            field: "WhirlwindMatrixPolar",
+            value: error.to_string(),
+        });
+    }
     pe_polar::export(format, &polar)
         .map(String::into_bytes)
         .map_err(|problem| AppError::Export {

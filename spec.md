@@ -721,7 +721,7 @@ Track
             model?, division?, race_start?, race_finish? } | File { name }
   fixes: [Fix { t, lat, lon, cog?, sog? }]      // as imported
   derivation: DerivationSettings                // §7.4
-  statistic: median | mean | p75 | p90          // §12.1
+  statistic: min | median | mean | p75 | p90 | max // §12.1
   samples: [Sample]                             // §7.5, derived + fetched env
   env_meta: { datasets: [(name, version, fetched_at)] }
 ```
@@ -999,6 +999,12 @@ adds the current certificates to it from ORC's own service (D31).
   - **Adrena / grid** (`.pol` tab-separated, `.csv` semicolon- or
     comma-separated): top-left cell `TWA\TWS`, `TWA/TWS` or `TWA`; first row
     TWS values; first column TWA values; cells BSP in knots.
+  - **WhirlwindMatrixPolar** (`.wmpolar`): the binary v1 layout described
+    below. It carries a speed matrix, a probability-density matrix, or both.
+    In this app, import requires the speed matrix. Every present SOG value is
+    retained as one point with its TWA, TWS and optional wave coordinates;
+    PDF-only files are refused. The current 2D blend uses the mean of the
+    points sharing one wind cell, while the project retains the full matrix.
 - A parse error names the file, line and column and imports nothing from that
   file. Other files in the same batch still import. Everything a batch
   imports is one undo entry.
@@ -1032,6 +1038,46 @@ adds the current certificates to it from ORC's own service (D31).
   same with semicolons.
 - Imported files are listed with colour, format and axes. **Remove** is
   undoable.
+
+### 6.1 WhirlwindMatrixPolar binary v1
+
+All integers and IEEE-754 f32 values are little-endian. The fixed header is
+`WWMPOLAR` (8 bytes), version `u16` (1), mode flags `u16` (bit 0 = SOG,
+bit 1 = sampled PDF, bit 2 = Gaussian PDF), six `u32` axis counts in this
+order: TWA, TWS, wave height, wave angle, wave period, SOG bin; then SOG and
+sampled-PDF quantization scales as two f32 values. The axes follow as f32
+arrays in that same order. The final block is LZ4 block compression with its
+uncompressed byte count prepended.
+
+The SOG payload has one u16 per `[wave height][wave angle][wave period][TWA]
+[TWS]` cell (wave dimensions omitted when their counts are all zero). Values
+decode as `u16 × SOG scale / 65534`; `65535` means missing. The sampled PDF
+mode has one u16 density value per `[wave height][wave angle][wave period]
+[TWA][TWS][SOG bin]` cell; each bin axis value is speed in knots and density
+values decode as `u16 × PDF scale / 65534`. The Gaussian PDF mode has two u16
+parameters (mean and standard deviation in knots) per
+`[wave height][wave angle][wave period][TWA][TWS]` cell. They use the fixed
+60-knot range and decode as `u16 × 60 / 65534`; `65535` in both fields means
+the Gaussian is missing, and a sentinel in only one field is invalid. The
+SOG-bin axis is empty when the sampled PDF mode is absent. The parameters
+describe the normal density `exp(-0.5 × ((speed - mean) / stddev)^2) /
+(stddev × sqrt(2π))`; zero standard deviation represents a point mass at the
+mean.
+Any combination of the SOG, sampled PDF, and Gaussian PDF payloads may be
+present. In the compressed body, present payloads follow in SOG, sampled PDF,
+then Gaussian PDF order.
+The three wave axes must either all be empty or all contain at least one
+value. Axes are strictly increasing and use metres, degrees, seconds, and
+knots as named. Readers reject unknown versions, unknown mode bits, invalid
+dimensions, invalid scales, and payloads larger than the format limits. A
+brief version 2 transition format that stored Gaussian parameters under the
+PDF flag remains readable. LZ4 compression and little-endian values keep
+bytes consistent across operating systems.
+
+Exporting a current blend writes the SOG mode with empty wave axes and no PDF
+mode, because the current blend has no wave-conditioned speed or PDF data.
+The binary codec supports any combination of all three modes. The current
+polar importer keeps only SOG data and rejects files without it.
 
 ---
 
@@ -1932,6 +1978,28 @@ colour dots by source / by Hs / by current speed / by time / by time of day.
 Polar nodes have no environment, so they keep their source colour in every
 colour mode.
 
+The **Display** selector also offers **Probability density (PDF)**. It rebuilds
+one conditional boat-speed distribution for each output-grid TWA/TWS cell from
+the dots currently admitted by the show toggles: visible track samples and
+visible polar nodes (including certificate nodes). It fits a Gaussian to the
+speeds in each wind cell using their mean and standard deviation, with a small
+minimum deviation for cells containing identical speeds. The Gaussian is
+normalized over the valid 0–60 knot range. Each wind cell is a continuous
+Gaussian volume, bounded by its wind-angle and wind-speed ranges and four
+standard deviations of boat speed. The renderer integrates the field per
+pixel, with no internal boat-speed sheets. Cells are opaque and write depth
+at their actual boundary; subtle curved outlines also respect that depth,
+so rear cells and hidden edges do not draw through nearer cells. Colour shows
+probability density; only the context cells fade when a cell is selected.
+Track and global filters, excluded and filtered-point
+toggles, wave ranges, and Split Wave Angle determine the inputs. Changing any
+of them rebuilds the PDFs. PDF mode hides
+the raw surfaces, disables point selection and editing gestures, and retains
+the current layout and camera controls. Hovering a wind cell highlights it
+and shows its TWA, TWS and sample count. Clicking emphasizes and zooms to that
+cell, dims the other cells, and shows its empirical P10, P25, P50, P75 and P90
+boat speeds; **Show all cells** or Escape restores the full PDF view.
+
 **Time of day** is the band of the local solar day a sample was sailed in,
 by local mean solar time: UTC shifted by the sample's longitude at 15° an
 hour, with no time-zone table and no ephemeris, so the same on every
@@ -2217,8 +2285,9 @@ Project setting, editable in Blend settings:
   (export writes axes with two decimals, §6). The editor says which values
   are wrong before anything is sent; Rust checks again. "Default grid" puts
   back the defaults above.
-- Blend settings also hold: the statistic a newly imported track starts
-  with (90th percentile by default; each track keeps its own, §12.1), the
+- Blend settings also hold: the track statistic used for the blend (minimum,
+  median, mean, 75th or 90th percentile, or maximum; 90th percentile by
+  default; each track keeps its own, §12.1), the
   samples a track cell needs (5), the samples for full confidence (`n_full`,
   30), smoothing (off) and current correction (§7.5). **Apply** makes
   everything one undo entry ("Change blend

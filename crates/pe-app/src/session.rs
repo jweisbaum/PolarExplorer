@@ -91,6 +91,15 @@ impl OpenProject {
         self.derived.invalidate_all();
     }
 
+    /// Rejects an operation that would alter an imported read-only tab.
+    pub fn ensure_editable(&self) -> Result<()> {
+        if self.project.read_only {
+            Err(AppError::ReadOnlyTab)
+        } else {
+            Ok(())
+        }
+    }
+
     /// Records that a track's samples were written outside a command (the
     /// environment fetch): only that track's derived data is recomputed.
     pub fn touch_samples(&mut self, source: u64) {
@@ -105,6 +114,7 @@ impl OpenProject {
 
     /// Applies a command through the history and marks the change.
     pub fn apply(&mut self, command: Command) -> Result<()> {
+        self.ensure_editable()?;
         let touches = crate::derived::touches(&command);
         self.history.push(&mut self.project, command)?;
         self.derived.record(&touches);
@@ -116,6 +126,7 @@ impl OpenProject {
     /// Applies a command that coalesces with the previous one of the same
     /// gesture (a slider or a node drag).
     pub fn apply_coalesced(&mut self, command: Command, key: &str) -> Result<()> {
+        self.ensure_editable()?;
         let touches = crate::derived::touches(&command);
         self.history
             .push_coalesced(&mut self.project, command, key)?;
@@ -127,6 +138,7 @@ impl OpenProject {
 
     /// Reverses the most recent change; whether there was one.
     pub fn undo(&mut self) -> Result<bool> {
+        self.ensure_editable()?;
         let touches = self
             .history
             .cursor()
@@ -144,6 +156,7 @@ impl OpenProject {
 
     /// Reapplies the most recently undone change; whether there was one.
     pub fn redo(&mut self) -> Result<bool> {
+        self.ensure_editable()?;
         let touches = self
             .history
             .entries()
@@ -268,6 +281,7 @@ impl Session {
 
     /// Saves the open project to `path` and remembers it as recent.
     pub fn save_to(&mut self, path: PathBuf) -> Result<()> {
+        self.require_open()?.ensure_editable()?;
         io::save(&self.document()?, &path).doing("save the project to", path.display())?;
         for boat in &mut self.boats {
             boat.path = Some(path.clone());

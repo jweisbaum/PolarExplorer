@@ -845,6 +845,7 @@ fn positions(state: &AppState, sources: &[u64], restart: bool) -> Result<Gathere
     state.with_session(|session| {
         let data_source = session.settings.data_source;
         let open = session.require_open()?;
+        open.ensure_editable()?;
         let mut labels = Vec::new();
         let mut points = Vec::new();
         for &id in sources {

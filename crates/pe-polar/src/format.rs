@@ -5,11 +5,12 @@
 //! `TWS` then `TWA BSP` pairs, and rows may have different lengths, so the
 //! polar keeps each wind speed's own angles on a union TWA axis with empty
 //! cells where a row has no point. **Adrena / grid** (`.pol` tab-separated,
-//! `.csv` semicolon- or comma-separated) is a table: top-left `TWA\TWS`,
-//! `TWA/TWS` or `TWA`, wind speeds across, angles down.
+//! `.csv` semicolon- or comma-separated), **qtVlm** (`.csv`, semicolon),
+//! **OpenCPN** (`.pol`, semicolon) and **LuckGrib** (spreadsheet CSV/TSV) are
+//! tables with wind speeds across and angles down.
 //!
 //! The format is decided from the content, never from the extension alone: a
-//! first meaningful line starting with the `TWA` header is a table, one
+//! first meaningful line starting with a recognized table header is a table, one
 //! starting with a number is Expedition.
 //!
 //! **Every error names its line and column** (1-based, counted in
@@ -28,9 +29,9 @@ use thiserror::Error;
 
 use crate::{MAX_SPEED_KN, MAX_TWS_KN, expedition, table};
 
-/// The largest file read. A polar is a few kilobytes; anything near this is
-/// not one, and refusing it early bounds the work a hostile file can cause.
-pub const MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
+/// The largest polar file read. Text formats remain small; the larger limit
+/// accommodates compressed WhirlwindMatrixPolar matrices.
+pub const MAX_FILE_BYTES: usize = crate::matrix::MAX_MATRIX_FILE_BYTES;
 
 /// The most distinct values either axis may have. Real polars have tens; the
 /// limit bounds the grid a hostile file could make the reader allocate (an
@@ -84,12 +85,15 @@ pub enum Reason {
     /// A readable file with no boat speed in it.
     #[error("the file holds no boat speeds")]
     NoSpeeds,
+    /// A malformed WhirlwindMatrixPolar binary file.
+    #[error("the WhirlwindMatrixPolar data is invalid: {0}")]
+    MatrixInvalid(String),
 }
 
 impl Reason {
     /// Every [`Reason::code`], for the interface's translation table to be
     /// checked against.
-    pub const CODES: [&'static str; 14] = [
+    pub const CODES: [&'static str; 15] = [
         "empty",
         "too-large",
         "unknown-format",
@@ -104,6 +108,7 @@ impl Reason {
         "too-many-cells",
         "too-many-values",
         "no-speeds",
+        "matrix-invalid",
     ];
 
     /// A stable identifier for the interface to translate by.
@@ -123,6 +128,7 @@ impl Reason {
             Self::TooManyCells => "too-many-cells",
             Self::TooManyValues => "too-many-values",
             Self::NoSpeeds => "no-speeds",
+            Self::MatrixInvalid(_) => "matrix-invalid",
         }
     }
 }
@@ -163,6 +169,8 @@ pub struct Parsed {
     pub format: PolarFileFormat,
     /// The grid.
     pub polar: PolarGrid,
+    /// Full matrix payload, retained when importing WhirlwindMatrixPolar.
+    pub matrix: Option<pe_core::polar::WhirlwindMatrixPolar>,
 }
 
 /// Decodes a file's bytes: UTF-8 (with or without a BOM), UTF-16 with a BOM
@@ -385,18 +393,59 @@ pub fn detect(bytes: &[u8]) -> std::result::Result<PolarFileFormat, PolarError> 
     if bytes.len() > MAX_FILE_BYTES {
         return Err(PolarError::whole(Reason::TooLarge));
     }
+    if bytes.starts_with(b"WWMPOLAR") {
+        return Ok(PolarFileFormat::WhirlwindMatrixPolar);
+    }
     detect_text(&decode(bytes))
 }
 
 fn detect_text(text: &str) -> Result<PolarFileFormat> {
-    let mut lines = meaningful(text);
+    let mut lines = meaningful(text).peekable();
     let Some((line, first)) = lines.next() else {
         return Err(PolarError::whole(Reason::Empty));
     };
     let separator = table_separator(first);
     let lead = fields(first, separator);
+    // LuckGrib accepts spreadsheet tables whose top-left label is ignored.
+    // Recognize that shape by its numeric wind-speed row and angle rows.
+    if lead.len() >= 2
+        && !lead
+            .first()
+            .is_some_and(|field| is_table_header(field.text))
+        && lead[1..]
+            .iter()
+            .all(|field| tws_speed(line, *field, separator).is_ok())
+        && lines.peek().is_some_and(|(row_line, row)| {
+            fields(row, separator)
+                .first()
+                .is_some_and(|field| angle(*row_line, *field, separator).is_ok())
+        })
+    {
+        return Ok(PolarFileFormat::LuckGrib);
+    }
     if lead.first().is_some_and(|f| is_table_header(f.text)) {
         return Ok(match separator {
+            Separator::Semicolon
+                if lead
+                    .first()
+                    .is_some_and(|field| field.text.eq_ignore_ascii_case("TWA/TWS")) =>
+            {
+                PolarFileFormat::OpenCpn
+            }
+            Separator::Semicolon
+                if lead
+                    .first()
+                    .is_some_and(|field| field.text.eq_ignore_ascii_case("TWA\\TWS")) =>
+            {
+                PolarFileFormat::QtVlm
+            }
+            Separator::Tab | Separator::Whitespace
+                if lead
+                    .first()
+                    .is_some_and(|field| field.text.eq_ignore_ascii_case("TWA")) =>
+            {
+                PolarFileFormat::LuckGrib
+            }
             Separator::Semicolon | Separator::Comma => PolarFileFormat::Csv,
             Separator::Tab | Separator::Whitespace => PolarFileFormat::Adrena,
         });
@@ -427,6 +476,17 @@ pub fn read(bytes: &[u8]) -> std::result::Result<Parsed, PolarError> {
     if bytes.len() > MAX_FILE_BYTES {
         return Err(PolarError::whole(Reason::TooLarge));
     }
+    if bytes.starts_with(b"WWMPOLAR") {
+        let matrix = crate::matrix::read(bytes)
+            .map_err(|error| PolarError::whole(Reason::MatrixInvalid(error.to_string())))?;
+        let polar = crate::matrix::MatrixPolarExt::to_polar(&matrix)
+            .map_err(|error| PolarError::whole(Reason::MatrixInvalid(error.to_string())))?;
+        return Ok(Parsed {
+            format: PolarFileFormat::WhirlwindMatrixPolar,
+            polar,
+            matrix: Some(matrix),
+        });
+    }
     let text = decode(bytes);
     let format = detect_text(&text)?;
     parse(format, &text)
@@ -437,6 +497,9 @@ pub fn read_as(
     format: PolarFileFormat,
     bytes: &[u8],
 ) -> std::result::Result<PolarGrid, PolarError> {
+    if format == PolarFileFormat::WhirlwindMatrixPolar {
+        return read(bytes).map(|parsed| parsed.polar);
+    }
     if bytes.len() > MAX_FILE_BYTES {
         return Err(PolarError::whole(Reason::TooLarge));
     }
@@ -446,17 +509,33 @@ pub fn read_as(
 fn parse(format: PolarFileFormat, text: &str) -> Result<Parsed> {
     let polar = match format {
         PolarFileFormat::Expedition => expedition::read(text)?,
-        PolarFileFormat::Adrena | PolarFileFormat::Csv => table::read(text)?,
+        PolarFileFormat::Adrena
+        | PolarFileFormat::Csv
+        | PolarFileFormat::QtVlm
+        | PolarFileFormat::OpenCpn
+        | PolarFileFormat::LuckGrib => table::read(text)?,
+        PolarFileFormat::WhirlwindMatrixPolar => {
+            return Err(PolarError::whole(Reason::UnknownFormat));
+        }
     };
-    Ok(Parsed { format, polar })
+    Ok(Parsed {
+        format,
+        polar,
+        matrix: None,
+    })
 }
 
 /// Writes a polar in the given format. Deterministic to the byte.
 pub fn write(format: PolarFileFormat, polar: &PolarGrid) -> String {
     match format {
         PolarFileFormat::Expedition => expedition::write(polar),
-        PolarFileFormat::Adrena => table::write(polar, '\t'),
-        PolarFileFormat::Csv => table::write(polar, ';'),
+        PolarFileFormat::Adrena => table::write(polar, '\t', "TWA\\TWS"),
+        PolarFileFormat::Csv => table::write(polar, ';', "TWA\\TWS"),
+        PolarFileFormat::QtVlm => table::write(polar, ';', "TWA\\TWS"),
+        PolarFileFormat::OpenCpn => table::write(polar, ';', "twa/tws"),
+        PolarFileFormat::LuckGrib => table::write(polar, '\t', "TWA"),
+        // Binary output is provided by `matrix::write`.
+        PolarFileFormat::WhirlwindMatrixPolar => String::new(),
     }
 }
 
@@ -595,6 +674,7 @@ mod tests {
             Reason::TooManyCells,
             Reason::TooManyValues,
             Reason::NoSpeeds,
+            Reason::MatrixInvalid(String::new()),
         ];
         for reason in &every {
             match reason {
@@ -611,7 +691,8 @@ mod tests {
                 | Reason::MissingBsp
                 | Reason::TooManyCells
                 | Reason::TooManyValues
-                | Reason::NoSpeeds => {}
+                | Reason::NoSpeeds
+                | Reason::MatrixInvalid(_) => {}
             }
         }
         let codes: Vec<&str> = every.iter().map(Reason::code).collect();

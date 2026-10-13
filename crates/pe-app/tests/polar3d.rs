@@ -22,6 +22,7 @@ fn file_source(id: u64, label: &str, polar: PolarGrid) -> Source {
         label,
         Colour::parse("#4e79a7").unwrap(),
         SourceKind::PolarFile {
+            matrix: None,
             format: PolarFileFormat::Expedition,
             file_name: format!("{label}.txt"),
             polar,

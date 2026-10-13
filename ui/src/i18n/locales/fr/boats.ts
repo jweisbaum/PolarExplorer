@@ -1,4 +1,6 @@
 export default {
+  'Export all tabs': 'Exporter tous les onglets',
+  'Add Tab': 'Ajouter un onglet',
   "All boat details": "Toutes les informations du bateau",
   "Filters and display": "Filtres et affichage",
   "Polar {number}": "Polaire {number}",

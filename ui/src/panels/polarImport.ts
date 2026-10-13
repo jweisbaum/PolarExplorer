@@ -28,6 +28,7 @@ export function reasonText(code: string): string {
     case "too-many-cells": return t("this row has more cells than the header has wind speeds");
     case "too-many-values": return t("the polar has too many wind angles or wind speeds");
     case "no-speeds": return t("the file holds no boat speeds");
+    case "matrix-invalid": return t("the WhirlwindMatrixPolar data is invalid or contains no boat-speed mode");
     case "unreadable": return t("the file could not be read");
     default: return t("the file could not be imported");
   }
@@ -47,6 +48,10 @@ export const FORMAT_NAMES: Readonly<Record<string, string>> = {
   expedition: "Expedition",
   adrena: "Adrena",
   csv: "CSV",
+  qtvlm: "qtVlm",
+  opencpn: "OpenCPN",
+  luckgrib: "LuckGrib",
+  whirlwind_matrix_polar: "WhirlwindMatrixPolar",
 };
 
 /** An axis value as the list shows it: at most two decimals. */

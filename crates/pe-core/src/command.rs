@@ -1030,6 +1030,7 @@ mod tests {
                 format: PolarFileFormat::Adrena,
                 file_name: "new.pol".to_owned(),
                 polar: PolarGrid::empty(vec![60.0], vec![8.0]),
+                matrix: None,
             },
         )
     }

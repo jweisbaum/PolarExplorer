@@ -11,6 +11,10 @@ use crate::polar::validate_axis;
 use crate::source::{Colour, PALETTE, Source};
 use crate::track::SegmentStatistic;
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// The document schema version this build writes.
 ///
 /// Opening a newer version is refused; older versions migrate forward on open
@@ -296,6 +300,10 @@ pub struct Project {
     pub sources: Vec<Source>,
     /// The next id to allocate. Ids are never reused.
     pub next_id: u64,
+    /// Imported `.petab` tabs are locked, including when their parent project
+    /// is saved and reopened.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub read_only: bool,
     /// Additional independent boats, in tab order. Only the root document
     /// has tabs; each child uses its own ids, grid and source overlays.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -315,6 +323,7 @@ impl Project {
             blend: BlendSettings::default(),
             sources: Vec::new(),
             next_id: 1,
+            read_only: false,
             boat_tabs: Vec::new(),
         }
     }
@@ -499,6 +508,7 @@ mod tests {
                 format: PolarFileFormat::Expedition,
                 file_name: "a.txt".to_owned(),
                 polar: PolarGrid::empty(vec![45.0], vec![10.0]),
+                matrix: None,
             },
         )
     }

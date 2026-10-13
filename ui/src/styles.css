@@ -89,6 +89,7 @@ select, input, textarea {
 .layout-switch svg { display: block; }
 .statusbar-actions { display: flex; align-items: center; }
 .statusbar-actions:empty { display: none; }
+.read-only-status { color: #d04444; font-size: 11px; font-weight: 700; margin-right: 10px; }
 /* The boat tabs stand on the boat's own toolbar. The one on show shares that
    toolbar's surface and has no line under it, so it reads as the front of
    the page below; the others sit back on the strip. Each is its name and,
@@ -109,6 +110,8 @@ select, input, textarea {
   border-color: var(--border); border-bottom-color: var(--surface);
   box-shadow: inset 0 2px 0 var(--accent);
 }
+.boat-tab.read-only { border-color: #d04444; }
+.boat-tab.read-only.selected { border-bottom-color: var(--surface); box-shadow: inset 0 2px 0 #d04444; }
 .boat-tab button { border: none; background: transparent; color: inherit; }
 .boat-tab button:hover:not(:disabled) { background: transparent; }
 .boat-tab [role="tab"] {
@@ -140,7 +143,6 @@ select, input, textarea {
 .boats-2 .wave-range-row, .boats-4 .wave-range-row { grid-template-columns: minmax(70px, 1fr) 3em minmax(60px, 2fr) 3em; }
 .boats-4 .view3d-side { max-height: calc(100% - 190px); }
 .boats-4 .view3d-toolbar { max-width: calc(100% - 20px); flex-wrap: wrap; }
-.boat-export-dialog { max-height: 80vh; overflow: auto; }
 
 /* --- Title bar --------------------------------------------------------- */
 
@@ -477,13 +479,28 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 /* The 2D polar plot (spec.md 9.2) */
 .polar-plot { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .polar-plot-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.polar-plot-all, .polar-plot-filtered, .polar-plot-excluded, .polar-plot-colour { display: flex; align-items: center; gap: 3px; font-size: 11px; white-space: nowrap; }
+.polar-plot-all, .polar-plot-filtered, .polar-plot-excluded, .polar-plot-colour, .polar-plot-display { display: flex; align-items: center; gap: 3px; font-size: 11px; white-space: nowrap; }
+.polar-plot-pdf-legend { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.polar-plot-pdf-gradient { display: inline-block; width: 64px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #440154, #3b528b, #21918c, #5ec962, #fde725); }
 /* The four bands of the local solar day, each beside its colour (spec.md 9.2, 10.2). */
 .day-bands { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--muted); }
 .day-bands li { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .day-band-swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .view3d-bands { flex-direction: column; }
 .polar-plot-controls input[type="range"] { flex: 1; min-width: 60px; }
+.polar-plot-range-toggle { display: flex; align-items: center; gap: 3px; font-size: 11px; white-space: nowrap; }
+.polar-plot-range-sliders { position: relative; flex: 1; min-width: 60px; height: 18px; touch-action: none; cursor: grab; }
+.polar-plot-range-sliders:active { cursor: grabbing; }
+.polar-plot-range-sliders::before, .polar-plot-range-sliders::after { content: ""; position: absolute; top: 7px; height: 4px; border-radius: 3px; pointer-events: none; }
+.polar-plot-range-sliders::before { left: 0; right: 0; background: var(--border); }
+.polar-plot-range-sliders::after { left: var(--range-start); right: calc(100% - var(--range-end)); background: var(--accent); }
+.polar-plot-range-sliders input[type="range"] { position: absolute; inset: 0; width: 100%; min-width: 0; height: 18px; margin: 0; flex: none; appearance: none; background: transparent; pointer-events: none; }
+.polar-plot-range-sliders input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: transparent; }
+.polar-plot-range-sliders input[type="range"]::-moz-range-track { height: 4px; background: transparent; }
+.polar-plot-range-sliders input[type="range"]::-webkit-slider-thumb { width: 12px; height: 12px; margin-top: -4px; appearance: none; border: 1px solid var(--surface); border-radius: 50%; background: var(--accent); pointer-events: auto; }
+.polar-plot-range-sliders input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border: 1px solid var(--surface); border-radius: 50%; background: var(--accent); pointer-events: auto; }
+.polar-plot-range-sliders .range-lower { z-index: 2; }
+.polar-plot-range-sliders .range-upper { z-index: 3; }
 .polar-plot-tws-value { font-size: 11px; width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
 .polar-plot-canvas-wrap { position: relative; flex: 1; min-height: 0; aspect-ratio: 1; }
 .polar-plot-panel .polar-plot-canvas-wrap { width: 100%; }
@@ -539,6 +556,7 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 /* On the stage the controls are one row along the top: the wind speed
    slider a usable length, not the stage's whole width. */
 .polar-plot-stage .polar-plot-controls input[type="range"] { flex: 0 1 220px; }
+.polar-plot-stage .polar-plot-range-sliders { flex: 0 1 220px; min-width: 60px; }
 .polar-plot-stage .polar-plot-controls, .polar-plot-stage .polar-plot-bands { justify-content: center; }
 
 /* --- Compare (spec.md 11) --------------------------------------------- */
@@ -747,6 +765,9 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 .view3d-show legend { padding: 0 4px; }
 .view3d-colour { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
 .view3d-ramp { display: flex; gap: 6px; align-items: center; }
+.view3d-pdf-legend { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.view3d-pdf-percentiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 8px; }
+.view3d-canvas.pdf-interactive { cursor: crosshair; }
 .view3d-ramp-bar {
   flex: 1;
   height: 8px;
@@ -1001,6 +1022,14 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 .modal-actions button.danger { color: var(--error); border-color: var(--danger-border); }
 .modal-actions button.danger:hover { background: var(--danger-surface); }
 
+.modal.boat-export-dialog { display: grid; gap: 24px; padding: 28px; max-height: 80vh; overflow: auto; }
+.modal.boat-export-dialog h2 { margin: 0; }
+.boat-export-format { display: grid; gap: 8px; min-width: 0; }
+.boat-export-format select { width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; }
+.boat-export-dialog > p, .boat-export-dialog > ul { margin: 0; overflow-wrap: anywhere; }
+.boat-export-dialog .modal-actions { gap: 12px; padding-top: 8px; flex-wrap: wrap; }
+.boat-export-dialog .modal-actions button { min-height: 38px; padding: 8px 16px; }
+
 /* --- Settings ---------------------------------------------------------- */
 
 .modal.settings { max-width: 36rem; max-height: 82vh; overflow-y: auto; }
@@ -1027,8 +1056,10 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
   font-size: 11px;
 }
 .modal.settings.export-dialog { width: min(760px, 94vw); max-width: none; }
-.export-format, .export-grid { border: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
-.export-format legend, .export-grid legend { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+.export-format { display: grid; gap: 8px; min-width: 0; margin: 16px 0 20px; }
+.export-format select { width: 100%; min-height: 40px; padding: 8px 12px; }
+.export-grid { border: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.export-format > span, .export-grid legend { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
 .export-preview { max-height: 34vh; overflow: auto; margin: 8px 0 12px; border: 1px solid var(--border-subtle); }
 .export-preview table { border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; width: 100%; }
 .export-preview th, .export-preview td { padding: 2px 6px; text-align: right; border-bottom: 1px solid var(--border-subtle); }

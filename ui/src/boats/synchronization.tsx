@@ -3,6 +3,10 @@ import type { View } from "../polar/scene3d";
 import type { Layout } from "../polar/geometry3d";
 
 export type HoverPoint = { twa: number; tws: number };
+export interface BoatViewState {
+  camera: View | null;
+  layout: Layout | null;
+}
 type SyncEvent =
   | { kind: "camera"; boat: number; view: View; layout: Layout }
   | { kind: "hover"; boat: number; point: HoverPoint | null }

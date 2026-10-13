@@ -27,6 +27,9 @@ pub enum Reason {
     /// JSON, but not a GeoJSON feature or feature collection.
     #[error("this is not a GeoJSON Feature or FeatureCollection")]
     NotGeoJson,
+    /// XML, but not a usable GPX track.
+    #[error("this is not a usable GPX track: {0}")]
+    BadGpx(String),
     /// A geometry other than a Point, LineString or MultiLineString.
     #[error("a {0} geometry is not a track")]
     UnsupportedGeometry(String),
@@ -82,6 +85,7 @@ impl Reason {
             Self::NotText => "not-text",
             Self::NotJson(_) => "not-json",
             Self::NotGeoJson => "not-geojson",
+            Self::BadGpx(_) => "bad-gpx",
             Self::UnsupportedGeometry(_) => "unsupported-geometry",
             Self::BadPosition => "bad-position",
             Self::NoTime => "no-time",
@@ -101,7 +105,8 @@ impl Reason {
 
 /// A refused track file: where, and why. CSV and JSON syntax errors name a
 /// line and column; a GeoJSON feature that is well-formed JSON but not a
-/// usable track names the feature (0-based, in file order).
+/// usable track names the feature (0-based, in file order). GPX XML errors
+/// name the file-level reason.
 #[derive(Debug, Clone, PartialEq, Error)]
 #[error("{}{reason}", where_text(*.line, *.column, *.feature))]
 pub struct TrackFileError {

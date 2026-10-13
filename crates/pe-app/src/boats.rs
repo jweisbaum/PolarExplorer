@@ -3,9 +3,9 @@ pub mod matching;
 pub mod tracker_project;
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use pe_core::{Boat, Command, Project};
+use pe_core::{Boat, Command, Project, ProjectId, io};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -19,6 +19,7 @@ pub struct BoatTab {
     pub id: u64,
     pub name: String,
     pub details: BTreeMap<String, String>,
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -48,6 +49,7 @@ pub fn list(state: &AppState) -> Result<BoatTabs> {
                         open.project.boat.name.clone()
                     },
                     details: open.project.boat.details.clone(),
+                    read_only: open.project.read_only,
                 })
                 .collect(),
         })
@@ -69,6 +71,7 @@ pub fn add(state: &AppState, name: String) -> Result<ProjectSummary> {
     }
     state.with_session(|session| {
         let root = session.require_open()?;
+        root.ensure_editable()?;
         let mut open = OpenProject::created(Project::new(
             name.clone(),
             Boat {
@@ -88,6 +91,128 @@ pub fn add(state: &AppState, name: String) -> Result<ProjectSummary> {
 #[tauri::command]
 pub fn add_boat(state: tauri::State<'_, AppState>, name: String) -> Result<ProjectSummary> {
     add(&state, name)
+}
+
+/// Imports one portable tab archive into the open project's tab list. The
+/// input archive is required to be standalone; its imported copy always gets
+/// a fresh identity and is locked, regardless of its embedded flag.
+pub fn import_tab(state: &AppState, path: &Path) -> Result<ProjectSummary> {
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("petab"))
+    {
+        return Err(AppError::BadOption {
+            field: "Tab file",
+            value: path.display().to_string(),
+        });
+    }
+    let mut project = io::load(path).doing("read the tab from", path.display())?;
+    if !project.boat_tabs.is_empty() {
+        return Err(AppError::Core(pe_core::CoreError::Invalid(
+            "a .petab file must hold one standalone tab".to_owned(),
+        )));
+    }
+    project.id = ProjectId::fresh();
+    project.read_only = true;
+    state.with_session(|session| {
+        let root = session.require_open()?;
+        root.ensure_editable()?;
+        let root_path = root.path.clone();
+        root.touch();
+        let mut open = OpenProject::created(project);
+        open.path = root_path;
+        let summary = ProjectSummary::of(&mut open);
+        session.boats.push(open);
+        Ok(summary)
+    })
+}
+
+#[tauri::command(async)]
+pub fn import_boat_tab(state: tauri::State<'_, AppState>, path: String) -> Result<ProjectSummary> {
+    import_tab(&state, Path::new(&path))
+}
+
+/// Writes the selected tab and all its raw sources and track data as a
+/// platform-independent `.petab` archive. The file copy is locked; the tab
+/// in the current project remains editable.
+pub fn export_tab(state: &AppState, path: &Path) -> Result<String> {
+    let project = state.with_session(|session| {
+        let open = session.require_open()?;
+        let mut project = open.project.clone();
+        project.boat_tabs.clear();
+        project.read_only = true;
+        Ok(project)
+    })?;
+    let path = with_tab_extension(path.to_path_buf());
+    let bytes = io::to_bytes(&project).doing("prepare the tab export for", path.display())?;
+    io::write_atomic(&path, &bytes).doing("write the tab export to", path.display())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command(async)]
+pub fn export_boat_tab(
+    state: tauri::State<'_, AppState>,
+    boat_context: Option<u64>,
+    path: String,
+) -> Result<String> {
+    export_tab(&state.scoped(boat_context), Path::new(&path))
+}
+
+fn with_tab_extension(path: PathBuf) -> PathBuf {
+    if path
+        .extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("petab"))
+    {
+        return path;
+    }
+    let mut name = path.into_os_string();
+    name.push(".petab");
+    PathBuf::from(name)
+}
+
+/// Exports every tab as one standalone, locked project. The lock is written
+/// into the exported copy only; the open project remains editable.
+pub fn export_locked_project(state: &AppState, path: &Path) -> Result<String> {
+    let mut project = state.with_session(|session| session.document())?;
+    fn lock(project: &mut Project) {
+        project.read_only = true;
+        for tab in &mut project.boat_tabs {
+            lock(tab);
+        }
+    }
+    lock(&mut project);
+
+    let path = with_locked_extension(path.to_path_buf());
+    let bytes =
+        io::to_bytes(&project).doing("prepare the read-only project export for", path.display())?;
+    io::write_atomic(&path, &bytes)
+        .doing("write the read-only project export to", path.display())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command(async)]
+pub async fn export_locked_boat_project(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || export_locked_project(&state, Path::new(&path)))
+        .await
+        .map_err(|error| {
+            AppError::Internal(format!("The read-only project export failed: {error}"))
+        })?
+}
+
+fn with_locked_extension(path: PathBuf) -> PathBuf {
+    if path
+        .extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("pelocked"))
+    {
+        return path;
+    }
+    let mut name = path.into_os_string();
+    name.push(".pelocked");
+    PathBuf::from(name)
 }
 
 pub fn rename(state: &AppState, name: String) -> Result<ProjectSummary> {
@@ -127,6 +252,7 @@ pub struct RemovedBoat {
 pub fn remove(state: &AppState, project_id: u64, boat_id: u64) -> Result<ProjectSummary> {
     state.with_session(|session| {
         let root = session.require_open()?;
+        root.ensure_editable()?;
         if root.project.id.raw() != project_id {
             return Err(AppError::NoProjectOpen);
         }
@@ -137,10 +263,14 @@ pub fn remove(state: &AppState, project_id: u64, boat_id: u64) -> Result<Project
         }
         let removed = if boat_id == project_id {
             let mut promoted = session.boats.remove(0);
-            let promoted_name = std::mem::replace(
-                &mut promoted.project.name,
-                session.require_open()?.project.name.clone(),
-            );
+            let promoted_name = if promoted.project.read_only {
+                None
+            } else {
+                Some(std::mem::replace(
+                    &mut promoted.project.name,
+                    session.require_open()?.project.name.clone(),
+                ))
+            };
             promoted.path = session.require_open()?.path.clone();
             promoted.saves = session.require_open()?.saves;
             promoted.touch();
@@ -152,7 +282,7 @@ pub fn remove(state: &AppState, project_id: u64, boat_id: u64) -> Result<Project
             RemovedBoat {
                 open,
                 index: 0,
-                promoted_name: Some(promoted_name),
+                promoted_name,
             }
         } else {
             let index = session
@@ -177,7 +307,9 @@ pub fn remove(state: &AppState, project_id: u64, boat_id: u64) -> Result<Project
 
 pub fn restore(state: &AppState, project_id: u64) -> Result<ProjectSummary> {
     state.with_session(|session| {
-        if session.require_open()?.project.id.raw() != project_id {
+        let root = session.require_open()?;
+        root.ensure_editable()?;
+        if root.project.id.raw() != project_id {
             return Err(AppError::NoProjectOpen);
         }
         let mut removed = session
@@ -249,6 +381,10 @@ pub fn export_all(state: &AppState, directory: &Path, format: &str) -> Result<Bo
         "expedition" => "txt",
         "adrena" => "pol",
         "csv" => "csv",
+        "qtvlm" => "csv",
+        "opencpn" => "pol",
+        "luckgrib" => "tsv",
+        "whirlwind_matrix_polar" => "wmpolar",
         other => {
             return Err(AppError::BadOption {
                 field: "Export format",

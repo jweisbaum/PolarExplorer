@@ -117,6 +117,7 @@ impl SourceSummary {
                 format,
                 file_name,
                 polar,
+                ..
             } => (
                 pe_polar::cell_count(polar),
                 Some(PolarFileSummary {
@@ -158,6 +159,10 @@ fn format_name(format: PolarFileFormat) -> &'static str {
         PolarFileFormat::Expedition => "expedition",
         PolarFileFormat::Adrena => "adrena",
         PolarFileFormat::Csv => "csv",
+        PolarFileFormat::QtVlm => "qtvlm",
+        PolarFileFormat::OpenCpn => "opencpn",
+        PolarFileFormat::LuckGrib => "luckgrib",
+        PolarFileFormat::WhirlwindMatrixPolar => "whirlwind_matrix_polar",
     }
 }
 
@@ -377,6 +382,7 @@ pub fn save(state: &AppState) -> Result<ProjectSummary> {
 /// decide under the same lock whether the save should happen at all
 /// (autosave in Save mode, which must not write after "Don't save").
 pub(crate) fn save_locked(state: &AppState, session: &mut Session) -> Result<ProjectSummary> {
+    session.require_open()?.ensure_editable()?;
     let path = session
         .require_open()?
         .path
@@ -402,6 +408,7 @@ pub fn save_as(state: &AppState, path: String) -> Result<ProjectSummary> {
     // by the same filter that saved it.
     let path = with_extension(PathBuf::from(path));
     state.with_session(|session| {
+        session.require_open()?.ensure_editable()?;
         session.save_to(path)?;
         persist_recent(state, session);
         let open = session.require_open()?;

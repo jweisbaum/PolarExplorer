@@ -23,6 +23,7 @@ export function trackReasonText(code: string): string {
     case "not-text": return t("the file is not text");
     case "not-json": return t("this is not valid JSON");
     case "not-geojson": return t("this is not a GeoJSON Feature or FeatureCollection");
+    case "bad-gpx": return t("this is not a usable GPX track");
     case "unsupported-geometry": return t("only Point, LineString and MultiLineString features are tracks");
     case "bad-position": return t("this position is not a longitude and latitude on Earth");
     case "no-time": return t("this position has no time");

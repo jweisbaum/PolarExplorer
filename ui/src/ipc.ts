@@ -133,6 +133,8 @@ export function boatApi(boatContext?: number) {
   restoreBoat: (projectId: number) => call<ProjectSummary>("restore_boat", { projectId }),
   renameBoat: (name: string) => call<ProjectSummary>("rename_boat", { name }),
   exportAllPolars: (directory: string, format: string) => call<import("./generated/BoatExportResult").BoatExportResult>("export_all_polars", { directory, format }),
+  exportLockedProject: (path: string) => call<string>("export_locked_boat_project", { path }),
+  exportTab: (path: string) => call<string>("export_boat_tab", { path }),
   /** The ORC scrape's progress; fetches nothing. */
   orcScrapeStatus: () => call<import("./generated/OrcProgress").OrcProgress>("orc_scrape_status"),
   /** Downloads every country's valid ORC certificates from data.orc.org. */
@@ -161,6 +163,8 @@ export function boatApi(boatContext?: number) {
   /** Opens a `.wpsproj`. A newer file fails with kind "schema-too-new". */
   openProject: (path: string, discardUnsaved = false) =>
     call<ProjectSummary>("open_project", { path, discardUnsaved }),
+  /** Imports a portable `.petab` as a locked tab in the open project. */
+  importTab: (path: string) => call<ProjectSummary>("import_boat_tab", { path }),
   /** Saves to the project's file; kind "never-saved" means ask for Save As. */
   saveProject: () => call<ProjectSummary>("save_project"),
   /** Saves to a new file, adding `.wpsproj` if missing. */
@@ -386,7 +390,7 @@ export function boatApi(boatContext?: number) {
    */
   editPolar: (sourceId: number, op: EditOp, cells: PolarCell[], gesture: string | null = null) =>
     call<ProjectSummary>("edit_polar", { sourceId, op, cells, gesture }),
-  /** Chooses a track's segment statistic: `median`, `mean`, `p75` or `p90` (undoable). */
+  /** Chooses a track's segment statistic: `min`, `median`, `mean`, `p75`, `p90` or `max` (undoable). */
   setSegmentStatistic: (sourceId: number, statistic: string) =>
     call<ProjectSummary>("set_segment_statistic", { sourceId, statistic }),
   /**

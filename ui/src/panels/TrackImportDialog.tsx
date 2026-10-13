@@ -153,7 +153,7 @@ function FileCard({ entry, onMapping, onBoats }: {
   return (
     <section className="track-import-file">
       <h3>
-        {inspection.file} <span className="muted">{inspection.kind === "csv" ? "CSV" : "GeoJSON"}</span>
+        {inspection.file} <span className="muted">{inspection.kind === "csv" ? "CSV" : inspection.kind === "gpx" ? "GPX" : "GeoJSON"}</span>
       </h3>
       {csv && (
         <>

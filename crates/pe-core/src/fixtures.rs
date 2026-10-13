@@ -157,6 +157,7 @@ pub fn project() -> Project {
             format: PolarFileFormat::Expedition,
             file_name: "a.txt".to_owned(),
             polar,
+            matrix: None,
         },
     ));
 
@@ -374,6 +375,7 @@ pub fn arb_project() -> impl Strategy<Value = Project> {
                         format: PolarFileFormat::Adrena,
                         file_name: format!("{label}.pol"),
                         polar,
+                        matrix: None,
                     },
                     Kind::Track(points) => {
                         let track_id = p.allocate_track_id();

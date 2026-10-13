@@ -39,7 +39,7 @@ pub struct LibraryImportParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct InspectParams {
-    /// Track files to look into: GeoJSON, CSV or an archive of them. Each
+    /// Track files to look into: GPX, GeoJSON, CSV or an archive of them. Each
     /// path absolute, or beginning with `~/`.
     pub paths: Vec<String>,
 }
@@ -222,7 +222,7 @@ pub(super) fn patched(
 #[tool_router(router = tool_router_tracks, vis = "pub(crate)")]
 impl<R: tauri::Runtime> PolarExplorer<R> {
     #[tool(
-        description = "Looks into track files before importing them: for each, its kind (geojson, csv, …), the boats it holds with their positions and time span, and for a CSV its header, first rows, row count and the proposed column `mapping` to pass to track_files_import. Reads the files only; changes nothing."
+        description = "Looks into track files before importing them: for each, its kind (gpx, geojson, csv, …), the boats it holds with their positions and time span, and for a CSV its header, first rows, row count and the proposed column `mapping` to pass to track_files_import. Reads the files only; changes nothing."
     )]
     async fn track_files_inspect(&self, Parameters(p): Parameters<InspectParams>) -> ToolResult {
         let paths = p

@@ -1,4 +1,6 @@
 export default {
+  'Export all tabs': 'Exportar todas las pestañas',
+  'Add Tab': 'Añadir pestaña',
   "All boat details": "Todos los datos del barco",
   "Filters and display": "Filtros y visualización",
   "Polar {number}": "Polar {number}",

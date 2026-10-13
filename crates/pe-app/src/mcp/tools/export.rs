@@ -74,7 +74,7 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     }
 
     #[tool(
-        description = "Writes the boat's blend as an Expedition (.txt), Adrena (.pol) or CSV polar to `path`, recomputed from the sources at this moment. A file already there is replaced only with overwrite: true. Answers the file written and its size. The project does not need saving first."
+        description = "Writes the boat's blend as an Expedition (.txt), Adrena (.pol), qtVlm (.csv), OpenCPN (.pol), LuckGrib (.tsv) or CSV (.csv) polar to `path`, recomputed from the sources at this moment. A file already there is replaced only with overwrite: true. Answers the file written and its size. The project does not need saving first."
     )]
     async fn export_polar(&self, Parameters(p): Parameters<ExportPolarParams>) -> ToolResult {
         let path = absolute(&p.path)?;

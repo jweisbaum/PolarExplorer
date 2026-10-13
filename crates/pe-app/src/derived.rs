@@ -614,6 +614,7 @@ mod tests {
                     tws: vec![6.0, 12.0],
                     bsp: vec![vec![Some(5.0), Some(6.5)], vec![Some(6.0), Some(8.0)]],
                 },
+                matrix: None,
             },
         )
     }

@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Independent sides",
         p.next_palette_colour(),
         SourceKind::PolarFile {
+            matrix: None,
             format: PolarFileFormat::Csv,
             file_name: "independent.csv".into(),
             polar: PolarGrid {

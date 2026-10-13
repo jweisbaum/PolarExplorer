@@ -47,7 +47,7 @@ n_full: number,
  */
 smoothing: boolean,
 /**
- * The statistic new tracks start with: `median`, `mean`, `p75`, `p90`.
+ * The track statistic used for the blend: `min`, `median`, `mean`, `p75`, `p90` or `max`.
  */
 default_statistic: string,
 /**

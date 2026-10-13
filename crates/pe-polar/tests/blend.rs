@@ -130,14 +130,13 @@ fn the_fixed_blend_matches_hand_worked_cells() {
 #[test]
 fn the_fixed_blend_exports_its_golden_bytes() {
     let blend = fixed_blend();
-    for (format, golden) in FORMATS.into_iter().zip([BLEND_TXT, BLEND_POL, BLEND_CSV]) {
+    for ((format, golden), name) in FORMATS
+        .into_iter()
+        .zip([BLEND_TXT, BLEND_POL, BLEND_CSV])
+        .zip(["blend.txt", "blend.pol", "blend.csv"])
+    {
         let text = export(format, &blend.polar).unwrap();
         if std::env::var_os("PE_WRITE_GOLDEN").is_some() {
-            let name = match format {
-                PolarFileFormat::Expedition => "blend.txt",
-                PolarFileFormat::Adrena => "blend.pol",
-                PolarFileFormat::Csv => "blend.csv",
-            };
             std::fs::write(
                 format!("{}/tests/golden/{name}", env!("CARGO_MANIFEST_DIR")),
                 &text,

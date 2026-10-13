@@ -30,6 +30,7 @@ fn file_source() -> Source {
         "File",
         Colour::parse("#4e79a7").unwrap(),
         SourceKind::PolarFile {
+            matrix: None,
             format: PolarFileFormat::Adrena,
             file_name: "file.pol".to_owned(),
             polar: PolarGrid {

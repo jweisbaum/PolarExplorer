@@ -419,6 +419,7 @@ pub fn add(state: &AppState, id: &str) -> Result<ProjectSummary> {
         })?;
     state.with_session(|session| {
         let open = session.require_open()?;
+        open.ensure_editable()?;
         if holds(&open.project, id) {
             return Ok(ProjectSummary::of(open));
         }

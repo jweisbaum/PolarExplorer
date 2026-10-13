@@ -72,6 +72,9 @@ pub enum ExportProblem {
         /// The speed.
         bsp: f64,
     },
+    /// The format is binary and must use [`crate::matrix::write`].
+    #[error("WhirlwindMatrixPolar must be written with its binary matrix writer")]
+    BinaryMatrix,
 }
 
 impl ExportProblem {
@@ -82,6 +85,7 @@ impl ExportProblem {
             Self::AxisCollision { .. } => "axis-collision",
             Self::OutOfRange { .. } => "out-of-range",
             Self::TooFast { .. } => "too-fast",
+            Self::BinaryMatrix => "binary-matrix",
         }
     }
 }
@@ -149,6 +153,9 @@ pub fn check(polar: &PolarGrid) -> Result<(), ExportProblem> {
 
 /// The file text of `polar` in `format`, after [`check`].
 pub fn export(format: PolarFileFormat, polar: &PolarGrid) -> Result<String, ExportProblem> {
+    if format == PolarFileFormat::WhirlwindMatrixPolar {
+        return Err(ExportProblem::BinaryMatrix);
+    }
     check(polar)?;
     Ok(crate::write(format, polar))
 }

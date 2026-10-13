@@ -944,6 +944,8 @@ impl Default for DerivationSettings {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentStatistic {
+    /// Lowest speed.
+    Min,
     /// Median.
     Median,
     /// Mean.
@@ -953,6 +955,8 @@ pub enum SegmentStatistic {
     /// 90th percentile: a polar describes good sailing, not average sailing.
     #[default]
     P90,
+    /// Highest speed.
+    Max,
 }
 
 /// Which reanalysis a track's samples came from (spec.md 4.1).

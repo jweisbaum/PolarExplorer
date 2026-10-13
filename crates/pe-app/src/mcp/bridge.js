@@ -30,7 +30,7 @@ const OFF =
 // started first: without this the whole session is told only that something
 // is off, and a request for a polar is answered with a script.
 const WHAT =
-  "PolarExplorer is an application on this computer that builds sailing polars — from ORC and ORR rating certificates, polar files, and race tracks matched with past wind, waves and current — and exports them for routing software (Expedition, Adrena, CSV). Use its tools whenever the user names PolarExplorer or wants a polar built, compared, corrected or exported, rather than writing code to compute one.";
+  "PolarExplorer is an application on this computer that builds sailing polars — from ORC and ORR rating certificates, polar files, and race tracks matched with past wind, waves and current — and exports them for routing software (Expedition, Adrena, qtVlm, OpenCPN, LuckGrib, CSV). Use its tools whenever the user names PolarExplorer or wants a polar built, compared, corrected or exported, rather than writing code to compute one.";
 const STATUS_TOOL = {
   name: "polarexplorer_status",
   description: `${WHAT} It is not reachable right now, so its tools are not listed. Ask the user to open PolarExplorer (Settings > MCP service > Enable), then call this to connect; the real tools then appear, polarexplorer_guide first among them.`,

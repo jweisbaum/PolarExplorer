@@ -1,4 +1,6 @@
 export default {
+  'Export all tabs': 'Alle tabbladen exporteren',
+  'Add Tab': 'Tabblad toevoegen',
   "All boat details": "Alle bootgegevens",
   "Filters and display": "Filters en weergave",
   "Polar {number}": "Polar {number}",

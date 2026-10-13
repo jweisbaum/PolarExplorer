@@ -74,10 +74,12 @@ pub fn statistic(sorted: &[f64], statistic: SegmentStatistic) -> Option<f64> {
         sorted[lo] + (h - lo as f64) * (sorted[hi] - sorted[lo])
     };
     Some(match statistic {
+        SegmentStatistic::Min => sorted[0],
         SegmentStatistic::Median => quantile(0.5),
         SegmentStatistic::Mean => sorted.iter().sum::<f64>() / sorted.len() as f64,
         SegmentStatistic::P75 => quantile(0.75),
         SegmentStatistic::P90 => quantile(0.9),
+        SegmentStatistic::Max => sorted[sorted.len() - 1],
     })
 }
 

@@ -25,12 +25,13 @@ function whileChoosing<T>(busy: string, dialog: () => Promise<T>): Promise<T> {
 export const EXTENSION = "wpsproj";
 
 /** A function, not a constant: the filter's name is read in the language on screen. */
-const filters = () => [{ name: t("PolarExplorer project"), extensions: [EXTENSION] }];
+const openFilters = () => [{ name: t("PolarExplorer project"), extensions: [EXTENSION, "pelocked"] }];
+const saveFilters = () => [{ name: t("PolarExplorer project"), extensions: [EXTENSION] }];
 
 /** Asks for a project to open. Returns null if the user cancelled. */
 export async function pickProjectToOpen(): Promise<string | null> {
   const chosen = await whileChoosing(msg("Choosing a project"), () =>
-    open({ multiple: false, directory: false, filters: filters() }),
+    open({ multiple: false, directory: false, filters: openFilters() }),
   );
   return typeof chosen === "string" ? chosen : null;
 }
@@ -38,7 +39,44 @@ export async function pickProjectToOpen(): Promise<string | null> {
 /** Asks where to save. Returns null if the user cancelled. */
 export async function pickProjectToSave(suggestedName: string): Promise<string | null> {
   const chosen = await whileChoosing(msg("Choosing where to save"), () =>
-    save({ defaultPath: `${suggestedName}.${EXTENSION}`, filters: filters() }),
+    save({ defaultPath: `${suggestedName}.${EXTENSION}`, filters: saveFilters() }),
+  );
+  return typeof chosen === "string" ? chosen : null;
+}
+
+/** Asks for a portable PolarExplorer tab to import into the open project. */
+export async function pickTabToImport(): Promise<string | null> {
+  const chosen = await whileChoosing(msg("Choosing a tab to import"), () =>
+    open({
+      multiple: false,
+      directory: false,
+      title: t("Import Tab"),
+      filters: [{ name: t("PolarExplorer tabs"), extensions: ["petab"] }],
+    }),
+  );
+  return typeof chosen === "string" ? chosen : null;
+}
+
+/** Asks where to write a portable copy of one tab. */
+export async function pickTabExportPath(suggestedName: string): Promise<string | null> {
+  const chosen = await whileChoosing(msg("Choosing where to export the tab"), () =>
+    save({
+      defaultPath: `${suggestedName}.petab`,
+      title: t("Export Tab"),
+      filters: [{ name: t("PolarExplorer tabs"), extensions: ["petab"] }],
+    }),
+  );
+  return typeof chosen === "string" ? chosen : null;
+}
+
+/** Asks where to write all tabs as a locked project. */
+export async function pickLockedProjectExportPath(suggestedName: string): Promise<string | null> {
+  const chosen = await whileChoosing(msg("Choosing where to export the project"), () =>
+    save({
+      defaultPath: `${suggestedName}.pelocked`,
+      title: t("Export read-only project"),
+      filters: [{ name: t("Read-only project"), extensions: ["pelocked"] }],
+    }),
   );
   return typeof chosen === "string" ? chosen : null;
 }
@@ -55,7 +93,7 @@ export async function pickPolarFiles(): Promise<string[]> {
       directory: false,
       title: t("Import polar files"),
       filters: [
-        { name: t("Polar files"), extensions: ["txt", "pol", "csv"] },
+        { name: t("Polar files"), extensions: ["txt", "pol", "csv", "tsv", "wmpolar"] },
         { name: t("All files"), extensions: ["*"] },
       ],
     }),
@@ -65,8 +103,8 @@ export async function pickPolarFiles(): Promise<string[]> {
 }
 
 /**
- * Asks for track files to import (spec.md 7.3): GeoJSON or CSV, several at
- * once. Returns the chosen paths; empty if the user cancelled.
+ * Asks for track files to import (spec.md 7.3): GPX, GeoJSON or CSV, several
+ * at once. Returns the chosen paths; empty if the user cancelled.
  */
 export async function pickTrackFiles(): Promise<string[]> {
   const chosen = await whileChoosing(msg("Choosing track files"), () =>
@@ -75,7 +113,7 @@ export async function pickTrackFiles(): Promise<string[]> {
       directory: false,
       title: t("Import tracks"),
       filters: [
-        { name: t("Track files"), extensions: ["geojson", "json", "csv", "txt", "tsv"] },
+        { name: t("Track files"), extensions: ["geojson", "json", "gpx", "csv", "txt", "tsv"] },
         { name: t("All files"), extensions: ["*"] },
       ],
     }),
@@ -89,6 +127,10 @@ export const EXPORT_EXTENSIONS: Readonly<Record<string, string>> = {
   expedition: "txt",
   adrena: "pol",
   csv: "csv",
+  qtvlm: "csv",
+  opencpn: "pol",
+  luckgrib: "tsv",
+  whirlwind_matrix_polar: "wmpolar",
 };
 
 /**

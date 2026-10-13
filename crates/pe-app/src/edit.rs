@@ -19,6 +19,7 @@ pub fn apply(
 ) -> Result<ProjectSummary> {
     state.with_session(|session| {
         let open = session.require_open()?;
+        open.ensure_editable()?;
         if let Some(command) = build(&open.project)? {
             open.apply(command)?;
         }

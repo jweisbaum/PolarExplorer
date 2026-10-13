@@ -19,10 +19,12 @@ export function cellCode(i: number, j: number): number {
 
 /** The segment statistics offered (spec.md 12.1), the default first. */
 export const STATISTICS: readonly { id: string; label: string }[] = [
+  { id: "min", label: msg("Minimum") },
   { id: "p90", label: msg("90th percentile") },
   { id: "p75", label: msg("75th percentile") },
   { id: "median", label: msg("Median") },
   { id: "mean", label: msg("Mean") },
+  { id: "max", label: msg("Maximum") },
 ];
 
 /** The fastest boat speed a cell takes, knots. */

@@ -53,6 +53,7 @@ fn polar_source(id: u64) -> Source {
         format!("polar {id}"),
         Colour::parse("#4e79a7").unwrap(),
         SourceKind::PolarFile {
+            matrix: None,
             format: PolarFileFormat::Adrena,
             file_name: format!("{id}.pol"),
             polar: PolarGrid { twa, tws, bsp },

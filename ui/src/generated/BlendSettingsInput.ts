@@ -25,7 +25,7 @@ n_full: number,
  */
 smoothing: boolean,
 /**
- * `median`, `mean`, `p75` or `p90`.
+ * `min`, `median`, `mean`, `p75`, `p90` or `max`.
  */
 default_statistic: string,
 /**

@@ -1,4 +1,6 @@
 export default {
+  'Export all tabs': 'すべてのタブを書き出す',
+  'Add Tab': 'タブを追加',
   "All boat details": "艇のすべての詳細",
   "Filters and display": "フィルタと表示",
   "Polar {number}": "ポーラー {number}",

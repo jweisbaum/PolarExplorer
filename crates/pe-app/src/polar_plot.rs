@@ -484,6 +484,7 @@ mod tests {
                 format: PolarFileFormat::Expedition,
                 file_name: format!("{label}.txt"),
                 polar: PolarGrid { twa, tws, bsp },
+                matrix: None,
             },
         )
     }

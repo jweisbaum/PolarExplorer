@@ -46,7 +46,7 @@ count: Array<Array<number>> | null,
  */
 spread: Array<Array<number | null>> | null,
 /**
- * A track's statistic: `median`, `mean`, `p75` or `p90`.
+ * A track's statistic: `min`, `median`, `mean`, `p75`, `p90` or `max`.
  */
 statistic: string | null,
 /**

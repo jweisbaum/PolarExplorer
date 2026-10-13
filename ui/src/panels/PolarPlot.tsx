@@ -1,5 +1,5 @@
 import { useBoatApi } from "../boats/context";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import { needsOutline } from "../colourContrast";
 import { registerCapture } from "../mcp/capture";
@@ -13,7 +13,7 @@ import type { SpeedUnit } from "../generated/SpeedUnit";
 import { useT } from "../i18n";
 
 import BlendCellTooltip from "../polar/BlendCellTooltip";
-import { SPEED_FACTOR, SPEED_SYMBOL } from "../polar/view3d";
+import { ramp, SPEED_FACTOR, SPEED_SYMBOL } from "../polar/view3d";
 import { useSampleSelection } from "../selection";
 import { onThemeChange } from "../settings/themes";
 import { DOT_EXCLUDED, DOT_FILTERED, dotSampleId, emptyDots, withoutExcluded, type DotPacket } from "./dotPacket";
@@ -31,6 +31,101 @@ const ON_GRID = 1e-6;
 const PIN_SNAP_PX = 8;
 /** Beyond this many dots each is a small square rather than a circle: far cheaper to fill. */
 const MANY_DOTS = 20_000;
+const PDF_ANGLE_STEP = 5;
+const PDF_ANGLE_BANDWIDTH = 7.5;
+const PDF_SPEED_STEP = 0.5;
+const PDF_MIN_STDDEV = 0.75;
+
+interface Gaussian { mean: number; stddev: number; mass: number }
+
+/** Draw a translucent angle × boat-speed field from the visible 2D data. */
+function drawPdfHeat(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number,
+  layout: ReturnType<typeof fitLayout>, maxBsp: number, asymmetric: boolean, dots: DotPacket,
+  curves: readonly PolarCurve[]) {
+  const maxAngle = asymmetric ? 360 : 180;
+  const bins: number[][] = Array.from({ length: maxAngle / PDF_ANGLE_STEP + 1 }, () => []);
+  const add = (twa: number, bsp: number) => {
+    if (!Number.isFinite(twa) || !Number.isFinite(bsp) || bsp < 0 || bsp > 60) return;
+    if (!asymmetric && (twa < 0 || twa > 180)) return;
+    const index = Math.min(bins.length - 1, Math.max(0, Math.round(twa / PDF_ANGLE_STEP)));
+    bins[index]!.push(bsp);
+  };
+  for (let k = 0; k < dots.count; k++) add(dots.points[k * 3]!, dots.points[k * 3 + 2]!);
+  // Source curves provide the polar nodes in the 2D view; the blend is derived
+  // from those sources and is deliberately not counted again as observations.
+  for (const curve of curves) for (const point of curve.points) add(point.twa, point.bsp);
+
+  const fitted: (Gaussian | null)[] = bins.map((_, index) => {
+    let weightSum = 0, sum = 0, sumSquares = 0;
+    for (let sourceBin = Math.max(0, index - 2); sourceBin <= Math.min(bins.length - 1, index + 2); sourceBin++) {
+      const offset = (sourceBin - index) * PDF_ANGLE_STEP;
+      const weight = Math.exp(-0.5 * (offset / PDF_ANGLE_BANDWIDTH) ** 2);
+      for (const speed of bins[sourceBin]!) {
+        weightSum += weight;
+        sum += speed * weight;
+        sumSquares += speed * speed * weight;
+      }
+    }
+    if (weightSum === 0) return null;
+    const mean = sum / weightSum;
+    const stddev = Math.max(PDF_MIN_STDDEV, Math.sqrt(Math.max(0, sumSquares / weightSum - mean * mean)));
+    let mass = 0;
+    for (let speed = PDF_SPEED_STEP / 2; speed < 60; speed += PDF_SPEED_STEP) {
+      const z = (speed - mean) / stddev;
+      mass += Math.exp(-0.5 * z * z) / (stddev * Math.sqrt(2 * Math.PI)) * PDF_SPEED_STEP;
+    }
+    return mass > 0 ? { mean, stddev, mass } : null;
+  });
+  const maxDensity = fitted.reduce((max, value) => value ? Math.max(max, 1 / (value.stddev * Math.sqrt(2 * Math.PI) * value.mass)) : max, 0);
+  if (!(maxDensity > 0) || !(layout.scale > 0)) return;
+
+  const densityAt = (angle: number, bsp: number): number => {
+    const coordinate = Math.max(0, Math.min(maxAngle / PDF_ANGLE_STEP, angle / PDF_ANGLE_STEP));
+    const lo = Math.floor(coordinate), hi = Math.min(fitted.length - 1, lo + 1), mix = coordinate - lo;
+    let total = 0, weights = 0;
+    for (const [index, weight] of [[lo, 1 - mix], [hi, mix]] as const) {
+      const curve = fitted[index];
+      if (!curve || weight <= 0) continue;
+      const z = (bsp - curve.mean) / curve.stddev;
+      total += weight * Math.exp(-0.5 * z * z) / (curve.stddev * Math.sqrt(2 * Math.PI) * curve.mass);
+      weights += weight;
+    }
+    return weights > 0 ? total / weights : 0;
+  };
+
+  // Rasterize at device resolution, then composite the transparent heat over
+  // the polar grid. This avoids visible polygon seams in a 2D view.
+  const rasterScale = Math.min(dpr, 1.5, 1200 / Math.max(width, height));
+  const pixelWidth = Math.max(1, Math.round(width * rasterScale));
+  const pixelHeight = Math.max(1, Math.round(height * rasterScale));
+  const image = new ImageData(pixelWidth, pixelHeight);
+  for (let py = 0; py < pixelHeight; py++) {
+    const y = (py + 0.5) / rasterScale;
+    for (let px = 0; px < pixelWidth; px++) {
+      const x = (px + 0.5) / rasterScale;
+      const dx = x - layout.centerX, dy = layout.centerY - y;
+      if (!asymmetric && dx < 0) continue;
+      const bsp = Math.hypot(dx, dy) / layout.scale;
+      if (bsp > maxBsp || bsp > 60) continue;
+      let angle = Math.atan2(dx, dy) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+      const density = densityAt(angle, bsp);
+      if (density < maxDensity * 0.005) continue;
+      const [r, g, b] = ramp(density / maxDensity);
+      const alpha = Math.min(0.82, 0.76 * Math.sqrt(density / maxDensity));
+      const offset = (py * pixelWidth + px) * 4;
+      image.data[offset] = Math.round(r * 255);
+      image.data[offset + 1] = Math.round(g * 255);
+      image.data[offset + 2] = Math.round(b * 255);
+      image.data[offset + 3] = Math.round(alpha * 255);
+    }
+  }
+  const raster = document.createElement("canvas");
+  raster.width = pixelWidth;
+  raster.height = pixelHeight;
+  raster.getContext("2d")?.putImageData(image, 0, 0);
+  ctx.drawImage(raster, 0, 0, width, height);
+}
 
 /** Draws one curve's polyline; empty curves (no points in range) draw nothing. */
 function strokeCurve(ctx: CanvasRenderingContext2D, curve: PolarCurve, layout: ReturnType<typeof fitLayout>, width: number) {
@@ -96,7 +191,7 @@ export function signed(value: number, digits: number): string {
  */
 function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: DotPacket, hover: Hover | null,
   colours: ReadonlyMap<number, SourceStyle>, selected: ReadonlySet<number>, unit: SpeedUnit, asymmetric: boolean,
-  dotColour: DotColourMode, measuring: Measuring | null, centred: boolean) {
+  dotColour: DotColourMode, measuring: Measuring | null, centred: boolean, pdfMode: boolean) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -115,7 +210,12 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
 
   const curves = result?.curves ?? [];
   const blend = result?.blend ?? [];
-  const maxBsp = plotMaxBsp(result, dots);
+  const observedMaxBsp = plotMaxBsp(result, dots);
+  // Gaussian tails extend beyond the fastest observed value. Keep room for
+  // those tails in PDF mode instead of clipping them at the plot's rim.
+  const maxBsp = pdfMode && observedMaxBsp > 0
+    ? Math.min(60, observedMaxBsp + Math.max(3.5, observedMaxBsp * 0.35))
+    : observedMaxBsp;
   if (maxBsp <= 0) return;
   const layout = fitLayout(width, height, maxBsp, 28, asymmetric, centred);
 
@@ -139,23 +239,24 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
     ctx.lineTo(edge.x, edge.y);
     ctx.stroke();
   }
+  if (pdfMode) drawPdfHeat(ctx, width, height, dpr, layout, maxBsp, asymmetric, dots, curves);
   for (const label of axisLabels(layout, maxBsp, (text) => ctx.measureText(text).width, 10, factor, asymmetric)) {
     ctx.fillText(label.text, label.x, label.y);
   }
 
-  for (const curve of curves) strokeCurve(ctx, curve, layout, 1.5);
+  if (!pdfMode) for (const curve of curves) strokeCurve(ctx, curve, layout, 1.5);
   // The blend is drawn thicker (spec.md 9.2), in the Blend entry's colour,
   // over a contrasting outline when that colour is lost on the background.
   const background = style.getPropertyValue("--surface").trim() || "#253447";
   const text = style.getPropertyValue("--text").trim() || "#d6e6f5";
-  for (const curve of blend) {
+  for (const curve of pdfMode ? [] : blend) {
     if (needsOutline(curve.colour, background)) strokeCurve(ctx, { ...curve, colour: text }, layout, 5);
     strokeCurve(ctx, curve, layout, 3);
   }
 
   const many = dots.count > MANY_DOTS;
   const dotColours = dots.sources.map((id) => colours.get(id)?.colour ?? line);
-  for (let k = 0; k < dots.count; k++) {
+  for (let k = 0; !pdfMode && k < dots.count; k++) {
     const { x, y } = projectPoint(dots.points[k * 3]!, dots.points[k * 3 + 2]!, layout);
     const colour = dotFill(dots, k, dotColour, dotColours);
     const flags = dots.flags[k]!;
@@ -178,7 +279,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
     }
   }
   ctx.globalAlpha = 1;
-  if (selected.size > 0) {
+  if (!pdfMode && selected.size > 0) {
     ctx.strokeStyle = accent;
     ctx.lineWidth = 1.5;
     for (let k = 0; k < dots.count; k++) {
@@ -190,7 +291,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
     }
   }
 
-  if (hover) {
+  if (!pdfMode && hover) {
     ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -201,7 +302,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
   // The Measure tool: a spoke at the pointer's wind angle, a ring at its
   // boat speed, a mark where the spoke crosses each curve, and the pinned
   // point A with the line from it to the pointer.
-  if (measuring) {
+  if (!pdfMode && measuring) {
     const { cursor, pin } = measuring;
     const outer = Math.max(maxBsp, cursor.bsp);
     ctx.strokeStyle = accent;
@@ -280,6 +381,13 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   const [result, setResult] = useState<PolarPlotResult | null>(null);
   const [received, setDots] = useState<DotPacket>(emptyDots);
   const [tws, setTws] = useState<number | null>(null);
+  const [rangeEnabled, setRangeEnabled] = useState(false);
+  const [twsRange, setTwsRange] = useState<[number, number]>([0, 30]);
+  const rangeDrag = useRef<{ pointerId: number; mode: "move" | "low" | "high"; startX: number; low: number; high: number } | null>(null);
+  const domainMin = result?.tws_min ?? null;
+  const domainMax = result?.tws_max ?? null;
+  const rangeLow = domainMin === null ? twsRange[0] : Math.min(domainMax!, Math.max(domainMin, twsRange[0]));
+  const rangeHigh = domainMax === null ? twsRange[1] : Math.max(rangeLow, Math.min(domainMax, twsRange[1]));
   const [hover, setHover] = useState<Hover | null>(null);
   // The blend cell behind a hovered blend point (spec.md 9.2). `blendAsked`
   // names the cell last asked of Rust, so moving within one point asks
@@ -291,6 +399,7 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   // sends them either way, so ticking the box asks it for nothing.
   const [showExcluded, setShowExcluded] = useState(false);
   const [dotColour, setDotColour] = useState<DotColourMode>("source");
+  const [pdfMode, setPdfMode] = useState(false);
   // The Measure tool (spec.md 9.2): on or off, where the pointer is, and
   // the pinned point A. View state only; nothing of it is saved.
   const [measure, setMeasure] = useState(false);
@@ -299,7 +408,49 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   const request = useRef(0);
   const selection = useSampleSelection();
 
-  const dots = useMemo(() => (showExcluded ? received : withoutExcluded(received)), [received, showExcluded]);
+  // Keep the slice local as well as asking Rust for it. This makes changing
+  // from All to one wind speed immediately and consistently narrow the dots,
+  // including when an older/in-flight all-speeds response arrives.
+  const dots = useMemo(() => {
+    const visible = showExcluded ? received : withoutExcluded(received);
+    if (rangeEnabled) {
+      const keep: number[] = [];
+      for (let k = 0; k < visible.count; k++) {
+        const speed = visible.points[k * 3 + 1]!;
+        if (speed >= rangeLow && speed <= rangeHigh) keep.push(k);
+      }
+      if (keep.length === visible.count) return visible;
+      const points = new Float32Array(keep.length * 3);
+      const source = new Uint32Array(keep.length);
+      const ids = new Uint32Array(keep.length * 2);
+      const flags = new Uint32Array(keep.length);
+      keep.forEach((sourceIndex, index) => {
+        points.set(visible.points.subarray(sourceIndex * 3, sourceIndex * 3 + 3), index * 3);
+        source[index] = visible.source[sourceIndex]!;
+        ids.set(visible.ids.subarray(sourceIndex * 2, sourceIndex * 2 + 2), index * 2);
+        flags[index] = visible.flags[sourceIndex]!;
+      });
+      return { ...visible, count: keep.length, points, source, ids, flags };
+    }
+    if (tws === null) return visible;
+    const band = result?.band_kn ?? 1;
+    const keep: number[] = [];
+    for (let k = 0; k < visible.count; k++) {
+      if (Math.abs(visible.points[k * 3 + 1]! - tws) <= band) keep.push(k);
+    }
+    if (keep.length === visible.count) return visible;
+    const points = new Float32Array(keep.length * 3);
+    const source = new Uint32Array(keep.length);
+    const ids = new Uint32Array(keep.length * 2);
+    const flags = new Uint32Array(keep.length);
+    keep.forEach((sourceIndex, index) => {
+      points.set(visible.points.subarray(sourceIndex * 3, sourceIndex * 3 + 3), index * 3);
+      source[index] = visible.source[sourceIndex]!;
+      ids.set(visible.ids.subarray(sourceIndex * 2, sourceIndex * 2 + 2), index * 2);
+      flags[index] = visible.flags[sourceIndex]!;
+    });
+    return { ...visible, count: keep.length, points, source, ids, flags };
+  }, [received, showExcluded, tws, rangeEnabled, rangeLow, rangeHigh, result?.band_kn]);
   const excludedExist = useMemo(() => {
     for (let k = 0; k < received.count; k++) if (received.flags[k]! & DOT_EXCLUDED) return true;
     return false;
@@ -319,7 +470,8 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   // stale plot at the same revision number. `tws` refetches the slice.
   useEffect(() => {
     const id = ++request.current;
-    void Promise.all([api.polarPlot(tws), api.polarPlotDots(tws, showFiltered)])
+    const queryTws = rangeEnabled ? null : tws;
+    void Promise.all([api.polarPlot(queryTws), api.polarPlotDots(queryTws, showFiltered)])
       .then(([next, nextDots]) => {
         if (request.current !== id) return;
         setResult(next);
@@ -327,7 +479,7 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
         setHover(null);
       })
       .catch((err) => { if (request.current === id) reportFailure(err); });
-  }, [project.id, project.revision, tws, showFiltered]);
+  }, [project.id, project.revision, tws, rangeEnabled, showFiltered]);
 
   const sourcesById = useMemo(() => {
     const map = new Map<number, SourceStyle>();
@@ -336,15 +488,21 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   }, [project.sources]);
 
   // Every curve drawn, the blend's with its label in the interface language.
-  const allCurves = useMemo(() => [...(result?.curves ?? []), ...blendCurves(result, t)], [result, t]);
+  const shownResult = useMemo(() => {
+    if (!result || !rangeEnabled) return result;
+    const min = rangeLow, max = rangeHigh;
+    return { ...result, curves: result.curves.filter((curve) => curve.tws >= min && curve.tws <= max),
+      blend: result.blend.filter((curve) => curve.tws >= min && curve.tws <= max) };
+  }, [result, rangeEnabled, rangeLow, rangeHigh]);
+  const allCurves = useMemo(() => [...(shownResult?.curves ?? []), ...blendCurves(shownResult, t)], [shownResult, t]);
   const measuring: Measuring | null = useMemo(
     () => (measure && cursor ? { cursor, crossings: crossings(allCurves, cursor.twa), pin } : null),
     [measure, cursor, pin, allCurves],
   );
 
   const redraw = useCallback(() => {
-    if (canvas.current) draw(canvas.current, result, dots, hover, sourcesById, selection.ids, unit, project.blend.asymmetric, shownDotColour, measuring, variant === "stage");
-  }, [result, dots, hover, sourcesById, selection, unit, project.blend.asymmetric, shownDotColour, measuring, variant]);
+    if (canvas.current) draw(canvas.current, shownResult, dots, hover, sourcesById, selection.ids, unit, project.blend.asymmetric, shownDotColour, measuring, variant === "stage", pdfMode);
+  }, [shownResult, dots, hover, sourcesById, selection, unit, project.blend.asymmetric, shownDotColour, measuring, variant, pdfMode]);
 
   useEffect(redraw, [redraw]);
 
@@ -368,24 +526,24 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   /** The pointer's place on the plot, or null where the fan is not (the port side of a symmetric plot). */
   const pointed = useCallback((event: MouseEvent<HTMLCanvasElement>): { point: PolarPoint; scale: number } | null => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const layout = fitLayout(rect.width, rect.height, Math.max(plotMaxBsp(result, dots), 1), 28, project.blend.asymmetric, variant === "stage");
+    const layout = fitLayout(rect.width, rect.height, Math.max(plotMaxBsp(shownResult, dots), 1), 28, project.blend.asymmetric, variant === "stage");
     const x = event.clientX - rect.left;
     if (!project.blend.asymmetric && x < layout.centerX - 1) return null;
     const point = unproject(x, event.clientY - rect.top, layout);
     // A symmetric plot's angles stop at 180°: a hair to the left of the axis is the axis.
     if (!project.blend.asymmetric && point.twa > 180) point.twa = point.twa > 270 ? 0 : 180;
     return { point, scale: layout.scale };
-  }, [result, dots, project.blend.asymmetric]);
+  }, [shownResult, dots, project.blend.asymmetric]);
 
   const onMove = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-    if (!result) return;
+    if (!shownResult || pdfMode) return;
     if (measure) {
       // Measuring replaces the hover: the readout says more than a tooltip.
       setCursor(pointed(event)?.point ?? null);
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const layout = fitLayout(rect.width, rect.height, Math.max(plotMaxBsp(result, dots), 1), 28, project.blend.asymmetric, variant === "stage");
+    const layout = fitLayout(rect.width, rect.height, Math.max(plotMaxBsp(shownResult, dots), 1), 28, project.blend.asymmetric, variant === "stage");
     const hit = nearestPoint(
       allCurves, dots, sourcesById,
       event.clientX - rect.left, event.clientY - rect.top, layout, HOVER_DISTANCE_PX,
@@ -406,7 +564,7 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
       .then((cell) => { if (blendAsked.current === key) setBlendCell(cell); })
       // A cell that cannot be read keeps the plain tooltip.
       .catch(() => undefined);
-  }, [result, dots, sourcesById, allCurves, measure, pointed, project.id, project.revision, project.blend.twa, project.blend.tws, project.blend.asymmetric, api]);
+  }, [shownResult, dots, sourcesById, allCurves, measure, pointed, pdfMode, project.id, project.revision, project.blend.twa, project.blend.tws, project.blend.asymmetric, api]);
   const leave = useCallback(() => {
     setHover(null);
     setCursor(null);
@@ -450,12 +608,46 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
     return () => window.removeEventListener("keydown", onKey, true);
   }, [measure, pin, hidden]);
 
-  const domainMin = result?.tws_min ?? null;
-  const domainMax = result?.tws_max ?? null;
   const hasDomain = domainMin !== null && domainMax !== null;
   const sliderValue = tws ?? (hasDomain ? Math.round(((domainMin as number) + (domainMax as number)) / 2) : 0);
-  const hasAnyPoint = [...(result?.curves ?? []), ...(result?.blend ?? [])].some((curve) => curve.points.length > 0)
+  const rangeValueAt = (clientX: number, bounds: DOMRect) => {
+    const fraction = Math.max(0, Math.min(1, (clientX - bounds.left) / Math.max(1, bounds.width)));
+    const raw = (domainMin ?? 0) + fraction * ((domainMax ?? 30) - (domainMin ?? 0));
+    return Math.max(domainMin ?? 0, Math.min(domainMax ?? 30, Math.round(raw * 2) / 2));
+  };
+  const onRangePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!hasDomain || event.button !== 0 || event.target instanceof HTMLInputElement) return;
+    const value = rangeValueAt(event.clientX, event.currentTarget.getBoundingClientRect());
+    const mode = value >= rangeLow && value <= rangeHigh
+      ? "move"
+      : Math.abs(value - rangeLow) <= Math.abs(value - rangeHigh) ? "low" : "high";
+    rangeDrag.current = { pointerId: event.pointerId, mode, startX: event.clientX, low: rangeLow, high: rangeHigh };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    if (mode === "low") setTwsRange([Math.min(value, rangeHigh), rangeHigh]);
+    if (mode === "high") setTwsRange([rangeLow, Math.max(value, rangeLow)]);
+  };
+  const onRangePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = rangeDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const value = rangeValueAt(event.clientX, event.currentTarget.getBoundingClientRect());
+    if (drag.mode === "move") {
+      const step = 0.5;
+      const trackWidth = Math.max(1, event.currentTarget.getBoundingClientRect().width);
+      const delta = Math.round(((event.clientX - drag.startX) / trackWidth
+        * ((domainMax ?? 30) - (domainMin ?? 0))) / step) * step;
+      const width = drag.high - drag.low;
+      const low = Math.max(domainMin!, Math.min(domainMax! - width, drag.low + delta));
+      setTwsRange([low, low + width]);
+    } else if (drag.mode === "low") setTwsRange([Math.min(value, rangeHigh), rangeHigh]);
+    else setTwsRange([rangeLow, Math.max(value, rangeLow)]);
+  };
+  const onRangePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (rangeDrag.current?.pointerId === event.pointerId) rangeDrag.current = null;
+  };
+  const hasAnyPoint = [...(shownResult?.curves ?? []), ...(shownResult?.blend ?? [])].some((curve) => curve.points.length > 0)
     || dots.count > 0;
+  const hasPdfData = (shownResult?.curves ?? []).some((curve) => curve.points.length > 0) || dots.count > 0;
   // The readout's numbers: every one arrives in knots and leaves in the display unit.
   const symbol = SPEED_SYMBOL[unit];
   const shownSpeed = (knots: number) => `${(knots * SPEED_FACTOR[unit]).toFixed(2)} ${symbol}`;
@@ -467,21 +659,73 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
     <div className={`polar-plot polar-plot-${variant}`}>
       <div className="polar-plot-controls">
         <label className="polar-plot-all">
-          <input type="checkbox" data-feature="plot:all" checked={tws === null}
+          <input type="checkbox" data-feature="plot:all" checked={tws === null && !rangeEnabled}
             title={t("Show every wind speed a source has, instead of one slice")}
-            onChange={(event) => setTws(event.target.checked ? null : sliderValue)} />
+            onChange={(event) => { setRangeEnabled(false); setTws(event.target.checked ? null : sliderValue); }} />
           {t("All")}
         </label>
-        <input type="range" data-feature="plot:tws" min={domainMin ?? 0} max={domainMax ?? 30} step={0.5}
-          value={sliderValue} disabled={tws === null || !hasDomain}
-          aria-label={t("Wind speed")} title={t("The true wind speed the plot slices at")}
-          onChange={(event) => setTws(Number(event.target.value))} />
+        <label className="polar-plot-range-toggle" title={t("Show data within a wind speed range")}>
+          <input type="checkbox" data-feature="plot:tws-range" checked={rangeEnabled} disabled={!hasDomain}
+            onChange={(event) => {
+              if (event.target.checked) {
+                const low = tws === null ? domainMin! : Math.max(domainMin!, tws - 1);
+                const high = tws === null ? domainMax! : Math.min(domainMax!, tws + 1);
+                setTwsRange([low, Math.max(low, high)]);
+                setRangeEnabled(true);
+                setTws(null);
+              } else {
+                setRangeEnabled(false);
+                setTws(Math.round(((rangeLow + rangeHigh) / 2) * 2) / 2);
+              }
+            }} />
+          {t("Range")}
+        </label>
+        {rangeEnabled ? (
+          <div className="polar-plot-range-sliders" aria-label={t("Wind speed range")}
+            style={{ "--range-start": `${(rangeLow - (domainMin ?? 0)) / Math.max((domainMax ?? 30) - (domainMin ?? 0), 1) * 100}%`,
+              "--range-end": `${(rangeHigh - (domainMin ?? 0)) / Math.max((domainMax ?? 30) - (domainMin ?? 0), 1) * 100}%` } as CSSProperties}
+            onPointerDown={onRangePointerDown} onPointerMove={onRangePointerMove}
+            onPointerUp={onRangePointerEnd} onPointerCancel={onRangePointerEnd}>
+            <input className="range-lower" type="range" min={domainMin ?? 0} max={domainMax ?? 30} step={0.5}
+              value={rangeLow} disabled={!hasDomain} aria-label={t("Minimum wind speed")}
+              onChange={(event) => setTwsRange([Math.min(Number(event.target.value), rangeHigh), rangeHigh])} />
+            <input className="range-upper" type="range" min={domainMin ?? 0} max={domainMax ?? 30} step={0.5}
+              value={rangeHigh} disabled={!hasDomain} aria-label={t("Maximum wind speed")}
+              onChange={(event) => setTwsRange([rangeLow, Math.max(Number(event.target.value), rangeLow)])} />
+          </div>
+        ) : (
+          <input type="range" data-feature="plot:tws" min={domainMin ?? 0} max={domainMax ?? 30} step={0.5}
+            value={sliderValue} disabled={tws === null || !hasDomain}
+            aria-label={t("Wind speed")} title={t("The true wind speed the plot slices at")}
+            onChange={(event) => setTws(Number(event.target.value))} />
+        )}
         <span className="polar-plot-tws-value"
-          title={tracksShown && tws !== null ? t("Sample dots within {band} {unit} of this wind speed (Settings)", {
+          title={tracksShown && tws !== null && !rangeEnabled ? t("Sample dots within {band} {unit} of this wind speed (Settings)", {
             band: displaySpeed(result?.band_kn ?? 1, unit, 2), unit: SPEED_SYMBOL[unit],
           }) : undefined}>
-          {tws === null ? t("All") : t("{tws} {unit}", { tws: displaySpeed(tws, unit, 1), unit: SPEED_SYMBOL[unit] })}
+          {rangeEnabled
+            ? `${displaySpeed(rangeLow, unit, 1)}–${displaySpeed(rangeHigh, unit, 1)} ${SPEED_SYMBOL[unit]}`
+            : tws === null ? t("All") : t("{tws} {unit}", { tws: displaySpeed(tws, unit, 1), unit: SPEED_SYMBOL[unit] })}
         </span>
+        <label className="polar-plot-display">
+          {t("Display")}
+          <select data-feature="plot:display" value={pdfMode ? "pdf" : "polar"}
+            title={t("Show the polar curves or probability density")}
+            onChange={(event) => {
+              const nextPdf = event.target.value === "pdf";
+              setPdfMode(nextPdf);
+              setHover(null);
+              if (nextPdf) { setMeasure(false); setPin(null); setCursor(null); }
+            }}>
+            <option value="polar">{t("Polar")}</option>
+            <option value="pdf">{t("Probability density (PDF)")}</option>
+          </select>
+        </label>
+        {pdfMode && <span className="polar-plot-pdf-legend" title={t("Density is probability per knot of boat speed")}>
+          {t("Probability density")}
+          <span className="polar-plot-pdf-gradient" aria-hidden="true" />
+          <span>{t("Low")}</span><span>{t("High")}</span>
+        </span>}
         <label className="polar-plot-filtered"
           title={tracksShown ? t("Also draw the samples the filters take out, dimmed") : t("No visible track has samples to filter")}>
           <input type="checkbox" data-feature="plot:show-filtered" checked={showFiltered} disabled={!tracksShown}
@@ -504,7 +748,7 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
           </select>
         </label>
         <button className="small" data-feature="plot:measure" aria-pressed={measure}
-          disabled={!hasAnyPoint && !measure} onClick={toggleMeasure}
+          disabled={pdfMode || (!hasAnyPoint && !measure)} onClick={toggleMeasure}
           title={t("Measure boat speeds on the plot: point to compare every curve at one wind angle, click to pin a point and measure from it")}>
           {t("Measure")}
         </button>
@@ -571,8 +815,8 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
               })}</div>
             </div>
           )}
-          {result && !hasAnyPoint && (
-            <div className="polar-plot-empty muted">{t("No source has data at this wind speed.")}</div>
+          {result && (pdfMode ? !hasPdfData : !hasAnyPoint) && (
+            <div className="polar-plot-empty muted">{pdfMode ? t("No visible points pass the current filters to form a PDF.") : t("No source has data at this wind speed.")}</div>
           )}
         </div>
       )}

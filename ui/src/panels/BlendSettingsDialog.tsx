@@ -26,7 +26,7 @@ export function parseSamples(text: string): number | null {
 
 /**
  * The Blend settings dialog (spec.md 8, 12): the output grid's TWA and TWS
- * axes, the statistic new tracks start with, the samples a track cell needs
+ * axes, the track statistic used for the blend, the samples a track cell needs
  * and the samples at which it counts fully, smoothing, current correction
  * and Stokes drift. Nothing changes until Apply, which is one undoable
  * entry; Rust checks everything again and refuses what it would not keep.
@@ -168,7 +168,7 @@ export default function BlendSettingsDialog({ project, onProject, onClose }: {
         <section>
           <h3>{t("Tracks")}</h3>
           <label className="settings-field">
-            {t("Statistic for new tracks")}
+            {t("Track statistic to use for blend")}
             <select data-feature="blend-settings:statistic" value={statistic}
               title={t("The statistic of a cell's boat speeds a newly imported track starts with. Each track keeps its own, changed in its edit panel.")}
               onChange={(event) => setStatistic(event.target.value)}>

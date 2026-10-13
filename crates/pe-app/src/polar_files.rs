@@ -104,7 +104,30 @@ fn parse(
         ));
     }
     let bytes = std::fs::read(path).map_err(|e| unreadable(file, e))?;
-    pe_polar::read(&bytes).map_err(|e| format_failure(file, &e))
+    let mut parsed = pe_polar::read(&bytes).map_err(|e| format_failure(file, &e))?;
+    if parsed.format == pe_core::polar::PolarFileFormat::WhirlwindMatrixPolar {
+        let Some(mut matrix) = parsed.matrix.take() else {
+            return Err(unreadable(file, "the matrix payload is missing"));
+        };
+        if matrix.sog.is_none() {
+            return Err(format_failure(
+                file,
+                &PolarError {
+                    line: 1,
+                    column: 1,
+                    reason: Reason::MatrixInvalid(
+                        "PDF-only files cannot be imported as speed points".to_owned(),
+                    ),
+                },
+            ));
+        }
+        // The editor imports the SOG mode as one point per wind/wave
+        // combination. PDF mode is deliberately not imported into the 2D
+        // speed model.
+        matrix.pdf = None;
+        parsed.matrix = Some(matrix);
+    }
+    Ok(parsed)
 }
 
 /// Imports polar files as sources, one per file, labelled with its name.
@@ -136,6 +159,7 @@ pub fn import(state: &AppState, paths: &[String]) -> Result<PolarImportResult> {
 
     state.with_session(|session| {
         let open = session.require_open()?;
+        open.ensure_editable()?;
         let imported: Vec<String> = parsed.iter().map(|(file, _)| file.clone()).collect();
         if !parsed.is_empty() {
             let colours = open.project.next_palette_colours(parsed.len());
@@ -151,6 +175,7 @@ pub fn import(state: &AppState, paths: &[String]) -> Result<PolarImportResult> {
                         format: polar.format,
                         file_name: file,
                         polar: polar.polar,
+                        matrix: polar.matrix.map(Box::new),
                     },
                 );
                 commands.push(Command::AddSource {

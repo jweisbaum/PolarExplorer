@@ -133,6 +133,7 @@ fn fixed_project() -> Project {
         "Expedition",
         colour("#f28e2b"),
         SourceKind::PolarFile {
+            matrix: None,
             format: PolarFileFormat::Expedition,
             file_name: "expedition.txt".to_owned(),
             polar: pe_polar::read(EXPEDITION).unwrap().polar,
@@ -163,6 +164,7 @@ fn fixed_project() -> Project {
         "Hidden",
         colour("#76b7b2"),
         SourceKind::PolarFile {
+            matrix: None,
             format: PolarFileFormat::Expedition,
             file_name: "hidden.txt".to_owned(),
             polar: pe_polar::read(b"10 90 20\n").unwrap().polar,

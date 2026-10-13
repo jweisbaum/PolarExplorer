@@ -9,6 +9,7 @@ description = "PolarExplorer polar grids, polar file formats, binning and blendi
 [dependencies]
 pe-core = { workspace = true }
 thiserror = { workspace = true }
+lz4_flex = { version = "0.14", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # Arbitrary input for the never-panics tests.

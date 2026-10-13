@@ -58,7 +58,7 @@ pub fn guide(now: chrono::DateTime<chrono::Utc>) -> String {
 
 /// The short text: when to use the application, and the order of work.
 pub const INSTRUCTIONS: &str = "\
-PolarExplorer is the sailing-polar application open on this computer. Use these tools whenever the user wants a boat's polar built, compared, corrected or exported (Expedition .txt, Adrena .pol, CSV), or asks how a boat really sailed in a race. Do not compute polars yourself: the application owns the data and the user watches it follow you.
+PolarExplorer is the sailing-polar application open on this computer. Use these tools whenever the user wants a boat's polar built, compared, corrected or exported (Expedition .txt, Adrena .pol, qtVlm .csv, OpenCPN .pol, LuckGrib .tsv, CSV), or asks how a boat really sailed in a race. Do not compute polars yourself: the application owns the data and the user watches it follow you.
 
 Call polarexplorer_guide first: it is the full manual. In short:
 1. project_status, then project_new or project_open. A dirty project holds the user's unsaved work: never discard it unless told to.
@@ -87,7 +87,7 @@ Whenever the user wants a polar built, examined, compared, corrected or exported
 2. **A project and its boats.** project_new makes a project with one boat. A project holds independent boat tabs (boats_list, boat_add, boat_rename, boat_remove, boat_restore); each boat has its own sources, grid and blend. Every tool below takes an optional `boat` id and otherwise acts on the first boat.
 3. **Sources.**
    - Rating certificates: orc_search then orc_add (ORC, embedded catalogue), or orr_search then orr_add (ORR). Search by boat name, sail number, model or year. Both catalogues are on this computer. orc_refresh and orr_refresh download the current certificates into them (a minute or two and about 60 MB for ORC, several minutes of requests for ORR: tell the user first), and are only needed when a recent certificate is missing.
-   - Polar files: polar_files_import with absolute paths (Expedition .txt, Adrena .pol, CSV).
+   - Polar files: polar_files_import with absolute paths (Expedition .txt, Adrena .pol, qtVlm .csv, OpenCPN .pol, LuckGrib .csv/.tsv, CSV).
    - Tracks from files: track_files_inspect to see what a file holds, then track_files_import.
    - A whole race at once: race_project (see \"A whole race\" below).
    - Tracks from the user's track library: library_search, then library_import.

@@ -60,6 +60,7 @@ pub fn blend_file_source() -> Source {
         "File",
         Colour::parse("#4e79a7").expect("a colour"),
         SourceKind::PolarFile {
+            matrix: None,
             format: PolarFileFormat::Adrena,
             file_name: "file.pol".to_owned(),
             polar: PolarGrid {

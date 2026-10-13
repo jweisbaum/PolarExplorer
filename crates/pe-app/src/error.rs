@@ -32,6 +32,10 @@ pub enum AppError {
     #[error("No project is open.")]
     NoProjectOpen,
 
+    /// An operation would change a read-only tab or project.
+    #[error("This tab or project is read only and cannot be changed.")]
+    ReadOnlyTab,
+
     /// Save was asked of a project that has never been saved; the frontend
     /// answers with Save As.
     #[error("This project has not been saved yet, so it has no file to save to.")]
@@ -131,6 +135,7 @@ impl AppError {
             Self::Core(pe_core::CoreError::SchemaTooNew { .. }) => "schema-too-new",
             Self::Core(_) => "core",
             Self::NoProjectOpen => "no-project",
+            Self::ReadOnlyTab => "read-only-tab",
             Self::ProjectNeverSaved => "never-saved",
             Self::UnsavedChanges { .. } => "unsaved-changes",
             Self::BadOption { .. } => "bad-option",

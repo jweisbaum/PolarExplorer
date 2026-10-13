@@ -29,6 +29,36 @@ pub struct PolarGrid {
     pub bsp: Vec<Vec<Option<f64>>>,
 }
 
+/// One Gaussian approximation of a conditional boat-speed probability density.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GaussianPdf {
+    /// Expected boat speed, in knots.
+    pub mean_kn: f32,
+    /// Standard deviation of boat speed, in knots.
+    pub std_dev_kn: f32,
+}
+
+/// Complete data stored by an imported WhirlwindMatrixPolar source. The 2D
+/// editor uses its derived `PolarGrid` projection while this matrix preserves
+/// all wave and probability data for project save/export.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WhirlwindMatrixPolar {
+    pub twa_deg: Vec<f32>,
+    pub tws_kn: Vec<f32>,
+    pub wave_height_m: Vec<f32>,
+    pub wave_angle_deg: Vec<f32>,
+    pub wave_period_s: Vec<f32>,
+    /// Boat-speed bins for the sampled PDF mode.
+    pub sog_bins_kn: Vec<f32>,
+    pub sog: Option<Vec<Option<f32>>>,
+    /// Sampled density values per `[wave][TWA][TWS][SOG bin]` cell.
+    #[serde(default)]
+    pub pdf: Option<Vec<f32>>,
+    /// Gaussian mean and standard deviation per `[wave][TWA][TWS]` cell.
+    #[serde(default)]
+    pub pdf_gaussians: Option<Vec<Option<GaussianPdf>>>,
+}
+
 impl PolarGrid {
     /// An empty grid on the given axes.
     pub fn empty(twa: Vec<f64>, tws: Vec<f64>) -> Self {
@@ -99,6 +129,14 @@ pub enum PolarFileFormat {
     Adrena,
     /// A `.csv` TWA × TWS grid, semicolon- or comma-separated.
     Csv,
+    /// qtVlm `.csv`: a semicolon-separated TWA × TWS table.
+    QtVlm,
+    /// OpenCPN Weather Routing `.pol`: a semicolon-separated TWA × TWS table.
+    OpenCpn,
+    /// LuckGrib `.tsv`: a tab-separated TWA × TWS table.
+    LuckGrib,
+    /// WhirlwindMatrixPolar portable binary matrix.
+    WhirlwindMatrixPolar,
 }
 
 #[cfg(test)]

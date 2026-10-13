@@ -16,10 +16,12 @@ import { useBoatEditing } from "../polar/editFocus";
 import { useBoatSelection } from "../selection";
 import { loadPanels, reveal, savePanels, togglePanel, type PanelState } from "../panels/layout";
 import StageSwitcher, { type Stage } from "../stage/StageSwitcher";
+import type { BoatViewState } from "./synchronization";
 
-export default function BoatWorkspace({ project, settings, onSettings: setSettings, onProject: updateProject, split, active, visible }: {
+export default function BoatWorkspace({ project, settings, onSettings: setSettings, onProject: updateProject, split, active, visible, viewState }: {
   project: ProjectSummary; settings: AppSettings | null; onSettings: (settings: AppSettings) => void;
   onProject: (project: ProjectSummary) => void; split: boolean; active: boolean; visible: boolean;
+  viewState: BoatViewState;
 }) {
   const t = useT();
   const [requestedStage, setStage] = useState<Stage>("3d");
@@ -85,7 +87,7 @@ export default function BoatWorkspace({ project, settings, onSettings: setSettin
       } as CSSProperties}>
         <main className="centre-stage" aria-label={t("Stage")}>
           {slot("map", shown => <MapView project={shown} settings={settings} onSettings={setSettings} />)}
-          {slot("3d", shown => <PolarView project={shown} settings={settings} onProject={updateProject} compact={split && !comparisonControls} comparison={split} />)}
+          {slot("3d", shown => <PolarView project={shown} settings={settings} onProject={updateProject} compact={split && !comparisonControls} comparison={split} active={active} viewState={viewState} />)}
           {slot("2d", shown => <PolarPlot project={shown} variant="stage" unit={settings?.units.speed ?? "kn"} hidden={stage !== "2d"} />)}
           {/* Keyed by project: nothing of one project's comparison (its answer, its framing, a hovered cell) shows under another's names. */}
           {slot("compare", shown => <CompareView key={shown.id} project={shown} settings={settings} />)}

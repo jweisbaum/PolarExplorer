@@ -1,4 +1,6 @@
 export default {
+  'Export all tabs': 'Alle Tabs exportieren',
+  'Add Tab': 'Tab hinzufügen',
   "All boat details": "Alle Bootsangaben",
   "Filters and display": "Filter und Darstellung",
   "Polar {number}": "Polare {number}",

@@ -1,5 +1,7 @@
 /** Boat tabs, the boat comparison and projects opened from a tracker. */
 const catalogue: Record<string, string> = {
+  "Add Tab": "添加标签页",
+  "Export all tabs": "导出所有标签页",
   "All boat details": "所有船只详情",
   "Filters and display": "筛选与显示",
   "Polar {number}": "极曲线 {number}",

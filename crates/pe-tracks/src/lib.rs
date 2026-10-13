@@ -15,6 +15,7 @@ pub mod error;
 pub mod filter;
 pub mod geo;
 pub mod geojson;
+pub mod gpx;
 pub mod time;
 
 use pe_core::track::{DerivationSettings, Fix, Motion, Sample, Track, TrackOrigin, ValueOrigin};

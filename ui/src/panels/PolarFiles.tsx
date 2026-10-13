@@ -50,7 +50,7 @@ export default function PolarFiles({ project, onProject }: {
     <>
       <div className="section-actions">
         <button data-feature="polar-files:import" onClick={() => void importFiles()}
-          title={t("Import Expedition (.txt) and Adrena or grid (.pol, .csv) polars; several files at once")}>
+          title={t("Import Expedition, Adrena, qtVlm, OpenCPN, LuckGrib and WhirlwindMatrixPolar files; several files at once")}>
           {t("Import…")}
         </button>
       </div>

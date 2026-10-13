@@ -55,7 +55,7 @@ pub struct EditSurface {
     pub count: Option<Vec<Vec<u32>>>,
     /// A track's spread per cell, knots (sample standard deviation).
     pub spread: Option<Vec<Vec<Option<f64>>>>,
-    /// A track's statistic: `median`, `mean`, `p75` or `p90`.
+    /// A track's statistic: `min`, `median`, `mean`, `p75`, `p90` or `max`.
     pub statistic: Option<String>,
     /// The samples a track cell needs to have a value (spec.md 12.1).
     pub min_samples: u32,
@@ -95,20 +95,24 @@ pub enum EditOp {
 /// A statistic's wire name.
 pub fn statistic_name(statistic: SegmentStatistic) -> &'static str {
     match statistic {
+        SegmentStatistic::Min => "min",
         SegmentStatistic::Median => "median",
         SegmentStatistic::Mean => "mean",
         SegmentStatistic::P75 => "p75",
         SegmentStatistic::P90 => "p90",
+        SegmentStatistic::Max => "max",
     }
 }
 
 /// A statistic from its wire name.
 pub fn parse_statistic(name: &str) -> Option<SegmentStatistic> {
     match name {
+        "min" => Some(SegmentStatistic::Min),
         "median" => Some(SegmentStatistic::Median),
         "mean" => Some(SegmentStatistic::Mean),
         "p75" => Some(SegmentStatistic::P75),
         "p90" => Some(SegmentStatistic::P90),
+        "max" => Some(SegmentStatistic::Max),
         _ => None,
     }
 }
@@ -125,6 +129,7 @@ fn source_of(open: &mut OpenProject, id: u64) -> Result<Source> {
                 format: pe_core::polar::PolarFileFormat::Expedition,
                 file_name: String::new(),
                 polar,
+                matrix: None,
             },
         );
         source.overlay.cell_overrides = open.project.blend.corrections.clone();
@@ -391,7 +396,7 @@ pub fn polar_edit(
 }
 
 /// Chooses the per-cell statistic of a track's polar segment (spec.md
-/// 12.1): `median`, `mean`, `p75` or `p90`. Undoable.
+/// 12.1): `min`, `median`, `mean`, `p75`, `p90` or `max`. Undoable.
 #[tauri::command]
 pub fn set_segment_statistic(
     state: tauri::State<'_, AppState>,

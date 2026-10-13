@@ -32,6 +32,7 @@ fn project_with_orc_and_file(root: &TempRoot) -> pe_app::commands::AppState {
             "File",
             colour,
             SourceKind::PolarFile {
+                matrix: None,
                 format: PolarFileFormat::Expedition,
                 file_name: "file.txt".to_owned(),
                 polar: PolarGrid {

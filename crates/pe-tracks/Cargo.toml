@@ -10,6 +10,7 @@ description = "PolarExplorer track model, file import and sample derivation."
 pe-core = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+quick-xml = { version = "0.42", features = ["serialize"] }
 
 [dev-dependencies]
 # Arbitrary input for the never-panics tests.

@@ -1,4 +1,6 @@
 export default {
+  'Export all tabs': 'تصدير كل علامات التبويب',
+  'Add Tab': 'إضافة علامة تبويب',
   "All boat details": "كل تفاصيل القارب",
   "Filters and display": "المرشّحات والعرض",
   "Polar {number}": "المنحنى القطبي {number}",

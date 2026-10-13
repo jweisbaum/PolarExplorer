@@ -16,7 +16,7 @@ path: string,
  */
 file: string,
 /**
- * `"geojson"` or `"csv"`.
+ * `"gpx"`, `"geojson"` or `"csv"`.
  */
 kind: string,
 /**

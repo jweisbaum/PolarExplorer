@@ -499,6 +499,7 @@ pub fn add(state: &AppState, id: u32, allow_duplicate: bool) -> Result<ProjectSu
         })?;
     state.with_session(|session| {
         let open = session.require_open()?;
+        open.ensure_editable()?;
         if !allow_duplicate && holds(&open.project, &record) {
             return Err(AppError::DuplicateCertificate {
                 name: label(&record),

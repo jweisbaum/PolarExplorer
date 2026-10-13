@@ -662,7 +662,7 @@ pub struct TrackFileInspection {
     pub path: String,
     /// The file name.
     pub file: String,
-    /// `"geojson"` or `"csv"`.
+    /// `"gpx"`, `"geojson"` or `"csv"`.
     pub kind: String,
     /// The boats it holds, in the order they first appear; empty when it
     /// did not read.
@@ -721,6 +721,15 @@ fn is_geojson(path: &Path, text: &str) -> bool {
     }
 }
 
+/// GPX is identified by its extension or root tag, since exports commonly use
+/// a namespace-prefixed `<gpx>` root and may have any file name extension.
+fn is_gpx(path: &Path, text: &str) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("gpx"))
+        || text.trim_start().starts_with("<?xml") && text.contains("<gpx")
+        || text.trim_start().starts_with("<gpx")
+}
+
 fn boats_of(raw: &[RawTrack]) -> Vec<TrackBoatPreview> {
     raw.iter()
         .map(|track| TrackBoatPreview {
@@ -752,6 +761,10 @@ fn read_file(
         let mapping = mapping.mapping().map_err(|_| no_mapping(file))?;
         return read_csv(table, &mapping).map_err(|e| TrackImportFailure::of(file, &e));
     }
+    if is_gpx(Path::new(file), text) {
+        return pe_tracks::gpx::read_gpx(text.as_bytes())
+            .map_err(|e| TrackImportFailure::of(file, &e));
+    }
     pe_tracks::geojson::read_geojson(text.as_bytes()).map_err(|e| TrackImportFailure::of(file, &e))
 }
 
@@ -774,6 +787,14 @@ pub fn inspect(path: &str, mapping: Option<&CsvMappingInput>) -> TrackFileInspec
             return out;
         }
     };
+    if is_gpx(p, &text) {
+        out.kind = "gpx".to_owned();
+        match read_file(&file, &text, None, None) {
+            Ok(raw) => out.boats = boats_of(&raw),
+            Err(failure) => out.failure = Some(failure),
+        }
+        return out;
+    }
     if is_geojson(p, &text) {
         out.kind = "geojson".to_owned();
         match read_file(&file, &text, None, None) {
@@ -902,7 +923,7 @@ fn prepare(request: &TrackFileRequest) -> std::result::Result<Vec<Pending>, Trac
     let path = Path::new(&request.path);
     let file = file_name(path);
     let text = read_text(path, &file)?;
-    let raw = if is_geojson(path, &text) {
+    let raw = if is_gpx(path, &text) || is_geojson(path, &text) {
         read_file(&file, &text, None, None)?
     } else {
         let table = parse_table(&text).map_err(|e| TrackImportFailure::of(&file, &e))?;
@@ -1006,6 +1027,7 @@ pub(crate) fn add_tracks_to_project(
 ) -> Result<TrackImportResult> {
     state.with_session(|session| {
         let open = session.require_open()?;
+        open.ensure_editable()?;
         if let Some(expected) = expected_project {
             if open.project.id != expected {
                 return Err(AppError::Internal(

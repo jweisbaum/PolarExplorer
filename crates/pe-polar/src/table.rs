@@ -15,9 +15,6 @@ use crate::format::{
     meaningful, speed, table_separator, tws_speed,
 };
 
-/// The top-left cell the writer uses.
-const CORNER: &str = "TWA\\TWS";
-
 /// Drops empty fields at the end of a row: spreadsheets pad rows with
 /// separators.
 fn trim_trailing(mut row: Vec<Field<'_>>) -> Vec<Field<'_>> {
@@ -32,12 +29,16 @@ pub(crate) fn read(text: &str) -> Result<PolarGrid> {
     let Some((header_line, header)) = lines.next() else {
         return Err(PolarError::whole(Reason::Empty));
     };
+    let rows: Vec<_> = lines.collect();
     let sep = table_separator(header);
     let head = trim_trailing(fields(header, sep));
     let Some((corner, speeds)) = head.split_first() else {
         return Err(PolarError::whole(Reason::Empty));
     };
-    if !is_table_header(corner.text) {
+    let luckgrib_label = !rows.is_empty()
+        && corner.text.parse::<f64>().is_err()
+        && !corner.text.eq_ignore_ascii_case("tws");
+    if !is_table_header(corner.text) && !luckgrib_label {
         return Err(PolarError::at(
             header_line,
             corner.column,
@@ -66,7 +67,7 @@ pub(crate) fn read(text: &str) -> Result<PolarGrid> {
     }
 
     let mut seen = BTreeSet::new();
-    for (line, content) in lines {
+    for (line, content) in rows {
         let row = trim_trailing(fields(content, sep));
         let Some((first, cells)) = row.split_first() else {
             continue;
@@ -100,9 +101,9 @@ pub(crate) fn read(text: &str) -> Result<PolarGrid> {
 }
 
 /// The whole grid, empty cells left empty.
-pub(crate) fn write(polar: &PolarGrid, separator: char) -> String {
+pub(crate) fn write(polar: &PolarGrid, separator: char, corner: &str) -> String {
     let sep = separator.to_string();
-    let mut out = String::from(CORNER);
+    let mut out = String::from(corner);
     for tws in &polar.tws {
         out.push_str(&sep);
         out.push_str(&axis_text(*tws));
@@ -187,10 +188,13 @@ mod tests {
     fn writing_is_the_whole_grid() {
         let polar = read("TWA\t6\t8\n40\t5\t5.5\n90\t6.25\n").unwrap();
         assert_eq!(
-            write(&polar, '\t'),
+            write(&polar, '\t', "TWA\\TWS"),
             "TWA\\TWS\t6\t8\n40\t5.00\t5.50\n90\t6.25\t\n"
         );
-        assert_eq!(write(&polar, ';'), "TWA\\TWS;6;8\n40;5.00;5.50\n90;6.25;\n");
-        assert_eq!(read(&write(&polar, ';')).unwrap(), polar);
+        assert_eq!(
+            write(&polar, ';', "TWA\\TWS"),
+            "TWA\\TWS;6;8\n40;5.00;5.50\n90;6.25;\n"
+        );
+        assert_eq!(read(&write(&polar, ';', "TWA\\TWS")).unwrap(), polar);
     }
 }

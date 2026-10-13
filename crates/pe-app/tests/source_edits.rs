@@ -31,6 +31,7 @@ fn project_with_sources(root: &TempRoot) -> AppState {
                 label,
                 colour,
                 SourceKind::PolarFile {
+                    matrix: None,
                     format: PolarFileFormat::Expedition,
                     file_name: format!("{label}.txt"),
                     polar: PolarGrid::empty(vec![40.0, 90.0], vec![10.0]),
@@ -182,6 +183,7 @@ fn every_history_label_is_listed_for_translation() {
             "A",
             Colour::parse("#000000").unwrap(),
             SourceKind::PolarFile {
+                matrix: None,
                 format: PolarFileFormat::Expedition,
                 file_name: "a.txt".to_owned(),
                 polar: PolarGrid::empty(vec![40.0], vec![10.0]),

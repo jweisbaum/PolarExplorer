@@ -17,8 +17,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-import { dotPositions, hatchLines, lassoSelect, project, surfaceMesh, type Layout, type PolarGrid } from "./geometry3d";
+import { CARTESIAN_TWA_SCALE, dotPositions, hatchLines, lassoSelect, project, surfaceMesh, type Layout, type PolarGrid } from "./geometry3d";
 import { cellAt, cellRect, type Rect } from "./waveSplit";
+import { intersectPdfBox, pdfBoxBounds, pdfBoxEdges, pdfProxyGeometry, type PdfBox, type PdfVolumeInput } from "./pdfVolume";
+import { PDF_VOLUME_VERTEX, PDF_VOLUME_FRAGMENT, PDF_OUTLINE_VERTEX, PDF_OUTLINE_FRAGMENT } from "./pdfVolumeShader";
+export type { PdfVolumeInput } from "./pdfVolume";
 
 /** A disc: a sample or a node in the blend. */
 export const SHAPE_DISC = 0;
@@ -71,6 +74,8 @@ export interface SceneInput {
   /** One `SHAPE_*` per dot; all discs when absent. */
   shapes?: Float32Array;
   surfaces: readonly SurfaceInput[];
+  /** Continuous probability fields grouped by wind-condition cell. */
+  pdfVolumes?: readonly PdfVolumeInput[];
   layout: Layout;
 }
 
@@ -174,6 +179,14 @@ void main() {
   gl_FragColor = vec4(vColor, 1.0);
 }`;
 
+function pdfOutlineMaterial(color: number, opacity: number): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: PDF_OUTLINE_VERTEX, fragmentShader: PDF_OUTLINE_FRAGMENT,
+    uniforms: { drawCell: { value: -1 }, color: { value: new THREE.Color(color) }, opacity: { value: opacity } },
+    transparent: true, depthTest: true, depthWrite: false,
+  });
+}
+
 function disposeChildren(group: THREE.Group) {
   for (const child of [...group.children]) {
     group.remove(child);
@@ -192,6 +205,13 @@ export class PolarScene {
   private positions = new Float32Array(0);
   private selected = new Float32Array(0);
   private readonly surfaces = new THREE.Group();
+  private readonly pdfVolumes = new THREE.Group();
+  private readonly pdfCellOutlines = new THREE.Group();
+  private readonly pdfSelectionOutline = new THREE.Group();
+  private readonly pdfMaterials: THREE.ShaderMaterial[] = [];
+  private readonly pdfOutlineMaterials: THREE.ShaderMaterial[] = [];
+  private readonly pdfBoxEdges = new Map<string, { positions: Float32Array; copy: number }>();
+  private pdfBoxes: PdfBox[] = [];
   private readonly guides = new THREE.Group();
   private screen = new Float32Array(0);
   private screenFresh = false;
@@ -203,6 +223,7 @@ export class PolarScene {
   private bound: { objects: THREE.Object3D[]; cell: number }[] = [];
   private width = 1;
   private height = 1;
+  private layout: Layout = "tower";
   private orbitAngle = Math.PI / 4;
   /** The grid of copies, or null when the scene is one view. */
   private cells: Cells | null = null;
@@ -216,6 +237,9 @@ export class PolarScene {
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
     this.camera.up.set(0, 0, 1);
     this.scene.add(this.surfaces);
+    this.scene.add(this.pdfVolumes);
+    this.scene.add(this.pdfCellOutlines);
+    this.scene.add(this.pdfSelectionOutline);
     this.scene.add(this.guides);
     this.orbit(this.orbitAngle);
   }
@@ -243,6 +267,7 @@ export class PolarScene {
       throw new RangeError(`${input.shapes.length} shapes for ${n} dots`);
     }
     const t0 = performance.now();
+    this.layout = input.layout;
     this.positions = dotPositions(input.samples, input.layout);
     this.screenFresh = false;
     this.selected = new Float32Array(n);
@@ -270,6 +295,60 @@ export class PolarScene {
     this.scene.add(this.dots);
     const t1 = performance.now();
 
+    disposeChildren(this.pdfVolumes);
+    disposeChildren(this.pdfCellOutlines);
+    disposeChildren(this.pdfSelectionOutline);
+    this.pdfMaterials.length = 0;
+    this.pdfOutlineMaterials.length = 0;
+    this.pdfBoxEdges.clear();
+    this.pdfBoxes = [];
+    const edgePositions: number[] = [], edgeCopies: number[] = [];
+    for (const volume of input.pdfVolumes ?? []) {
+      this.pdfBoxes.push(...volume.boxes);
+      // Opaque volumes establish depth before the intentionally faded context.
+      // A back-face proxy shades each ray once, even with the camera inside it.
+      for (const translucent of [false, true]) {
+        const boxes = volume.boxes.filter((box) => (box.opacity < 1) === translucent);
+        if (boxes.length === 0) continue;
+        const data = pdfProxyGeometry(boxes, input.layout);
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+        geometry.setAttribute("pdfLower", new THREE.BufferAttribute(data.lower, 3));
+        geometry.setAttribute("pdfUpper", new THREE.BufferAttribute(data.upper, 3));
+        geometry.setAttribute("pdfParameters", new THREE.BufferAttribute(data.parameters, 3));
+        geometry.setAttribute("pdfOpacity", new THREE.BufferAttribute(data.opacity, 1));
+        geometry.setAttribute("cell", new THREE.BufferAttribute(data.copies, 1));
+        geometry.setAttribute("windCell", new THREE.BufferAttribute(data.windCells, 1));
+        geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+        const material = new THREE.ShaderMaterial({
+          vertexShader: PDF_VOLUME_VERTEX, fragmentShader: PDF_VOLUME_FRAGMENT,
+          uniforms: {
+            drawCell: { value: -1 }, hoverWindCell: { value: -1 }, hoverCopy: { value: -1 },
+            maxDensity: { value: volume.maxDensity }, tower: { value: input.layout === "tower" ? 1 : 0 },
+            angleScale: { value: 180 / Math.PI / CARTESIAN_TWA_SCALE },
+          },
+          transparent: translucent, depthWrite: !translucent, depthTest: true, side: THREE.BackSide,
+        });
+        this.pdfMaterials.push(material);
+        this.pdfVolumes.add(new THREE.Mesh(geometry, material));
+      }
+      for (const box of volume.boxes) {
+        const positions = pdfBoxEdges(box, input.layout);
+        this.pdfBoxEdges.set(`${Math.max(0, box.copy)}:${box.windCell}`, { positions, copy: box.copy });
+        for (const value of positions) edgePositions.push(value);
+        for (let i = 0; i < positions.length / 3; i++) edgeCopies.push(box.copy);
+      }
+    }
+    if (edgePositions.length > 0) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(Float32Array.from(edgePositions), 3));
+      geometry.setAttribute("cell", new THREE.BufferAttribute(Float32Array.from(edgeCopies), 1));
+      const material = pdfOutlineMaterial(0x91a6c5, 0.2);
+      this.pdfOutlineMaterials.push(material);
+      const outlines = new THREE.LineSegments(geometry, material);
+      outlines.renderOrder = 8;
+      this.pdfCellOutlines.add(outlines);
+    }
     disposeChildren(this.surfaces);
     this.pickable = [];
     this.bound = [];
@@ -364,6 +443,80 @@ export class PolarScene {
   /** The copy under a canvas point, -1 for none; a scene that is one view is copy 0 everywhere. */
   cellAt(x: number, y: number): number {
     return this.cells ? cellAt(x, y, this.cells.count, this.cells.region) : 0;
+  }
+
+  /** Finds the PDF wind cell under the pointer and its split-wave copy. */
+  pickPdfCell(x: number, y: number): { windCell: number; copy: number; sog: number } | null {
+    const copy = this.cellAt(x, y);
+    if (copy < 0 || this.pdfVolumes.children.length === 0) return null;
+    const at = this.cellRect(copy);
+    this.camera.updateMatrixWorld();
+    this.raycaster.setFromCamera(new THREE.Vector2(((x - at.x) / at.width) * 2 - 1, 1 - ((y - at.y) / at.height) * 2), this.camera);
+    const origin = this.raycaster.ray.origin.toArray() as [number, number, number];
+    const direction = this.raycaster.ray.direction.toArray() as [number, number, number];
+    let nearest = Infinity;
+    let found: PdfBox | null = null;
+    let foundOpaque = false;
+    for (const box of this.pdfBoxes) {
+      if ((this.cells && box.copy !== copy) || (!this.cells && box.copy >= 0)) continue;
+      const intervals = intersectPdfBox(origin, direction, box, this.layout);
+      const entry = intervals[0]?.[0];
+      const opaque = box.opacity >= 1;
+      // Faded context must not intercept the selected cell's SOG tooltip.
+      if (entry === undefined || (foundOpaque && !opaque)) continue;
+      if ((opaque && !foundOpaque) || entry < nearest) {
+        nearest = entry; found = box; foundOpaque = opaque;
+      }
+    }
+    if (!found) return null;
+    const point = this.raycaster.ray.at(nearest, new THREE.Vector3());
+    const sog = this.layout === "tower" ? Math.hypot(point.x, point.y) : point.z;
+    return { windCell: found.windCell, copy, sog };
+  }
+
+  /** Highlights a hovered cell and outlines the selected PDF box. */
+  setPdfHighlight(
+    hovered: { windCell: number; copy: number } | null,
+    selected: { windCell: number; copy: number } | null,
+  ) {
+    const hoveringSelected = selected !== null && hovered?.windCell === selected.windCell && hovered.copy === selected.copy;
+    for (const material of this.pdfMaterials) {
+      material.uniforms.hoverWindCell!.value = hoveringSelected ? -1 : hovered?.windCell ?? -1;
+      material.uniforms.hoverCopy!.value = hovered?.copy ?? -1;
+    }
+    disposeChildren(this.pdfSelectionOutline);
+    if (!selected || hoveringSelected) return;
+    const edges = this.pdfBoxEdges.get(`${selected.copy}:${selected.windCell}`);
+    if (!edges) return;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(edges.positions, 3));
+    geometry.setAttribute("cell", new THREE.BufferAttribute(new Float32Array(edges.positions.length / 3).fill(edges.copy), 1));
+    const outline = new THREE.LineSegments(geometry, pdfOutlineMaterial(0xff4fa3, 1));
+    outline.renderOrder = 10;
+    this.pdfSelectionOutline.add(outline);
+  }
+
+  /** Zooms the camera to the currently rendered PDF cell. */
+  focusPdfCell(windCell: number, copy: number) {
+    const box = new THREE.Box3();
+    for (const cell of this.pdfBoxes) {
+      if (cell.windCell !== windCell || (this.cells ? cell.copy !== copy : cell.copy >= 0)) continue;
+      const bounds = pdfBoxBounds(cell, this.layout);
+      box.expandByPoint(new THREE.Vector3(...bounds.min));
+      box.expandByPoint(new THREE.Vector3(...bounds.max));
+    }
+    if (box.isEmpty()) return;
+    const target = box.getCenter(new THREE.Vector3());
+    const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 0.5);
+    const currentTarget = this.controls?.target ?? new THREE.Vector3(0, 0, 14);
+    const direction = this.camera.position.clone().sub(currentTarget).normalize();
+    // Leave room around the expanded cell so the low-alpha neighboring PDFs
+    // remain visible as context.
+    const distance = Math.max(radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 2.2, 2);
+    this.setView({
+      position: target.clone().addScaledVector(direction, distance).toArray() as [number, number, number],
+      target: target.toArray() as [number, number, number],
+    });
   }
 
   /** Where a copy is drawn, CSS pixels from the canvas's top left: the whole canvas when the scene is one view. */
@@ -469,11 +622,19 @@ export class PolarScene {
     }
   }
 
+  private setPdfDrawCell(copy: number) {
+    for (const material of [...this.pdfMaterials, ...this.pdfOutlineMaterials]) material.uniforms.drawCell!.value = copy;
+    for (const child of this.pdfSelectionOutline.children) {
+      ((child as THREE.LineSegments).material as THREE.ShaderMaterial).uniforms.drawCell!.value = copy;
+    }
+  }
+
   render() {
     const cells = this.cells;
     const drawCell = (this.dots?.material as THREE.ShaderMaterial | undefined)?.uniforms.drawCell;
     if (!cells) {
       if (drawCell) drawCell.value = -1;
+      this.setPdfDrawCell(-1);
       this.showBound(-1);
       this.renderer.render(this.scene, this.camera);
       return;
@@ -491,6 +652,7 @@ export class PolarScene {
       renderer.setViewport?.(at.x, bottom, at.width, at.height);
       renderer.setScissor?.(at.x, bottom, at.width, at.height);
       if (drawCell) drawCell.value = k;
+      this.setPdfDrawCell(k);
       this.showBound(k);
       renderer.render(this.scene, this.camera);
     }
@@ -634,6 +796,13 @@ export class PolarScene {
       this.dots = null;
     }
     disposeChildren(this.surfaces);
+    disposeChildren(this.pdfVolumes);
+    disposeChildren(this.pdfCellOutlines);
+    disposeChildren(this.pdfSelectionOutline);
+    this.pdfMaterials.length = 0;
+    this.pdfOutlineMaterials.length = 0;
+    this.pdfBoxes = [];
+    this.pdfBoxEdges.clear();
     this.pickable = [];
     disposeChildren(this.guides);
     this.positions = new Float32Array(0);

@@ -262,6 +262,10 @@ pub enum SourceKind {
         file_name: String,
         /// The grid as parsed.
         polar: PolarGrid,
+        /// Full WhirlwindMatrixPolar payload, when the source was imported
+        /// from that matrix format. `polar` is its 2D editor/blend projection.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        matrix: Option<Box<crate::polar::WhirlwindMatrixPolar>>,
     },
     /// A track.
     Track {

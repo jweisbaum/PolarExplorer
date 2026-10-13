@@ -13,9 +13,13 @@ import { formatAxis, parseAxis } from "./axes";
 
 /** The formats offered (spec.md 6): each writer's layout and extension. */
 export const EXPORT_FORMATS: readonly { id: string; label: string }[] = [
+  { id: "whirlwind_matrix_polar", label: msg("WhirlwindMatrixPolar (.wmpolar)") },
   { id: "expedition", label: msg("Expedition (.txt)") },
   { id: "adrena", label: msg("Adrena (.pol)") },
   { id: "csv", label: msg("CSV (.csv)") },
+  { id: "qtvlm", label: msg("qtVlm (.csv)") },
+  { id: "opencpn", label: msg("OpenCPN (.pol)") },
+  { id: "luckgrib", label: msg("LuckGrib (.tsv)") },
 ];
 
 /** Why an export is refused, as a translated sentence naming what is wrong. */
@@ -55,7 +59,7 @@ export default function ExportDialog({ project, onClose }: {
 }) {
   const api = useBoatApi();
   const t = useT();
-  const [format, setFormat] = useState("expedition");
+  const [format, setFormat] = useState("whirlwind_matrix_polar");
   const [custom, setCustom] = useState(false);
   const [twaText, setTwaText] = useState(formatAxis(project.blend.twa));
   const [twsText, setTwsText] = useState(formatAxis(project.blend.tws));
@@ -114,16 +118,16 @@ export default function ExportDialog({ project, onClose }: {
         <h2>{title}</h2>
         <p className="modal-summary muted">{t("The blend of the visible sources, recomputed from them now.")}</p>
 
-        <fieldset className="export-format">
-          <legend>{t("Format")}</legend>
-          {EXPORT_FORMATS.map((option) => (
-            <label key={option.id}>
-              <input type="radio" name="export-format" data-feature={`export:${option.id}`} checked={format === option.id}
-                title={t("Write the polar in this format")} onChange={() => setFormat(option.id)} />
-              {t(option.label)}
-            </label>
-          ))}
-        </fieldset>
+        <label className="export-format">
+          <span>{t("Format")}</span>
+          <select name="export-format" data-feature="export:format" value={format} disabled={busy}
+            title={t("Write the polar in this format")} onChange={(event) => setFormat(event.target.value)}>
+            {EXPORT_FORMATS.map((option) => (
+              <option key={option.id} value={option.id}
+                data-feature={`export:${option.id === "whirlwind_matrix_polar" ? "whirlwind-matrix-polar" : option.id}`}>{t(option.label)}</option>
+            ))}
+          </select>
+        </label>
 
         <fieldset className="export-grid">
           <legend>{t("Grid")}</legend>
