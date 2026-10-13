@@ -9,7 +9,8 @@
  * on, so `DotBuild.refs` maps each drawn dot back to its global index.
  */
 import { NO_WAVE_RANGES, waveRangePredicate, type WaveRanges } from "./waveRanges";
-import { CELL_EVERY } from "./waveSplit";
+import type { PolarPdfResult } from "../generated/PolarPdfResult";
+import type { PolarPdfCell } from "../generated/PolarPdfCell";
 import { dayBand, dayBandRgb } from "../dayBand";
 import type { PolarCell } from "../generated/PolarCell";
 import type { PolarNodeRef } from "../generated/PolarNodeRef";
@@ -34,25 +35,10 @@ export interface Toggles {
 
 export const DEFAULT_TOGGLES: Toggles = { samples: true, nodes: true, surfaces: true, filtered: false, excluded: false };
 
-/** Step used only to normalize the truncated Gaussian density, in knots. */
-const PDF_MASS_STEP_KN = 0.5;
-const PDF_SPEED_MIN_STDDEV_KN = 0.5;
 const PDF_SPEED_MAX_KN = 60;
-const PDF_TAIL_CUTOFF = 0.005;
 const PDF_CONTEXT_ALPHA = 0.12;
 export type PdfVolume = PdfVolumeInput;
-
-export interface PdfCellStatistics {
-  windCell: number;
-  copy: number;
-  twa: number;
-  tws: number;
-  count: number;
-  mean: number;
-  stddev: number;
-  mass: number;
-  percentiles: readonly [number, number, number, number, number];
-}
+export type PdfCellStatistics = PolarPdfCell;
 
 export interface PdfDensity {
   /** Continuous Gaussian fields, one per wind-condition cell. */
@@ -61,124 +47,33 @@ export interface PdfDensity {
   count: number;
   /** The largest probability density across the shown wind cells, per knot. */
   maxDensity: number;
-  /** Empirical statistics for each occupied wind cell and split-wave copy. */
+  /** Statistics of the shared weighted Gaussian for each wind cell and copy. */
   cells: PdfCellStatistics[];
 }
 
-/**
- * Fits a Gaussian to the visible speeds in each output-grid wind cell, then
- * defines its normalized density over boat speed. A small minimum deviation
- * keeps single-speed cells visible as narrow curves instead of point masses.
- * The renderer integrates each field directly, without boat-speed slices.
- */
+/** Draw the backend's weighted blend PDFs without refitting the raw dots. */
 export function buildPdfDensity(
-  points: Float32Array,
-  twaAxis: ArrayLike<number>,
-  twsAxis: ArrayLike<number>,
-  _layout: Layout,
-  splitCells: Int16Array | null = null,
-  splitCount = 0,
+  fitted: PolarPdfResult | null,
+  split: boolean,
   focus: { windCell: number; copy: number } | null = null,
 ): PdfDensity {
-  const twaCount = twaAxis.length, twsCount = twsAxis.length;
-  if (points.length % 3 !== 0 || twaCount === 0 || twsCount === 0 || (splitCells && splitCells.length !== points.length / 3)) {
-    return { volumes: [], count: 0, maxDensity: 0, cells: [] };
-  }
-  const copies = splitCells ? splitCount : 1;
-  if (copies < 1) return { volumes: [], count: 0, maxDensity: 0, cells: [] };
-  const windCells = twaCount * twsCount;
-  const summaries = new Map<number, { count: number; sum: number; sumSquares: number; speeds: number[] }>();
-  const integrationSteps = Math.ceil(PDF_SPEED_MAX_KN / PDF_MASS_STEP_KN);
-  const nearest = (axis: ArrayLike<number>, value: number): number => {
-    let lo = 0, hi = axis.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (axis[mid]! < value) lo = mid + 1;
-      else hi = mid;
-    }
-    if (lo === 0) return 0;
-    if (lo === axis.length) return axis.length - 1;
-    return value - axis[lo - 1]! <= axis[lo]! - value ? lo - 1 : lo;
-  };
-  const add = (i: number, j: number, speed: number, copy: number) => {
-    const wi = copy * windCells + i * twsCount + j;
-    const summary = summaries.get(wi) ?? { count: 0, sum: 0, sumSquares: 0, speeds: [] };
-    summary.count++;
-    summary.sum += speed;
-    summary.sumSquares += speed * speed;
-    summary.speeds.push(speed);
-    summaries.set(wi, summary);
-  };
-  const count = points.length / 3;
-  for (let d = 0; d < count; d++) {
-    const twa = points[d * 3]!, tws = points[d * 3 + 1]!, bsp = points[d * 3 + 2]!;
-    if (!Number.isFinite(twa) || !Number.isFinite(tws) || !Number.isFinite(bsp)) continue;
-    const i = nearest(twaAxis, twa), j = nearest(twsAxis, tws);
-    if (i < 0 || j < 0 || bsp < 0 || bsp > 60) continue;
-    if (!splitCells) add(i, j, bsp, 0);
-    else {
-      const cell = splitCells[d]!;
-      if (cell === CELL_EVERY) for (let copy = 0; copy < copies; copy++) add(i, j, bsp, copy);
-      else if (cell >= 0 && cell < copies) add(i, j, bsp, cell);
-    }
-  }
-  const twaBounds = Array.from({ length: twaCount }, (_, i) => axisBounds(twaAxis, i, 0, 360));
-  const twsBounds = Array.from({ length: twsCount }, (_, i) => axisBounds(twsAxis, i, 0, Infinity));
-  const occupied = summaries.size;
-  let maxDensity = 0;
-  const curves = new Map<number, { mean: number; stddev: number; mass: number }>();
-  const cellStatistics: PdfCellStatistics[] = [];
-  for (const [wi, summary] of summaries) {
-    const copy = Math.floor(wi / windCells), wind = wi % windCells;
-    const i = Math.floor(wind / twsCount), j = wind % twsCount;
-    const sorted = [...summary.speeds].sort((a, b) => a - b);
-    const percentile = (p: number) => {
-      const at = (sorted.length - 1) * p;
-      const lo = Math.floor(at), hi = Math.ceil(at);
-      return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (at - lo);
-    };
-    const mean = summary.sum / summary.count;
-    const variance = Math.max(0, summary.sumSquares / summary.count - mean * mean);
-    const stddev = Math.max(PDF_SPEED_MIN_STDDEV_KN, Math.sqrt(variance));
-    let mass = 0;
-    for (let speedBin = 0; speedBin < integrationSteps; speedBin++) {
-      const speed = (speedBin + 0.5) * PDF_MASS_STEP_KN;
-      const z = (speed - mean) / stddev;
-      const density = Math.exp(-0.5 * z * z) / (stddev * Math.sqrt(2 * Math.PI));
-      mass += density * PDF_MASS_STEP_KN;
-    }
-    if (mass <= 0) continue;
-    cellStatistics.push({
-      windCell: wind, copy, twa: twaAxis[i]!, tws: twsAxis[j]!, count: summary.count,
-      mean, stddev, mass,
-      percentiles: [percentile(0.1), percentile(0.25), percentile(0.5), percentile(0.75), percentile(0.9)],
-    });
-    // The continuous shader reaches the exact peak; sampling that peak at
-    // bin midpoints would clip the colour ramp into a plateau near the mean.
-    maxDensity = Math.max(maxDensity, 1 / (stddev * Math.sqrt(2 * Math.PI) * mass));
-    curves.set(wi, { mean, stddev, mass });
-  }
-  const boxes: PdfBox[] = [];
-  for (const [wi, fitted] of curves) {
-    const copy = Math.floor(wi / windCells), wind = wi % windCells;
-    const i = Math.floor(wind / twsCount), j = wind % twsCount;
-    const peak = 1 / (fitted.stddev * Math.sqrt(2 * Math.PI) * fitted.mass);
-    if (peak < maxDensity * PDF_TAIL_CUTOFF) continue;
-    const b0 = Math.max(0, fitted.mean - 4 * fitted.stddev);
-    const b1 = Math.min(PDF_SPEED_MAX_KN, fitted.mean + 4 * fitted.stddev);
-    if (b1 <= b0) continue;
-    const isFocused = focus?.windCell === wind && focus.copy === copy;
-    boxes.push({
-      windCell: wind, copy: splitCells ? copy : -1,
-      angle: twaBounds[i]!, wind: twsBounds[j]!, speed: [b0, b1],
-      gaussian: [fitted.mean, fitted.stddev, fitted.mass],
+  if (!fitted) return { volumes: [], count: 0, maxDensity: 0, cells: [] };
+  const maxDensity = fitted.cells.reduce((peak, cell) =>
+    Math.max(peak, 1 / (cell.stddev * Math.sqrt(2 * Math.PI) * cell.mass)), 0);
+  const twaBounds = fitted.twa.map((_, i) => axisBounds(fitted.twa, i, 0, 360));
+  const twsBounds = fitted.tws.map((_, i) => axisBounds(fitted.tws, i, 0, Infinity));
+  const boxes: PdfBox[] = fitted.cells.map((cell) => {
+    const i = Math.floor(cell.windCell / fitted.tws.length), j = cell.windCell % fitted.tws.length;
+    const isFocused = focus?.windCell === cell.windCell && focus.copy === cell.copy;
+    return {
+      windCell: cell.windCell, copy: split ? cell.copy : -1,
+      angle: twaBounds[i]!, wind: twsBounds[j]!,
+      speed: [Math.max(0, cell.mean - 4 * cell.stddev), Math.min(PDF_SPEED_MAX_KN, cell.mean + 4 * cell.stddev)],
+      gaussian: [cell.mean, cell.stddev, cell.mass],
       opacity: focus && !isFocused ? PDF_CONTEXT_ALPHA : 1,
-    });
-  }
-  const volumes = boxes.length > 0 ? [{ boxes, maxDensity }] : [];
-  return {
-    volumes, count: occupied, maxDensity, cells: cellStatistics,
-  };
+    };
+  });
+  return { volumes: boxes.length ? [{ boxes, maxDensity }] : [], count: boxes.length, maxDensity, cells: fitted.cells };
 }
 
 /** Halfway boundaries around a wind-axis point, clipped to its valid range. */

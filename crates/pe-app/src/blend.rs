@@ -142,6 +142,17 @@ fn with_blend_sources<T>(
     derived: &BTreeMap<u64, Arc<Derived>>,
     then: impl FnOnce(&[BlendSource<'_>], &BlendOptions) -> T,
 ) -> T {
+    with_blend_sources_view(project, derived, false, then)
+}
+
+/// The PDF preview uses the same inputs, optionally including excluded nodes
+/// when explicitly requested by the view. No source overlay is changed.
+pub(crate) fn with_blend_sources_view<T>(
+    project: &Project,
+    derived: &BTreeMap<u64, Arc<Derived>>,
+    include_excluded: bool,
+    then: impl FnOnce(&[BlendSource<'_>], &BlendOptions) -> T,
+) -> T {
     let grid = &project.grid;
     // A track cell the person overrode counts fully (D23 ruling).
     type Read<'a> = (u64, f64, Polar, Option<(&'a Derived, Vec<Vec<bool>>)>);
@@ -164,10 +175,14 @@ fn with_blend_sources<T>(
                     .collect();
                 (data.blend.clone(), Some((&**data, overridden)))
             } else {
+                let mut overlay = source.overlay.clone();
+                if include_excluded {
+                    overlay.excluded_cells.clear();
+                }
                 (
                     on_grid_mode(
                         &data.edited,
-                        &source.overlay,
+                        &overlay,
                         &grid.twa,
                         &grid.tws,
                         project.blend.interpolation,

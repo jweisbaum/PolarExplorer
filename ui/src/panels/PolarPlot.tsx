@@ -7,6 +7,8 @@ import DayBandLegend from "../DayBandLegend";
 import { reportFailure } from "../errors";
 import type { BlendCell } from "../generated/BlendCell";
 import type { PolarCurve } from "../generated/PolarCurve";
+import type { PolarPdfResult } from "../generated/PolarPdfResult";
+import { pdfHeat, type PdfHeat } from "../polar/pdfHeat";
 import type { PolarPlotResult } from "../generated/PolarPlotResult";
 import type { ProjectSummary } from "../generated/ProjectSummary";
 import type { SpeedUnit } from "../generated/SpeedUnit";
@@ -31,67 +33,11 @@ const ON_GRID = 1e-6;
 const PIN_SNAP_PX = 8;
 /** Beyond this many dots each is a small square rather than a circle: far cheaper to fill. */
 const MANY_DOTS = 20_000;
-const PDF_ANGLE_STEP = 5;
-const PDF_ANGLE_BANDWIDTH = 7.5;
-const PDF_SPEED_STEP = 0.5;
-const PDF_MIN_STDDEV = 0.75;
-
-interface Gaussian { mean: number; stddev: number; mass: number }
-
-/** Draw a translucent angle × boat-speed field from the visible 2D data. */
+/** Draw the shared weighted Gaussian field as a smooth translucent heatmap. */
 function drawPdfHeat(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number,
-  layout: ReturnType<typeof fitLayout>, maxBsp: number, asymmetric: boolean, dots: DotPacket,
-  curves: readonly PolarCurve[]) {
-  const maxAngle = asymmetric ? 360 : 180;
-  const bins: number[][] = Array.from({ length: maxAngle / PDF_ANGLE_STEP + 1 }, () => []);
-  const add = (twa: number, bsp: number) => {
-    if (!Number.isFinite(twa) || !Number.isFinite(bsp) || bsp < 0 || bsp > 60) return;
-    if (!asymmetric && (twa < 0 || twa > 180)) return;
-    const index = Math.min(bins.length - 1, Math.max(0, Math.round(twa / PDF_ANGLE_STEP)));
-    bins[index]!.push(bsp);
-  };
-  for (let k = 0; k < dots.count; k++) add(dots.points[k * 3]!, dots.points[k * 3 + 2]!);
-  // Source curves provide the polar nodes in the 2D view; the blend is derived
-  // from those sources and is deliberately not counted again as observations.
-  for (const curve of curves) for (const point of curve.points) add(point.twa, point.bsp);
-
-  const fitted: (Gaussian | null)[] = bins.map((_, index) => {
-    let weightSum = 0, sum = 0, sumSquares = 0;
-    for (let sourceBin = Math.max(0, index - 2); sourceBin <= Math.min(bins.length - 1, index + 2); sourceBin++) {
-      const offset = (sourceBin - index) * PDF_ANGLE_STEP;
-      const weight = Math.exp(-0.5 * (offset / PDF_ANGLE_BANDWIDTH) ** 2);
-      for (const speed of bins[sourceBin]!) {
-        weightSum += weight;
-        sum += speed * weight;
-        sumSquares += speed * speed * weight;
-      }
-    }
-    if (weightSum === 0) return null;
-    const mean = sum / weightSum;
-    const stddev = Math.max(PDF_MIN_STDDEV, Math.sqrt(Math.max(0, sumSquares / weightSum - mean * mean)));
-    let mass = 0;
-    for (let speed = PDF_SPEED_STEP / 2; speed < 60; speed += PDF_SPEED_STEP) {
-      const z = (speed - mean) / stddev;
-      mass += Math.exp(-0.5 * z * z) / (stddev * Math.sqrt(2 * Math.PI)) * PDF_SPEED_STEP;
-    }
-    return mass > 0 ? { mean, stddev, mass } : null;
-  });
-  const maxDensity = fitted.reduce((max, value) => value ? Math.max(max, 1 / (value.stddev * Math.sqrt(2 * Math.PI) * value.mass)) : max, 0);
-  if (!(maxDensity > 0) || !(layout.scale > 0)) return;
-
-  const densityAt = (angle: number, bsp: number): number => {
-    const coordinate = Math.max(0, Math.min(maxAngle / PDF_ANGLE_STEP, angle / PDF_ANGLE_STEP));
-    const lo = Math.floor(coordinate), hi = Math.min(fitted.length - 1, lo + 1), mix = coordinate - lo;
-    let total = 0, weights = 0;
-    for (const [index, weight] of [[lo, 1 - mix], [hi, mix]] as const) {
-      const curve = fitted[index];
-      if (!curve || weight <= 0) continue;
-      const z = (bsp - curve.mean) / curve.stddev;
-      total += weight * Math.exp(-0.5 * z * z) / (curve.stddev * Math.sqrt(2 * Math.PI) * curve.mass);
-      weights += weight;
-    }
-    return weights > 0 ? total / weights : 0;
-  };
+  layout: ReturnType<typeof fitLayout>, maxBsp: number, asymmetric: boolean, heat: PdfHeat | null) {
+  if (!heat || !(layout.scale > 0)) return;
+  const { maxDensity, densityAt } = heat;
 
   // Rasterize at device resolution, then composite the transparent heat over
   // the polar grid. This avoids visible polygon seams in a 2D view.
@@ -191,7 +137,7 @@ export function signed(value: number, digits: number): string {
  */
 function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: DotPacket, hover: Hover | null,
   colours: ReadonlyMap<number, SourceStyle>, selected: ReadonlySet<number>, unit: SpeedUnit, asymmetric: boolean,
-  dotColour: DotColourMode, measuring: Measuring | null, centred: boolean, pdfMode: boolean) {
+  dotColour: DotColourMode, measuring: Measuring | null, centred: boolean, pdfMode: boolean, heat: PdfHeat | null) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -213,9 +159,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
   const observedMaxBsp = plotMaxBsp(result, dots);
   // Gaussian tails extend beyond the fastest observed value. Keep room for
   // those tails in PDF mode instead of clipping them at the plot's rim.
-  const maxBsp = pdfMode && observedMaxBsp > 0
-    ? Math.min(60, observedMaxBsp + Math.max(3.5, observedMaxBsp * 0.35))
-    : observedMaxBsp;
+  const maxBsp = pdfMode ? (heat?.maxBsp ?? 0) : observedMaxBsp;
   if (maxBsp <= 0) return;
   const layout = fitLayout(width, height, maxBsp, 28, asymmetric, centred);
 
@@ -239,7 +183,7 @@ function draw(canvas: HTMLCanvasElement, result: PolarPlotResult | null, dots: D
     ctx.lineTo(edge.x, edge.y);
     ctx.stroke();
   }
-  if (pdfMode) drawPdfHeat(ctx, width, height, dpr, layout, maxBsp, asymmetric, dots, curves);
+  if (pdfMode) drawPdfHeat(ctx, width, height, dpr, layout, maxBsp, asymmetric, heat);
   for (const label of axisLabels(layout, maxBsp, (text) => ctx.measureText(text).width, 10, factor, asymmetric)) {
     ctx.fillText(label.text, label.x, label.y);
   }
@@ -399,6 +343,7 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   // sends them either way, so ticking the box asks it for nothing.
   const [showExcluded, setShowExcluded] = useState(false);
   const [dotColour, setDotColour] = useState<DotColourMode>("source");
+  const [pdfFit, setPdfFit] = useState<PolarPdfResult | null>(null);
   const [pdfMode, setPdfMode] = useState(false);
   // The Measure tool (spec.md 9.2): on or off, where the pointer is, and
   // the pinned point A. View state only; nothing of it is saved.
@@ -481,6 +426,20 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
       .catch((err) => { if (request.current === id) reportFailure(err); });
   }, [project.id, project.revision, tws, rangeEnabled, showFiltered]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setPdfFit(null);
+    if (!pdfMode) return;
+    void api.polarPdf({ samples: true, nodes: true, filtered: showFiltered,
+      excluded: showExcluded, source: null, split: null,
+    }).then((next) => { if (!cancelled) setPdfFit(next); })
+      .catch((error: unknown) => { if (!cancelled) reportFailure(error); });
+    return () => { cancelled = true; };
+  }, [api, project.id, project.revision, pdfMode, showFiltered, showExcluded]);
+  const heat = useMemo(() => pdfMode
+    ? pdfHeat(pdfFit, rangeEnabled ? null : tws, rangeEnabled ? [rangeLow, rangeHigh] : null)
+    : null, [pdfMode, pdfFit, tws, rangeEnabled, rangeLow, rangeHigh]);
+
   const sourcesById = useMemo(() => {
     const map = new Map<number, SourceStyle>();
     for (const source of project.sources) map.set(source.id, { label: source.label, colour: source.colour });
@@ -501,8 +460,8 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   );
 
   const redraw = useCallback(() => {
-    if (canvas.current) draw(canvas.current, shownResult, dots, hover, sourcesById, selection.ids, unit, project.blend.asymmetric, shownDotColour, measuring, variant === "stage", pdfMode);
-  }, [shownResult, dots, hover, sourcesById, selection, unit, project.blend.asymmetric, shownDotColour, measuring, variant, pdfMode]);
+    if (canvas.current) draw(canvas.current, shownResult, dots, hover, sourcesById, selection.ids, unit, project.blend.asymmetric, shownDotColour, measuring, variant === "stage", pdfMode, heat);
+  }, [shownResult, dots, hover, sourcesById, selection, unit, project.blend.asymmetric, shownDotColour, measuring, variant, pdfMode, heat]);
 
   useEffect(redraw, [redraw]);
 
@@ -647,7 +606,7 @@ export default function PolarPlot({ project, variant, unit = "kn", hidden = fals
   };
   const hasAnyPoint = [...(shownResult?.curves ?? []), ...(shownResult?.blend ?? [])].some((curve) => curve.points.length > 0)
     || dots.count > 0;
-  const hasPdfData = (shownResult?.curves ?? []).some((curve) => curve.points.length > 0) || dots.count > 0;
+  const hasPdfData = heat !== null;
   // The readout's numbers: every one arrives in knots and leaves in the display unit.
   const symbol = SPEED_SYMBOL[unit];
   const shownSpeed = (knots: number) => `${(knots * SPEED_FACTOR[unit]).toFixed(2)} ${symbol}`;

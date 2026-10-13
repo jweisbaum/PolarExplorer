@@ -28,6 +28,7 @@ pub mod paths;
 pub mod polar3d;
 pub mod polar_edit;
 pub mod polar_files;
+pub mod polar_pdf;
 pub mod polar_plot;
 pub mod priority;
 pub mod projects;
@@ -155,6 +156,7 @@ pub fn run() -> anyhow::Result<()> {
             polar_files::import_polar_files,
             polar_plot::polar_plot,
             polar_plot::polar_plot_dots,
+            polar_pdf::polar_pdf,
             tracks::inspect_track_files,
             tracks::inspect_csv_track,
             tracks::import_track_files,

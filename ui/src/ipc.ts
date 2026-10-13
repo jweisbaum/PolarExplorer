@@ -46,6 +46,8 @@ import type { OrcSearchResult } from "./generated/OrcSearchResult";
 import type { PolarCell } from "./generated/PolarCell";
 import type { PolarImportResult } from "./generated/PolarImportResult";
 import type { PolarNodeRef } from "./generated/PolarNodeRef";
+import type { PolarPdfOptions } from "./generated/PolarPdfOptions";
+import type { PolarPdfResult } from "./generated/PolarPdfResult";
 import type { PolarPlotResult } from "./generated/PolarPlotResult";
 import type { Units } from "./generated/Units";
 import type { ProjectSummary } from "./generated/ProjectSummary";
@@ -264,6 +266,8 @@ export function boatApi(boatContext?: number) {
 
   // The 2D polar plot (spec.md 9.2).
 
+  /** Shared weighted Gaussian fields, using the current blend settings and view restrictions. */
+  polarPdf: (options: PolarPdfOptions) => call<PolarPdfResult>("polar_pdf", { options }),
   /**
    * Every visible polar source's curve at `tws` (null for "all": one curve
    * per source per wind speed it has), read through its edits and

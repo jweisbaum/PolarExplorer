@@ -17,6 +17,7 @@ import { needsOutline } from "../colourContrast";
 import { reportFailure } from "../errors";
 import type { AppSettings } from "../generated/AppSettings";
 import type { BlendCell } from "../generated/BlendCell";
+import type { PolarPdfResult } from "../generated/PolarPdfResult";
 import type { ProjectSummary } from "../generated/ProjectSummary";
 import { later, setHint } from "../hint";
 import DayBandLegend from "../DayBandLegend";
@@ -262,6 +263,7 @@ export default function PolarView({ project, settings, onProject, compact = fals
   const [waveRanges, updateWaveRanges] = useLiveEdit(project.blend.wave_ranges, (ranges) => api.setWaveRanges(ranges).then(onProject), project.id);
   const [mode, setMode] = useState<ColourMode>("source");
   const [displayMode, setDisplayMode] = useState<DisplayMode>("points");
+  const [pdfFit, setPdfFit] = useState<PolarPdfResult | null>(null);
   const [pdfFocus, setPdfFocus] = useState<{ windCell: number; copy: number } | null>(null);
   const [pdfHover, setPdfHover] = useState<({ windCell: number; copy: number; sog: number; x: number; y: number }) | null>(null);
   const [tool, setTool] = useState<Tool>("rotate");
@@ -621,11 +623,22 @@ export default function PolarView({ project, settings, onProject, compact = fals
     () => (splitOn ? waveCells(packet.nodes.count, packet.samples.waveBearing, dots.refs, waveCount, waveSense) : null),
     [splitOn, packet, dots, waveCount, waveSense],
   );
+  useEffect(() => {
+    let cancelled = false;
+    setPdfFit(null);
+    if (displayMode !== "pdf") return;
+    void api.polarPdf({ samples: toggles.samples, nodes: toggles.nodes,
+      filtered: toggles.filtered, excluded: toggles.excluded,
+      source: hideOthers ? focus : null,
+      split: splitOn ? { count: waveCount, sense: waveSense } : null,
+    }).then((next) => { if (!cancelled) setPdfFit(next); })
+      .catch((error: unknown) => { if (!cancelled) reportFailure(error); });
+    return () => { cancelled = true; };
+  }, [api, project.id, project.revision, displayMode, toggles.samples, toggles.nodes,
+    toggles.filtered, toggles.excluded, hideOthers, focus, splitOn, waveCount, waveSense]);
   const pdf = useMemo(
-    () => displayMode === "pdf"
-      ? buildPdfDensity(dots.points, project.blend.twa, project.blend.tws, layout, cells, waveCount, pdfFocus)
-      : EMPTY_PDF,
-    [displayMode, dots.points, project.blend.twa, project.blend.tws, layout, cells, waveCount, pdfFocus],
+    () => displayMode === "pdf" ? buildPdfDensity(pdfFit, splitOn, pdfFocus) : EMPTY_PDF,
+    [displayMode, pdfFit, splitOn, pdfFocus],
   );
   const focusedPdfStats = pdfFocus
     ? pdf.cells.find((cell) => cell.windCell === pdfFocus.windCell && cell.copy === pdfFocus.copy) ?? null

@@ -1978,12 +1978,21 @@ colour dots by source / by Hs / by current speed / by time / by time of day.
 Polar nodes have no environment, so they keep their source colour in every
 colour mode.
 
-The **Display** selector also offers **Probability density (PDF)**. It rebuilds
-one conditional boat-speed distribution for each output-grid TWA/TWS cell from
-the dots currently admitted by the show toggles: visible track samples and
-visible polar nodes (including certificate nodes). It fits a Gaussian to the
-speeds in each wind cell using their mean and standard deviation, with a small
-minimum deviation for cells containing identical speeds. The Gaussian is
+The **Display** selector also offers **Probability density (PDF)**. Both 2D
+and 3D use one shared Rust calculation on the output-grid TWA/TWS cells. It
+uses the blend's source weights, per-track statistic, minimum sample count,
+confidence cap (`n_full`), polar statistic, interpolation and smoothing.
+Hidden and zero-weight sources contribute nothing. The view's sample/node
+toggles and edit focus can further restrict the sources.
+
+Within each cell, a track contributes its selected statistic (with its node
+edits) and the population variance of its admitted raw speeds. Polar sources
+contribute their resampled edited speeds. The blend's effective weights combine
+these component means and second moments; interpolation and smoothing apply
+to both moment grids. Thus the Gaussian retains within-track variability and
+disagreement between sources instead of collapsing onto a single blended speed.
+Manual blend corrections translate its centre while preserving its spread.
+The minimum standard deviation is 0.5 kn. The Gaussian is
 normalized over the valid 0–60 knot range. Each wind cell is a continuous
 Gaussian volume, bounded by its wind-angle and wind-speed ranges and four
 standard deviations of boat speed. The renderer integrates the field per
@@ -1997,8 +2006,15 @@ of them rebuilds the PDFs. PDF mode hides
 the raw surfaces, disables point selection and editing gestures, and retains
 the current layout and camera controls. Hovering a wind cell highlights it
 and shows its TWA, TWS and sample count. Clicking emphasizes and zooms to that
-cell, dims the other cells, and shows its empirical P10, P25, P50, P75 and P90
-boat speeds; **Show all cells** or Escape restores the full PDF view.
+cell, dims the other cells, and shows the weighted Gaussian’s P10, P25, P50,
+P75 and P90 boat speeds; **Show all cells** or Escape restores the full PDF view.
+
+In 2D PDF mode, selecting a wind speed interpolates the conditional densities
+at that wind speed. A wind range averages the same PDFs over its intersecting
+wind bins, preserving their between-wind spread; it never refits an unweighted
+pool of dots. Angular and radial colour interpolation produces a smooth field,
+and the plot extent includes the Gaussian tails. Changing a source weight or
+any blend setting refreshes both views and their percentile readouts.
 
 **Time of day** is the band of the local solar day a sample was sailed in,
 by local mean solar time: UTC shifted by the sample's longitude at 15° an

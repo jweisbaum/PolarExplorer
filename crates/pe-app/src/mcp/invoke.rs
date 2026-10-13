@@ -148,6 +148,8 @@ pub const EXCLUDED: &[&str] = &[
     "polar_scene",
     "polar_scene_split",
     "polar_plot_dots",
+    // Derived Gaussian fields for the polar canvases; screenshot exposes the view.
+    "polar_pdf",
     "compare_polars",
     // These take the application handle, for the progress they emit. The
     // curated tools carry them: `weather_fetch`, `weather_cancel`,

@@ -65,6 +65,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     EditSurface::export_all(&cfg)?;
     EditOp::export_all(&cfg)?;
     PolarPlotResult::export_all(&cfg)?;
+    pe_app::polar_pdf::PolarPdfOptions::export_all(&cfg)?;
+    pe_app::polar_pdf::PolarPdfResult::export_all(&cfg)?;
     BlendSummary::export_all(&cfg)?;
     BlendCell::export_all(&cfg)?;
     WaveSplit::export_all(&cfg)?;
