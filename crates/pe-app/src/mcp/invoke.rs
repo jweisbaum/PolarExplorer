@@ -99,6 +99,8 @@ pub const EXCLUDED: &[&str] = &[
     "mcp_set",
     "mcp_rotate_token",
     "mcp_register_client",
+    "mcp_connections",
+    "mcp_connection_action",
     "deliver_capture",
     "refuse_capture",
     // The person's preferences. Every one of these answers the whole
@@ -170,6 +172,10 @@ pub const EXCLUDED: &[&str] = &[
 
 /// Every command reachable by name.
 pub const TABLE: &[(&str, Handler)] = &[
+    // Boat interchange uses the same live commands as the interface.
+    command!(import_boat_tab, crate::boats::import_boat_tab, { path: String }),
+    command!(export_boat_tab, crate::boats::export_boat_tab, { boat_context: Option<u64>, path: String }),
+    command!(async export_locked_boat_project, crate::boats::export_locked_boat_project, { path: String }),
     // Boats.
     command!(boat_tabs, crate::boats::boat_tabs, {}),
     command!(add_boat, crate::boats::add_boat, { name: String }),
@@ -286,6 +292,108 @@ pub fn call<R: tauri::Runtime>(
     }
 }
 
+/// Explicit command effects for the typed fallback tools; unknown commands never inherit permission.
+pub const COMMAND_EFFECTS: &[(&str, whirlwind_mcp::policy::Effect)] = &[
+    ("import_boat_tab", whirlwind_mcp::policy::Effect::Edit),
+    ("export_boat_tab", whirlwind_mcp::policy::Effect::Files),
+    (
+        "export_locked_boat_project",
+        whirlwind_mcp::policy::Effect::Files,
+    ),
+    ("app_info", whirlwind_mcp::policy::Effect::Read),
+    ("cancel_boat_import", whirlwind_mcp::policy::Effect::Edit),
+    ("env_estimate", whirlwind_mcp::policy::Effect::ReadNetwork),
+    ("export_all_polars", whirlwind_mcp::policy::Effect::Files),
+    ("import_track_files", whirlwind_mcp::policy::Effect::Edit),
+    (
+        "import_tracker_boats",
+        whirlwind_mcp::policy::Effect::Network,
+    ),
+    ("inspect_csv_track", whirlwind_mcp::policy::Effect::Read),
+    ("inspect_track_files", whirlwind_mcp::policy::Effect::Read),
+    (
+        "open_tracker_project",
+        whirlwind_mcp::policy::Effect::Anything,
+    ),
+    ("boat_tabs", whirlwind_mcp::policy::Effect::Read),
+    ("add_boat", whirlwind_mcp::policy::Effect::Edit),
+    ("rename_boat", whirlwind_mcp::policy::Effect::Edit),
+    ("delete_boat", whirlwind_mcp::policy::Effect::Edit),
+    ("restore_boat", whirlwind_mcp::policy::Effect::Edit),
+    (
+        "confirm_tracker_project",
+        whirlwind_mcp::policy::Effect::Anything,
+    ),
+    (
+        "discard_tracker_project",
+        whirlwind_mcp::policy::Effect::Anything,
+    ),
+    ("boat_import_status", whirlwind_mcp::policy::Effect::Read),
+    ("new_project", whirlwind_mcp::policy::Effect::Anything),
+    ("open_project", whirlwind_mcp::policy::Effect::Anything),
+    ("save_project", whirlwind_mcp::policy::Effect::Anything),
+    ("close_project", whirlwind_mcp::policy::Effect::Anything),
+    ("project_summary", whirlwind_mcp::policy::Effect::Read),
+    ("recent_projects", whirlwind_mcp::policy::Effect::Read),
+    (
+        "forget_recent_project",
+        whirlwind_mcp::policy::Effect::Anything,
+    ),
+    ("clear_recent", whirlwind_mcp::policy::Effect::Anything),
+    ("recovered_projects", whirlwind_mcp::policy::Effect::Read),
+    ("open_recovered", whirlwind_mcp::policy::Effect::Anything),
+    ("discard_recovered", whirlwind_mcp::policy::Effect::Anything),
+    ("undo", whirlwind_mcp::policy::Effect::Edit),
+    ("redo", whirlwind_mcp::policy::Effect::Edit),
+    ("rename_project", whirlwind_mcp::policy::Effect::Edit),
+    ("set_source_colour", whirlwind_mcp::policy::Effect::Edit),
+    ("set_visible_sources", whirlwind_mcp::policy::Effect::Edit),
+    ("set_source_visible", whirlwind_mcp::policy::Effect::Edit),
+    ("set_source_weight", whirlwind_mcp::policy::Effect::Edit),
+    ("set_source_label", whirlwind_mcp::policy::Effect::Edit),
+    ("move_source", whirlwind_mcp::policy::Effect::Edit),
+    ("remove_source", whirlwind_mcp::policy::Effect::Edit),
+    ("import_polar_files", whirlwind_mcp::policy::Effect::Edit),
+    ("polar_plot", whirlwind_mcp::policy::Effect::Read),
+    ("orc_catalogue_info", whirlwind_mcp::policy::Effect::Read),
+    ("orc_scrape_status", whirlwind_mcp::policy::Effect::Read),
+    ("cancel_orc_scrape", whirlwind_mcp::policy::Effect::Edit),
+    ("orc_search", whirlwind_mcp::policy::Effect::Read),
+    ("orc_add", whirlwind_mcp::policy::Effect::Anything),
+    ("orr_catalogue_info", whirlwind_mcp::policy::Effect::Read),
+    ("orr_search", whirlwind_mcp::policy::Effect::Read),
+    ("orr_add", whirlwind_mcp::policy::Effect::Anything),
+    ("orr_scrape_status", whirlwind_mcp::policy::Effect::Read),
+    ("cancel_orr_scrape", whirlwind_mcp::policy::Effect::Edit),
+    ("set_track_filters", whirlwind_mcp::policy::Effect::Edit),
+    ("set_track_derivation", whirlwind_mcp::policy::Effect::Edit),
+    ("set_track_wind", whirlwind_mcp::policy::Effect::Edit),
+    ("sample_details", whirlwind_mcp::policy::Effect::Read),
+    ("cancel_tracker_event", whirlwind_mcp::policy::Effect::Edit),
+    ("env_jobs", whirlwind_mcp::policy::Effect::Read),
+    ("set_use_corrected", whirlwind_mcp::policy::Effect::Edit),
+    ("set_excluded", whirlwind_mcp::policy::Effect::Edit),
+    ("polar_edit_surface", whirlwind_mcp::policy::Effect::Read),
+    ("edit_polar", whirlwind_mcp::policy::Effect::Edit),
+    ("set_segment_statistic", whirlwind_mcp::policy::Effect::Edit),
+    ("set_blend_visible", whirlwind_mcp::policy::Effect::Edit),
+    ("set_blend_colour", whirlwind_mcp::policy::Effect::Edit),
+    ("set_blend_settings", whirlwind_mcp::policy::Effect::Edit),
+    ("set_global_filters", whirlwind_mcp::policy::Effect::Edit),
+    ("wave_range_maxima", whirlwind_mcp::policy::Effect::Read),
+    ("set_wave_ranges", whirlwind_mcp::policy::Effect::Edit),
+    ("set_priority_filters", whirlwind_mcp::policy::Effect::Edit),
+    ("blend_cell", whirlwind_mcp::policy::Effect::Read),
+    ("blend_cell_split", whirlwind_mcp::policy::Effect::Read),
+    ("export_preview", whirlwind_mcp::policy::Effect::Read),
+];
+pub fn command_effect(name: &str) -> Option<whirlwind_mcp::policy::Effect> {
+    COMMAND_EFFECTS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, effect)| *effect)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +403,14 @@ mod tests {
     /// it lands or someone has said why not.
     #[test]
     fn the_table_covers_every_registered_command() {
+        let names: std::collections::BTreeSet<_> = TABLE.iter().map(|(name, _)| *name).collect();
+        let classified: std::collections::BTreeSet<_> =
+            COMMAND_EFFECTS.iter().map(|(name, _)| *name).collect();
+        assert_eq!(
+            names, classified,
+            "Every callable fallback command has an explicit effect"
+        );
+
         let lib = include_str!("../lib.rs");
         let start = lib.find("generate_handler![").expect("handler list");
         let end = lib[start..].find("])").expect("end of list") + start;

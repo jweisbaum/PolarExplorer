@@ -13,6 +13,7 @@ use super::{PolarExplorer, ToolError, ToolResult, absolute, json, may_write, typ
 use crate::blend::ExportAxes;
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ExportPreviewParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -22,8 +23,8 @@ pub struct ExportPreviewParams {
     /// Matrix export options for whirlwind_matrix_polar: sog, sampled_pdf,
     /// gaussian_pdf, sog_bins (2–512), and optional waves. Defaults include all
     /// modes and 4×4×2 wave bins. waves:null omits waves. Custom height/period
-    /// objects use {cutoffs:[...]}; angle uses {edges:[...]} spanning 360°.
-    /// Defaults: height [1,3,5] m, period [5] s, angle [-45,45,135,225,315]°
+    /// objects use {cutoffs:[...]}; angle uses {count:2|4|8|20}.
+    /// Defaults: height [1,3,5] m, period [5] s, angle count 4, equal sectors centered on 0°
     /// clockwise from the bow. Omitted fields retain their defaults.
     #[serde(default)]
     pub matrix: Option<Value>,
@@ -34,6 +35,7 @@ pub struct ExportPreviewParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ExportPolarParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -45,8 +47,8 @@ pub struct ExportPolarParams {
     /// Matrix export options for whirlwind_matrix_polar: sog, sampled_pdf,
     /// gaussian_pdf, sog_bins (2–512), and optional waves. Defaults include all
     /// modes and 4×4×2 wave bins. waves:null omits waves. Custom height/period
-    /// objects use {cutoffs:[...]}; angle uses {edges:[...]} spanning 360°.
-    /// Defaults: height [1,3,5] m, period [5] s, angle [-45,45,135,225,315]°
+    /// objects use {cutoffs:[...]}; angle uses {count:2|4|8|20}.
+    /// Defaults: height [1,3,5] m, period [5] s, angle count 4, equal sectors centered on 0°
     /// clockwise from the bow. Omitted fields retain their defaults.
     #[serde(default)]
     pub matrix: Option<Value>,
@@ -60,6 +62,7 @@ pub struct ExportPolarParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ExportAllParams {
     /// The folder to write every boat's polar into: absolute, or beginning
     /// with `~/`.
@@ -69,8 +72,8 @@ pub struct ExportAllParams {
     /// Matrix export options for whirlwind_matrix_polar: sog, sampled_pdf,
     /// gaussian_pdf, sog_bins (2–512), and optional waves. Defaults include all
     /// modes and 4×4×2 wave bins. waves:null omits waves. Custom height/period
-    /// objects use {cutoffs:[...]}; angle uses {edges:[...]} spanning 360°.
-    /// Defaults: height [1,3,5] m, period [5] s, angle [-45,45,135,225,315]°
+    /// objects use {cutoffs:[...]}; angle uses {count:2|4|8|20}.
+    /// Defaults: height [1,3,5] m, period [5] s, angle count 4, equal sectors centered on 0°
     /// clockwise from the bow. Omitted fields retain their defaults.
     #[serde(default)]
     pub matrix: Option<Value>,

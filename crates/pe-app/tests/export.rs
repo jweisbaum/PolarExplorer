@@ -721,3 +721,138 @@ fn polar_blend_settings_survive_save_undo_and_hidden_tracks() {
     invalid.polar_statistic = Some("p75".into());
     assert!(blend::blend_settings_set(&app, invalid).is_err());
 }
+
+#[test]
+fn matrix_exports_preserve_wave_bucket_definitions_and_project_data() {
+    use pe_app::matrix_export::{
+        MatrixAxisBins, MatrixDirectionBins, MatrixExportOptions, MatrixWaveBins,
+    };
+    let project = fixed_project();
+    let before = pe_core::io::to_bytes(&project).unwrap();
+    let axes = ExportAxes {
+        twa: vec![60.0, 90.0],
+        tws: vec![10.0, 16.0],
+    };
+    for directions in [0, 2, 4, 8, 20] {
+        let options = MatrixExportOptions {
+            sampled_pdf: false,
+            gaussian_pdf: false,
+            waves: (directions != 0).then_some(MatrixWaveBins {
+                height: MatrixAxisBins {
+                    cutoffs: vec![0.75, 2.25],
+                },
+                angle: MatrixDirectionBins { count: directions },
+                period: MatrixAxisBins {
+                    cutoffs: vec![4.5, 9.0],
+                },
+            }),
+            ..Default::default()
+        };
+        let bytes = blend::export_bytes_with_matrix(
+            &project,
+            "whirlwind_matrix_polar",
+            Some(&axes),
+            Some(&options),
+        )
+        .unwrap();
+        let parsed = pe_polar::read(&bytes).unwrap();
+        let matrix = parsed.matrix.unwrap();
+        assert_eq!(matrix.wave_direction_count, directions);
+        if directions == 0 {
+            assert!(matrix.wave_height_cutoffs_m.is_empty());
+            assert!(matrix.wave_period_cutoffs_s.is_empty());
+            assert_eq!(matrix.sog.as_ref().unwrap().len(), 4);
+        } else {
+            assert_eq!(matrix.wave_height_cutoffs_m, [0.75, 2.25]);
+            assert_eq!(matrix.wave_period_cutoffs_s, [4.5, 9.0]);
+            assert_eq!(
+                matrix.sog.as_ref().unwrap().len(),
+                9 * directions as usize * 4
+            );
+        }
+        let mut imported_project = project.clone();
+        imported_project
+            .sources
+            .retain(|s| matches!(s.kind, SourceKind::PolarFile { .. }));
+        imported_project.sources.truncate(1);
+        imported_project.sources[0].kind = SourceKind::PolarFile {
+            format: PolarFileFormat::WhirlwindMatrixPolar,
+            file_name: "buckets.wmpolar".into(),
+            polar: parsed.polar,
+            matrix: Some(Box::new(matrix)),
+        };
+        let saved = pe_core::io::to_bytes(&imported_project).unwrap();
+        let loaded = pe_core::io::from_bytes(&saved).unwrap();
+        assert_eq!(pe_core::io::to_bytes(&loaded).unwrap(), saved);
+        let reexported = blend::export_bytes_with_matrix(
+            &loaded,
+            "whirlwind_matrix_polar",
+            Some(&axes),
+            Some(&options),
+        )
+        .unwrap();
+        assert!(
+            pe_polar::matrix::read(&reexported)
+                .unwrap()
+                .sog
+                .unwrap()
+                .iter()
+                .any(Option::is_some)
+        );
+    }
+    assert_eq!(pe_core::io::to_bytes(&project).unwrap(), before);
+}
+
+#[test]
+fn reexporting_identical_buckets_keeps_each_sog_slice_even_for_adjacent_f32_cutoffs() {
+    use pe_app::matrix_export::{
+        MatrixAxisBins, MatrixDirectionBins, MatrixExportOptions, MatrixWaveBins,
+    };
+    use pe_polar::{MatrixPolarExt, WhirlwindMatrixPolar};
+    let mut project = Project::new("Bucket slices", Boat::default(), 1_700_000_000);
+    let cuts = vec![1.0f32, 1.0 + f32::EPSILON];
+    let matrix = WhirlwindMatrixPolar {
+        twa_deg: vec![90.0],
+        tws_kn: vec![10.0],
+        wave_height_cutoffs_m: cuts.clone(),
+        wave_direction_count: 2,
+        wave_period_cutoffs_s: vec![],
+        sog_bins_kn: vec![],
+        sog: Some((0..6).map(|i| Some(5.0 + i as f32)).collect()),
+        pdf: None,
+        pdf_gaussians: None,
+    };
+    let expected = matrix.sog.clone().unwrap();
+    project.grid.twa = vec![90.0];
+    project.grid.tws = vec![10.0];
+    project.sources.push(Source::new(
+        pe_core::SourceId(1),
+        "Matrix",
+        Colour::parse("#f28e2b").unwrap(),
+        SourceKind::PolarFile {
+            format: PolarFileFormat::WhirlwindMatrixPolar,
+            file_name: "slices.wmpolar".into(),
+            polar: matrix.to_polar().unwrap(),
+            matrix: Some(Box::new(matrix)),
+        },
+    ));
+    let options = MatrixExportOptions {
+        sampled_pdf: false,
+        gaussian_pdf: false,
+        waves: Some(MatrixWaveBins {
+            height: MatrixAxisBins {
+                cutoffs: cuts.iter().map(|v| f64::from(*v)).collect(),
+            },
+            angle: MatrixDirectionBins { count: 2 },
+            period: MatrixAxisBins { cutoffs: vec![] },
+        }),
+        ..Default::default()
+    };
+    let bytes =
+        blend::export_bytes_with_matrix(&project, "whirlwind_matrix_polar", None, Some(&options))
+            .unwrap();
+    let output = pe_polar::matrix::read(&bytes).unwrap();
+    for (a, b) in expected.iter().zip(output.sog.unwrap()) {
+        assert!((a.unwrap() - b.unwrap()).abs() < 0.001);
+    }
+}

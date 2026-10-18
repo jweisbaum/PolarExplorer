@@ -6,6 +6,38 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-14: Multilingual matrix-format reference — implemented.**
+The standalone HTML now includes French, German, Arabic, Simplified Chinese,
+Japanese, Spanish, Dutch, Italian and Portuguese alongside English. Its language
+selector remembers the choice and supports a `?lang=` override. All prose,
+tables, diagram labels, example annotations, accessibility text and interactive
+readouts use embedded catalogues; no network access is needed. Arabic uses
+right-to-left layout while diagrams, formulas and bytes retain their orientation.
+Browser checks pass for all ten languages, preserving selected cells and bytes,
+all three data modes, wave toggling, saved preferences and URL overrides.
+Verified catalogue completeness, JavaScript syntax, internal references and
+desktop/mobile layouts; corrected skip-link and narrow-grid overflow.
+
+**2026-10-13: Explicit v1 wave buckets — implemented.**
+At the user's request, the binary version stays 1 while the wave metadata
+changes incompatibly: direction count 0 disables all waves; 2, 4, 8 and 20
+select fixed equal-width incoming sectors clockwise from the bow, centered
+on 0°. Height and period store interior f32 cutoffs with implicit zero and
+open-ended tails, rather than representative coordinates. Reader/writer,
+imported matrix model, re-export, UI/API options, generated bindings, all eight
+translations, user guide and standalone HTML reference follow the new layout.
+The transitional v2 reader has been removed. No legacy migration is provided.
+Added codec mode/count and malformed-input tests, boundary/precision tests,
+project/export round trips, UI tests and a desktop export/import walkthrough.
+Validation: all 12 new Rust/UI tests pass, as do TypeScript checking, the
+production UI build, five performance tests, formatting, whitespace and offline
+checks. The desktop walkthrough passes (three screenshots inspected), checking
+exported v1 counts/cutoffs and re-import. The full Rust suite reports 872 passed,
+11 failed, 28 ignored in unchanged text-polar, MCP and translation checks.
+Baseline runs reproduce all six pe-polar failures and the existing UI failures;
+focused UI coverage/help results add no new failures. Workspace clippy with
+all targets and warnings denied passes.
+
 **2026-10-13: v0.3.13 release preflight — complete.**
 Workspace, npm, Tauri and lockfile versions now name 0.3.13 for configurable
 wave-conditioned matrix exports, the standalone format reference, combined
@@ -2448,3 +2480,7 @@ table; it passed. Not run: a download from `syrfbackendprod` itself.
 Validation: workspace fmt, clippy and tests (hand-computed min, median, max
 and p90 cells, polars mixed with a track, export), UI typecheck and tests,
 and the offline check pass.
+
+## Native MCP integration implementation
+
+The [versioned Whirlwind MCP contract](vendor/whirlwind-mcp/README.md) is the current authority for assistant transport, installation, permission policy and job lifecycle. It supersedes earlier direct-HTTP registration, shell launchers, token-copy reinstall steps, permission-by-annotation guidance and cancellation-on-disconnect behavior. Domain tool behavior and existing file formats remain governed by the sections above.

@@ -6,6 +6,7 @@ pub mod clients;
 pub mod desktop;
 pub mod events;
 pub mod invoke;
+pub mod native;
 pub mod server;
 pub mod skill;
 pub mod token;
@@ -56,6 +57,7 @@ impl Activity {
 #[derive(Debug, Default)]
 pub struct McpService {
     running: Mutex<Option<server::Running>>,
+    app_lock: Mutex<Option<std::fs::File>>,
     /// Why the last bind failed, shown in Settings.
     pub(crate) bind_error: Mutex<Option<String>>,
     /// Connected clients and the last tool called (status bar, Settings).
@@ -72,6 +74,28 @@ impl McpService {
     /// the Tauri runtime so the mock application used by the integration
     /// tests can drive the same path as the shipped `tauri::Wry` build.
     pub fn apply<R: tauri::Runtime>(&self, app: &tauri::AppHandle<R>, mcp: &McpSettings) {
+        use tauri::Manager;
+        let dir = app
+            .state::<crate::commands::AppState>()
+            .paths
+            .config_dir
+            .join("mcp");
+        let ready = self
+            .app_lock
+            .lock()
+            .map(|mut lock| {
+                if lock.is_none() {
+                    *lock = whirlwind_mcp::endpoint::try_lock(&dir).ok().flatten();
+                }
+                lock.is_some()
+            })
+            .unwrap_or(false);
+        if !ready {
+            self.set_bind_error(Some("Another app instance owns AI assistant access".into()));
+            return;
+        }
+        whirlwind_mcp::endpoint::remove(&dir);
+
         // `take()` under the lock, then drop the guard before `stop()`:
         // `stop` can block briefly waiting for the accept loop, and nothing
         // else that touches `self.running` (`running_port`, `status`) must
@@ -87,6 +111,18 @@ impl McpService {
         }
         match server::start(app.clone(), mcp.port, mcp.token.clone()) {
             Ok(running) => {
+                let endpoint = whirlwind_mcp::endpoint::Endpoint {
+                    version: 1,
+                    port: running.port,
+                    token: mcp.token.clone(),
+                    pid: std::process::id(),
+                };
+                if let Err(error) = whirlwind_mcp::endpoint::write(&dir, &endpoint) {
+                    running.stop();
+                    self.set_bind_error(Some(error.to_string()));
+                    return;
+                }
+
                 self.set_bind_error(None);
                 self.adopt(running);
             }

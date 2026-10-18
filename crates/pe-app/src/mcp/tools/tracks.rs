@@ -19,6 +19,7 @@ const DEFAULT_SAMPLES: usize = 200;
 const MAX_SAMPLES: usize = 2000;
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LibrarySearchParams {
     /// Words to find: a boat's name, sail number, model or class, builder or
     /// event. Every word must match; accents and case do not matter.
@@ -29,6 +30,7 @@ pub struct LibrarySearchParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LibraryImportParams {
     /// The track's `id` from library_search.
     pub id: String,
@@ -38,6 +40,7 @@ pub struct LibraryImportParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct InspectParams {
     /// Track files to look into: GPX, GeoJSON, CSV or an archive of them. Each
     /// path absolute, or beginning with `~/`.
@@ -45,6 +48,7 @@ pub struct InspectParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TrackImportParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -57,6 +61,7 @@ pub struct TrackImportParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TrackerEventParams {
     /// The tracker: "yellowbrick", "geovoile" or "bluewater".
     pub tracker: String,
@@ -68,6 +73,7 @@ pub struct TrackerEventParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TrackerImportParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -81,6 +87,7 @@ pub struct TrackerImportParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TrackSetParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -120,6 +127,7 @@ pub struct TrackSetParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TrackSamplesParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -136,6 +144,7 @@ pub struct TrackSamplesParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SampleGetParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -147,6 +156,7 @@ pub struct SampleGetParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SamplesExcludeParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]

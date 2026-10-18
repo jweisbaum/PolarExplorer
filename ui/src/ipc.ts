@@ -484,14 +484,16 @@ export function boatApi(boatContext?: number) {
   quitApp: (discardUnsaved: boolean) => call<void>("quit_app", { discardUnsaved }),
   // ----- The MCP service (spec.md 3.7) -----
   /** The service's setting and live state: whether it listens, where, its token, who is connected. */
+  mcpConnections: () => call<import("./generated/McpConnection").McpConnection[]>("mcp_connections"),
+  mcpConnectionAction: (client: import("./generated/McpClient").McpClient, action: string) => call<void>("mcp_connection_action", {client, action}),
   mcpStatus: () => call<import("./generated/McpStatus").McpStatus>("mcp_status"),
   /** Turns the service on or off and sets its port. On issues a fresh token; off clears it. */
   setMcp: (enabled: boolean, port: number) => call<import("./generated/McpStatus").McpStatus>("mcp_set", { enabled, port }),
   /** Issues a new token; clients added before must be added again. */
   rotateMcpToken: () => call<import("./generated/McpStatus").McpStatus>("mcp_rotate_token"),
   /** Adds the service to a client's own configuration, or opens the Claude Desktop extension. */
-  registerMcpClient: (client: import("./generated/McpClient").McpClient) =>
-    call<import("./generated/McpRegistered").McpRegistered>("mcp_register_client", { client }),
+  registerMcpClient: (client: import("./generated/McpClient").McpClient, policy?: string) =>
+    call<import("./generated/McpRegistered").McpRegistered>("mcp_register_client", { client, policy }),
   /** Answers the service's `view://capture` with the stage's picture, base64 PNG. */
   deliverCapture: (id: number, pngBase64: string) => call<void>("deliver_capture", { id, pngBase64 }),
   /** Answers `view://capture` with why there is no picture. */

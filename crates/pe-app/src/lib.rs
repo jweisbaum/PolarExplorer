@@ -226,6 +226,8 @@ pub fn run() -> anyhow::Result<()> {
             settings::mcp_set,
             settings::mcp_rotate_token,
             mcp::clients::mcp_register_client,
+            mcp::native::mcp_connections,
+            mcp::native::mcp_connection_action,
             mcp::capture::deliver_capture,
             mcp::capture::refuse_capture,
             settings::legacy_cache_notice,

@@ -12,6 +12,7 @@ use crate::boats::tracker_project::{self, BoatMatchMode};
 use crate::commands::AppState;
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectNewParams {
     /// The project's name.
     pub name: String,
@@ -28,6 +29,7 @@ pub struct ProjectNewParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RaceProjectParams {
     /// The race tracker: "yellowbrick", "geovoile" or "bluewater".
     pub tracker: String,
@@ -53,6 +55,7 @@ pub struct RaceProjectParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectOpenParams {
     /// Path to a .wpsproj file: absolute, or beginning with `~/`.
     pub path: String,
@@ -62,6 +65,7 @@ pub struct ProjectOpenParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectSaveParams {
     /// Save here instead of the project's own path (a Save As). Absolute, or
     /// beginning with `~/`; `.wpsproj` is added when missing.
@@ -75,6 +79,7 @@ pub struct ProjectSaveParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DiscardParams {
     /// Discard unsaved changes. Refused without it when there are any.
     #[serde(default)]
@@ -83,6 +88,16 @@ pub struct DiscardParams {
 
 #[tool_router(router = tool_router_project, vis = "pub(crate)")]
 impl<R: tauri::Runtime> PolarExplorer<R> {
+    #[tool(
+        description = "Discard unsaved work and close the open project. This is irreversible and requires approval."
+    )]
+    async fn project_discard(&self) -> ToolResult {
+        self.write("project_discard", true, |app| {
+            crate::projects::close_project(app.state(), true)
+        })
+        .await?;
+        json(&serde_json::json!({"closed":true}))
+    }
     #[tool(
         description = "What PolarExplorer — the sailing-polar application open on this computer — has open: `project` is its summary (name, path, dirty, revision, the first boat's sources with ids, weights and counts, the blend's settings and coverage, undo state), or null when none is open. A good first call after polarexplorer_guide: an open project that is dirty holds the user's unsaved work."
     )]
@@ -96,9 +111,12 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     }
 
     #[tool(
-        description = "Starts a new PolarExplorer project with one boat and opens it in the interface: the first step of building a polar. Refused while the open project has unsaved changes unless discard_unsaved is true."
+        description = "Starts a new PolarExplorer project with one boat and opens it in the interface: the first step of building a polar. Refused while the open project has unsaved changes ; save first or use project_discard."
     )]
     async fn project_new(&self, Parameters(p): Parameters<ProjectNewParams>) -> ToolResult {
+        if p.discard_unsaved {
+            return Err(ToolError::Refused("Use project_discard to approve discarding unsaved work, then retry this tool with discard_unsaved false.".into()));
+        }
         let boat =
             (p.boat_name.is_some() || p.boat_notes.is_some()).then(|| crate::projects::BoatInput {
                 name: p.boat_name.unwrap_or_default(),
@@ -113,9 +131,12 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     }
 
     #[tool(
-        description = "Opens a .wpsproj project file in the interface. Refused while the open project has unsaved changes unless discard_unsaved is true."
+        description = "Opens a .wpsproj project file in the interface. Refused while the open project has unsaved changes ; save first or use project_discard."
     )]
     async fn project_open(&self, Parameters(p): Parameters<ProjectOpenParams>) -> ToolResult {
+        if p.discard_unsaved {
+            return Err(ToolError::Refused("Use project_discard to approve discarding unsaved work, then retry this tool with discard_unsaved false.".into()));
+        }
         let path = absolute(&p.path)?;
         let summary = self
             .write("project_open", true, move |app| {
@@ -154,13 +175,16 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     }
 
     #[tool(
-        description = "Builds a whole race in one step, as the interface's Open project from tracker… does: downloads the race from the tracker and opens a new project with one boat tab per boat, each holding that boat's track and the ORC and ORR certificates (and track-library tracks) that match it. Answers the project and, per boat, its details from the tracker (model, sail number, builder…), how many certificates and tracks were found and what is missing. Matching is by the tracker's own data and can miss (Geovoile gives only names and sail numbers, so little is matched there): follow it per boat with orc_search/orr_search, library_search and tracker_event using what you know of each boat (see the guide's \"A whole race\"). Then weather_fetch gives the tracks their wind. Replaces the open project: refused with unsaved changes unless discard_unsaved is true. Cancelling the call cancels the download."
+        description = "Builds a whole race in one step, as the interface's Open project from tracker… does: downloads the race from the tracker and opens a new project with one boat tab per boat, each holding that boat's track and the ORC and ORR certificates (and track-library tracks) that match it. Answers the project and, per boat, its details from the tracker (model, sail number, builder…), how many certificates and tracks were found and what is missing. Matching is by the tracker's own data and can miss (Geovoile gives only names and sail numbers, so little is matched there): follow it per boat with orc_search/orr_search, library_search and tracker_event using what you know of each boat (see the guide's \"A whole race\"). Then weather_fetch gives the tracks their wind. Replaces the open project: refused with unsaved changes ; save first or use project_discard. Cancelling the call cancels the download."
     )]
     async fn race_project(
         &self,
         Parameters(p): Parameters<RaceProjectParams>,
         ctx: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> ToolResult {
+        if p.discard_unsaved {
+            return Err(ToolError::Refused("Use project_discard to approve discarding unsaved work, then retry this tool with discard_unsaved false.".into()));
+        }
         let tracker = match p.tracker.as_str() {
             "yellowbrick" => pe_core::track::Tracker::YellowBrick,
             "geovoile" => pe_core::track::Tracker::Geovoile,
@@ -222,9 +246,12 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     }
 
     #[tool(
-        description = "Closes the project and returns the interface to the start screen. Refused with unsaved changes unless discard_unsaved is true."
+        description = "Closes the project and returns the interface to the start screen. Refused with unsaved changes ; save first or use project_discard."
     )]
     async fn project_close(&self, Parameters(p): Parameters<DiscardParams>) -> ToolResult {
+        if p.discard_unsaved {
+            return Err(ToolError::Refused("Use project_discard to approve discarding unsaved work, then retry this tool with discard_unsaved false.".into()));
+        }
         self.write("project_close", true, move |app| {
             crate::projects::close_project(app.state(), p.discard_unsaved)
         })

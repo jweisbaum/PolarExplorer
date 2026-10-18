@@ -386,9 +386,10 @@ buckets are:
 
 That gives 32 wave combinations. No configuration is required. To change them,
 open **Customize wave buckets (optional)** and edit the comma-separated
-height/period cutoffs or the direction boundaries. Add or remove cutoffs to
+height/period cutoffs and select 2, 4, 8 or 20 wave directions. Add or remove cutoffs to
 change the number of buckets; leave height or period blank for a single
-all-values bucket. Directions must cover a full 360° turn. **Reset wave
+all-values bucket. Direction sectors are equal-width, clockwise from the bow,
+with the first centered on 0°. The file preserves height/period cutoffs. **Reset wave
 buckets** restores the defaults. Uncheck **Split by wave conditions** for a
 wave-independent polar, or uncheck any unwanted data modes. Histogram mode
 also lets you set the number of speed bins over 0–60 kn. The same defaults

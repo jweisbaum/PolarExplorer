@@ -34,3 +34,7 @@ notarized on macOS and are unsigned on Windows.
 The workspace declares `PolyForm-Noncommercial-1.0.0` for application code.
 Third-party datasets retain their own terms; the bundled ORC catalogue's
 [MIT notice](docs/licenses/orc-data-MIT.txt) is included separately.
+
+## Native AI assistant integrations
+
+Connect Codex, Claude Code or Claude Desktop from Settings → AI assistants. The native plugin opens this app when needed and follows the selected workflow permissions. Routine reads, edits, downloads and exports can run without repeated approval. See the [shared MCP architecture and maintenance contract](vendor/whirlwind-mcp/README.md) for installation, migration, permission boundaries, jobs and validation.

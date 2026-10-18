@@ -4,34 +4,28 @@ import type { MatrixExportOptions } from "../generated/MatrixExportOptions";
 import type { MatrixWaveBins } from "../generated/MatrixWaveBins";
 
 const defaultWaves = (): MatrixWaveBins => ({
-  height: { cutoffs: [1, 3, 5] }, angle: { edges: [-45, 45, 135, 225, 315] }, period: { cutoffs: [5] },
+  height: { cutoffs: [1, 3, 5] }, angle: { count: 4 }, period: { cutoffs: [5] },
 });
 export const defaultMatrixExport = (): MatrixExportOptions => ({
   sog: true, sampled_pdf: true, gaussian_pdf: true, waves: defaultWaves(), sog_bins: 120,
 });
 
 const increasing = (values: number[]) => values.every((v, i) => Number.isFinite(v) && (i === 0 || v > values[i - 1]!));
-const directionCenter = (lo: number, hi: number) => Math.fround((((lo + hi) / 2) % 360 + 360) % 360) % 360;
 function validCutoffs(cutoffs: number[], limit: number): boolean {
   if (cutoffs.length > 63 || !increasing(cutoffs) || cutoffs.some(v => v <= 0 || v >= limit)) return false;
-  const centers = cutoffs.map((v, i) => Math.fround(((cutoffs[i - 1] ?? 0) + v) / 2));
-  const last = cutoffs.at(-1) ?? 0;
-  centers.push(Math.fround(Math.min(limit, last + (last - (cutoffs.at(-2) ?? 0)) / 2)));
-  return increasing(centers);
+  const stored = cutoffs.map(Math.fround);
+  return increasing(stored) && stored.every(v => v > 0 && v < limit);
 }
 function waveError(waves: MatrixWaveBins): string | null {
   if (!validCutoffs(waves.height.cutoffs, 100) || !validCutoffs(waves.period.cutoffs, 1000)) {
     return msg("Use up to 63 increasing cutoffs above 0, below 100 m for height and 1000 s for period.");
   }
-  const edges = waves.angle.edges;
-  if (edges.length < 2 || edges.length > 65 || !increasing(edges) || edges[0]! < -360 || edges[0]! >= 360
-    || Math.abs(edges.at(-1)! - edges[0]! - 360) > 1e-9
-    || !increasing(edges.slice(1).map((v, i) => directionCenter(edges[i]!, v)).sort((a, b) => a - b))) {
-    return msg("Use 2–65 increasing direction boundaries spanning 360°, starting from −360° to less than 360°.");
+  if (![2, 4, 8, 20].includes(waves.angle.count)) {
+    return msg("Choose 2, 4, 8 or 20 wave directions.");
   }
   return null;
 }
-const waveCount = (waves: MatrixWaveBins) => (waves.height.cutoffs.length + 1) * (waves.angle.edges.length - 1) * (waves.period.cutoffs.length + 1);
+const waveCount = (waves: MatrixWaveBins) => (waves.height.cutoffs.length + 1) * waves.angle.count * (waves.period.cutoffs.length + 1);
 
 export function matrixExportError(value: MatrixExportOptions, windCells?: number): string | null {
   if (!value.sog && !value.sampled_pdf && !value.gaussian_pdf) return msg("Choose at least one matrix data mode.");
@@ -104,7 +98,7 @@ export default function MatrixExportFields({ value, onChange, disabled, windCell
         {waves && <>
           {validWaves && <dl className="matrix-wave-summary">
             <dt>{t("Wave height (m)")}</dt><dd><bdi dir="ltr">{cutoffRanges(waves.height.cutoffs, false)}</bdi></dd>
-            <dt>{t("Wave angle off bow (°)")}</dt><dd><bdi dir="ltr">{waves.angle.edges.slice(1).map((v, i) => `${waves.angle.edges[i]}–<${v}`).join(" · ")}</bdi></dd>
+            <dt>{t("Wave angle off bow (°)")}</dt><dd><bdi dir="ltr">{Array.from({ length: waves.angle.count }, (_, i) => `${(i - 0.5) * 360 / waves.angle.count}–<${(i + 0.5) * 360 / waves.angle.count}`).join(" · ")}</bdi></dd>
             <dt>{t("Wave period (s)")}</dt><dd><bdi dir="ltr">{cutoffRanges(waves.period.cutoffs, true)}</bdi></dd>
           </dl>}
           <details className="matrix-wave-custom">
@@ -116,9 +110,11 @@ export default function MatrixExportFields({ value, onChange, disabled, windCell
               <CutoffInput label={msg("Wave period cutoffs (s)")} feature="matrix-export:period-cutoffs" values={waves.period.cutoffs}
                 onChange={cutoffs => onChange({ ...value, waves: { ...waves, period: { cutoffs } } })} />
               <p className="muted">{t("Height cutoffs enter the next bucket; period cutoffs stay in the preceding bucket. Final buckets have no upper limit.")}</p>
-              <CutoffInput label={msg("Wave direction boundaries (°)")} feature="matrix-export:direction-edges" values={waves.angle.edges}
-                onChange={edges => onChange({ ...value, waves: { ...waves, angle: { edges } } })} />
-              <p className="muted">{t("Enter increasing boundaries spanning 360°. Directions run clockwise from the bow; −45° is the same as 315°.")}</p>
+              <label>{t("Wave directions")}<select data-feature="matrix-export:directions" value={waves.angle.count}
+                onChange={e => onChange({ ...value, waves: { ...waves, angle: { count: Number(e.target.value) } } })}>
+                {[2, 4, 8, 20].map(count => <option key={count} value={count}>{count}</option>)}
+              </select></label>
+              <p className="muted">{t("Equal sectors run clockwise from the bow, with the first centered on 0°.")}</p>
               <button type="button" data-feature="matrix-export:reset" onClick={() => onChange({ ...value, waves: defaultWaves() })}>{t("Reset wave buckets")}</button>
             </div>
           </details>

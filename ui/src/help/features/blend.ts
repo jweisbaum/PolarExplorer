@@ -17,7 +17,7 @@ const matrixFeatures: Feature[] = [
   ["gaussian", msg("Gaussian PDF")], ["waves", msg("Split by wave conditions")],
   ["speed-bins", msg("Boat-speed bins (0–60 kn)")],
   ["height-cutoffs", msg("Wave height cutoffs (m)")], ["period-cutoffs", msg("Wave period cutoffs (s)")],
-  ["direction-edges", msg("Wave direction boundaries (°)")],
+  ["directions", msg("Wave directions")],
   ["customize", msg("Customize wave buckets (optional)")], ["reset", msg("Reset wave buckets")],
 ].map(([id, label]) => ({ id: `matrix-export:${id}`, label: label!, description: matrixDescription,
   keywords: [msg("export"), msg("Bins"), "WhirlwindMatrixPolar"], ...exporting }));

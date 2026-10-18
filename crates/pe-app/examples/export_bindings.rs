@@ -75,6 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tells the frontend.
     pe_app::settings::McpStatus::export_all(&cfg)?;
     pe_app::mcp::clients::McpClient::export_all(&cfg)?;
+    pe_app::mcp::native::McpConnection::export_all(&cfg)?;
     pe_app::mcp::clients::McpRegistered::export_all(&cfg)?;
     pe_app::mcp::events::DocumentChanged::export_all(&cfg)?;
     pe_app::mcp::events::McpActivity::export_all(&cfg)?;

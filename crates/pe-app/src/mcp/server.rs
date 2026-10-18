@@ -14,7 +14,7 @@ use hyper::body::Incoming;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio_util::sync::CancellationToken;
 
@@ -92,6 +92,8 @@ pub fn start<R: tauri::Runtime>(
         format!("http://localhost:{bound}"),
     ];
     let config = StreamableHttpServerConfig::default()
+        .with_legacy_session_mode(false)
+        .with_json_response(true)
         .with_sse_keep_alive(Some(Duration::from_secs(15)))
         .with_allowed_hosts(hosts)
         .with_allowed_origins(origins)
@@ -99,7 +101,7 @@ pub fn start<R: tauri::Runtime>(
     let handler_app = app.clone();
     let service = Arc::new(StreamableHttpService::new(
         move || Ok(PolarExplorer::new(handler_app.clone())),
-        Arc::new(LocalSessionManager::default()),
+        Arc::new(NeverSessionManager::default()),
         config,
     ));
     let token: Arc<str> = token.into();

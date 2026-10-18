@@ -45,9 +45,13 @@ pub struct GaussianPdf {
 pub struct WhirlwindMatrixPolar {
     pub twa_deg: Vec<f32>,
     pub tws_kn: Vec<f32>,
-    pub wave_height_m: Vec<f32>,
-    pub wave_angle_deg: Vec<f32>,
-    pub wave_period_s: Vec<f32>,
+    /// Interior height boundaries in metres. Bins include their lower bound.
+    pub wave_height_cutoffs_m: Vec<f32>,
+    /// 0 disables all waves; otherwise 2, 4, 8 or 20 equal bow-relative sectors.
+    /// Sector i is centered at i * 360 / count, clockwise, incoming waves.
+    pub wave_direction_count: u32,
+    /// Interior period boundaries in seconds. Bins include their upper bound.
+    pub wave_period_cutoffs_s: Vec<f32>,
     /// Boat-speed bins for the sampled PDF mode.
     pub sog_bins_kn: Vec<f32>,
     pub sog: Option<Vec<Option<f32>>>,
@@ -57,6 +61,24 @@ pub struct WhirlwindMatrixPolar {
     /// Gaussian mean and standard deviation per `[wave][TWA][TWS]` cell.
     #[serde(default)]
     pub pdf_gaussians: Option<Vec<Option<GaussianPdf>>>,
+}
+
+impl WhirlwindMatrixPolar {
+    pub fn wave_height_count(&self) -> usize {
+        if self.wave_direction_count == 0 {
+            0
+        } else {
+            self.wave_height_cutoffs_m.len() + 1
+        }
+    }
+
+    pub fn wave_period_count(&self) -> usize {
+        if self.wave_direction_count == 0 {
+            0
+        } else {
+            self.wave_period_cutoffs_s.len() + 1
+        }
+    }
 }
 
 impl PolarGrid {

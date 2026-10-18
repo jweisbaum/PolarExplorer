@@ -23,6 +23,7 @@ const STAGES: [&str; 4] = ["3d", "map", "compare", "plot"];
 const CAPTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(35);
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ViewStageParams {
     /// "3d" (the 3D polar), "map" (the tracks on the world map; needs a
     /// track), "compare", or "plot" (the 2D polar plot, full size).
@@ -34,12 +35,14 @@ pub struct ViewStageParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ViewBoatParams {
     /// The boat's id, from boats_list.
     pub boat: u64,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SelectionParams {
     /// The boat the samples belong to; without it, the boat on show.
     #[serde(default)]

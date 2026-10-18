@@ -63,7 +63,7 @@ PolarExplorer is the sailing-polar application open on this computer. Use these 
 Call polarexplorer_guide first: it is the full manual. In short:
 1. project_status, then project_new or project_open. A dirty project holds the user's unsaved work: never discard it unless told to.
 2. Add sources to a boat: orc_search + orc_add or orr_search + orr_add (rating certificates), polar_files_import (polar files), track_files_import, tracker_event + tracker_import or library_search + library_import (race tracks).
-A whole race: race_project builds a tab per boat with its track and matched certificates; then, per boat, search again with what you know of it (model, sail number, other races). Carry a job through; stop only for a large download or the user's unsaved work.
+A whole race: race_project builds a tab per boat with its track and matched certificates; then, per boat, search again with what you know of it (model, sail number, other races). Carry a job through; stay within the requested download scope and preserve unsaved work.
 3. A track has no place in the polar until it has wind: weather_estimate, then weather_fetch (downloads; say so first).
 4. Shape it: source_set (weight 0–1, visible), track_set (filters), samples_exclude, polar_edit, blend_set.
 5. Read it: polar_read, blend_cell (who is behind a cell), compare, screenshot.
@@ -83,7 +83,7 @@ Whenever the user wants a polar built, examined, compared, corrected or exported
 
 ## Order of work
 
-1. **Look first.** project_status says what is open. `dirty: true` means unsaved work of the user's: project_new, project_open and project_close refuse to drop it unless `discard_unsaved` is true, and you pass that only when the user said so. recent_projects lists what was open before.
+1. **Look first.** project_status says what is open. `dirty: true` means unsaved work of the user's: project_new, project_open and project_close refuse to drop it. Save first, or use the explicit project_discard tool after authorization. recent_projects lists what was open before.
 2. **A project and its boats.** project_new makes a project with one boat. A project holds independent boat tabs (boats_list, boat_add, boat_rename, boat_remove, boat_restore); each boat has its own sources, grid and blend. Every tool below takes an optional `boat` id and otherwise acts on the first boat.
 3. **Sources.**
    - Rating certificates: orc_search then orc_add (ORC, embedded catalogue), or orr_search then orr_add (ORR). Search by boat name, sail number, model or year. Both catalogues are on this computer. orc_refresh and orr_refresh download the current certificates into them (a minute or two and about 60 MB for ORC, several minutes of requests for ORR: tell the user first), and are only needed when a recent certificate is missing.
@@ -101,7 +101,7 @@ Whenever the user wants a polar built, examined, compared, corrected or exported
    - blend_set: the output grid, the interpolation (linear or monotone_spline), smoothing, the samples a track cell needs and the samples for full confidence, asymmetric mode. blend_filters_set: filters over every track, wave ranges, priority groups.
    - polar_edit writes cell values on one source's overlay or, with no source, corrections on the blend. The imported data is never changed: every edit is an overlay.
 6. **Read the result.** blend_status (settings and coverage), polar_read (a source's polar, a track's segment, or the blend as a TWA × TWS table), blend_cell (one cell: its value, whether it is direct evidence or filled, and each source behind it with its speed and share of the weight), compare (A against B per cell, with the regions where each is faster), screenshot (what the user sees). view_stage, view_boat and selection_set move the user's view.
-7. **Export.** export_preview shows the grid as it would be written; export_polar writes it to an absolute path (format expedition, adrena, csv, qtvlm, opencpn, luckgrib or whirlwind_matrix_polar); export_all writes every boat's polar into a folder. WhirlwindMatrixPolar accepts matrix options (sog, sampled_pdf, gaussian_pdf, sog_bins, and optional waves with height/period {cutoffs:[...]} and direction angle {edges:[...]} spanning 360 degrees; defaults enable all modes and 4×4×2 wave bins, while waves:null omits waves). The same options apply to export_all. Export always recomputes from the sources.
+7. **Export.** export_preview shows the grid as it would be written; export_polar writes it to an absolute path (format expedition, adrena, csv, qtvlm, opencpn, luckgrib or whirlwind_matrix_polar); export_all writes every boat's polar into a folder. WhirlwindMatrixPolar accepts matrix options (sog, sampled_pdf, gaussian_pdf, sog_bins, and optional waves with height/period {cutoffs:[...]} and direction angle {count:2|4|8|20} with equal bow-relative sectors centered on 0 degrees; defaults enable all modes and 4×4×2 wave bins, while waves:null omits waves). The same options apply to export_all. Export always recomputes from the sources.
 8. **Save.** project_save writes the .wpsproj file; a project never saved needs `path`.
 
 export_polar and a project_save to a new `path` refuse to replace a file that is already there unless `overwrite` is true: pass it only when the user means that file to be replaced.
@@ -124,7 +124,7 @@ The application only matches on the tracker's data; you know the boats. Step 3 i
 
 ## Working through a job
 
-Carry a request through to its end in one go: chain the calls, read each answer, and decide the next step yourself. Stop to ask only when the user's unsaved work would be replaced, when a download is large (say how large), or when a choice changes the result and nothing the user said settles it. Tell the user what you did at the end, not at each step.
+Carry a request through to its end in one go: chain the calls, read each answer, and decide the next step yourself. Use the existing authorization for routine edits, configured-source downloads and exports. Ask only for irreversible loss, a material expansion of scope, or a choice the request leaves unresolved. Tell the user what you did at the end, not at each step.
 
 ## Conventions
 
@@ -135,10 +135,17 @@ Carry a request through to its end in one go: chain the calls, read each answer,
 - A structured parameter (filters, settings, an edit) is a JSON object; the tool's description gives its shape. Where it holds only what to change, a key that is not one of its fields is refused, with the fields listed.
 - A refusal comes back as a tool result with the reason in words. Read it; do not retry the same call.
 - undo and redo step through the edits, yours and the user's alike.
-- invoke runs any other application command by name, for what no tool covers.";
+- app_read and app_edit run classified commands from assistant_capabilities. invoke is the separately approved compatibility fallback.\n- weather_fetch returns a durable job_id immediately. Poll weather_jobs or assistant_jobs. Reuse request_id for identical retries; a disconnect does not cancel work. weather_cancel explicitly stops the requested tracks.\n- Export WhirlwindMatrixPolar for Hindsight Router, then pass the returned file path to its polar_import tool. Hindsight Sync and VectorEffects supply weather archives and GRIB/Zarr fields.";
 
 #[tool_router(router = tool_router_guide, vis = "pub(crate)")]
 impl<R: tauri::Runtime> PolarExplorer<R> {
+    #[tool(
+        description = "Read the shared MCP contract, tool effects, connection controls and workflow behavior."
+    )]
+    async fn assistant_capabilities(&self) -> ToolResult {
+        let value = serde_json::json!({"contract_version":1,"app":"PolarExplorer","tools":super::effects::TABLE,"commands":crate::mcp::invoke::COMMAND_EFFECTS,"connection_controls":"app_settings_only","policy":"routine edits, downloads and exports run automatically; project_discard and invoke require approval","jobs":"Poll weather_jobs by durable job_id; weather_cancel is explicit; disconnect does not cancel"});
+        json(&value)
+    }
     #[tool(
         description = "START HERE. The manual for PolarExplorer, the sailing-polar application open on this computer: today's date, when to use it, the order of work (project, sources, weather, shaping, reading, export), and the conventions every other tool follows. Read it once before the first other call."
     )]

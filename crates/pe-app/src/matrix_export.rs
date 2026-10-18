@@ -38,21 +38,29 @@ impl MatrixAxisBins {
                 "Use at most 63 strictly increasing positive wave cutoffs below the axis limit",
             ));
         }
-        distinct_centers(&self.centers(maximum))
+        let cutoffs: Vec<f32> = self.cutoffs.iter().map(|v| *v as f32).collect();
+        if cutoffs.iter().any(|v| *v <= 0.0 || *v >= maximum as f32)
+            || cutoffs.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(invalid(
+                "Wave cutoffs must remain positive, below the axis limit and distinct at float32 precision",
+            ));
+        }
+        Ok(())
     }
 
     /// Finite bins use midpoints. The open tail extends half the preceding
     /// bin width beyond its cutoff (bounded by the file axis limit).
-    fn centers(&self, maximum: f64) -> Vec<f32> {
+    fn centers(&self, maximum: f64) -> Vec<f64> {
         let mut lower = 0.0;
         let mut width = 0.0;
         let mut centers = Vec::with_capacity(self.cutoffs.len() + 1);
         for upper in &self.cutoffs {
-            centers.push(((lower + upper) / 2.0) as f32);
+            centers.push((lower + upper) / 2.0);
             width = upper - lower;
             lower = *upper;
         }
-        centers.push((lower + width / 2.0).min(maximum) as f32);
+        centers.push((lower + width / 2.0).min(maximum));
         centers
     }
 
@@ -62,78 +70,48 @@ impl MatrixAxisBins {
         }
         Some(self.cutoffs.partition_point(|cut| {
             if upper_inclusive {
-                *cut < value
+                f64::from(*cut as f32) < value
             } else {
-                *cut <= value
+                f64::from(*cut as f32) <= value
             }
         }) as u32)
     }
 }
 
-fn distinct_centers(centers: &[f32]) -> Result<()> {
-    if centers.windows(2).any(|pair| pair[0] >= pair[1]) {
-        return Err(invalid(
-            "Wave bin coordinates must remain distinct at float32 precision",
-        ));
-    }
-    Ok(())
-}
-
-/// Consecutive, unwrapped direction edges spanning one full turn.
+/// Fixed equal-width sectors, clockwise from the bow, with sector zero centered on it.
 #[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export_to = "MatrixDirectionBins.ts")]
 pub struct MatrixDirectionBins {
-    pub edges: Vec<f64>,
+    pub count: u32,
 }
 
 impl MatrixDirectionBins {
     fn count(&self) -> u32 {
-        self.edges.len().saturating_sub(1) as u32
+        self.count
     }
 
     fn validate(&self) -> Result<()> {
-        if !(2..=65).contains(&self.edges.len())
-            || self.edges.iter().any(|v| !v.is_finite())
-            || !(-360.0..360.0).contains(&self.edges[0])
-            || (self.edges[self.edges.len() - 1] - self.edges[0] - 360.0).abs() > 1e-9
-            || self.edges.windows(2).any(|pair| pair[0] >= pair[1])
-        {
+        if !matches!(self.count, 2 | 4 | 8 | 20) {
             return Err(invalid(
-                "Use 2–65 increasing wave direction boundaries spanning exactly 360 degrees, starting between -360 and 360",
+                "Choose 2, 4, 8 or 20 wave directions; use waves:null for no wave conditioning",
             ));
         }
-        distinct_centers(&self.centers())
-    }
-
-    fn center(pair: &[f64]) -> f32 {
-        // Normalize after narrowing too, since float32 can round 359.99999 to 360.
-        (((pair[0] + pair[1]) / 2.0).rem_euclid(360.0) as f32).rem_euclid(360.0)
+        Ok(())
     }
 
     fn centers(&self) -> Vec<f32> {
-        let mut centers: Vec<_> = self.edges.windows(2).map(Self::center).collect();
-        centers.sort_by(f32::total_cmp);
-        centers
+        (0..self.count)
+            .map(|i| (i * 360) as f32 / self.count as f32)
+            .collect()
     }
 
     fn bucket(&self, value: f64) -> Option<u32> {
-        if !value.is_finite() {
+        if !value.is_finite() || !matches!(self.count, 2 | 4 | 8 | 20) {
             return None;
         }
-        let unwrapped = self.edges[0] + (value - self.edges[0]).rem_euclid(360.0);
-        let pair = self
-            .edges
-            .windows(2)
-            .find(|p| unwrapped >= p[0] && unwrapped < p[1])?;
-        let center = Self::center(pair);
-        // Payload order follows the sorted [0,360) axis, even when its first
-        // sector wraps through zero or custom boundaries start behind the bow.
-        Some(
-            self.edges
-                .windows(2)
-                .filter(|p| Self::center(p) < center)
-                .count() as u32,
-        )
+        let width = 360.0 / f64::from(self.count);
+        Some(((value.rem_euclid(360.0) + width / 2.0) / width).floor() as u32 % self.count)
     }
 }
 
@@ -155,9 +133,7 @@ impl Default for MatrixWaveBins {
             height: MatrixAxisBins {
                 cutoffs: vec![1.0, 3.0, 5.0],
             },
-            angle: MatrixDirectionBins {
-                edges: vec![-45.0, 45.0, 135.0, 225.0, 315.0],
-            },
+            angle: MatrixDirectionBins { count: 4 },
             period: MatrixAxisBins { cutoffs: vec![5.0] },
         }
     }
@@ -268,7 +244,7 @@ fn sources_for(
                 source,
                 masks.get(&source.id.raw()),
             );
-            // An imported wave matrix is conditioned by its stored SOG coordinates.
+            // Imported wave buckets are represented by their derived midpoints when rebinning.
             // A certificate or ordinary 2D polar is wave-independent and contributes
             // to every wave condition as the same baseline.
             if let (
@@ -278,7 +254,7 @@ fn sources_for(
                     ..
                 },
             ) = (wave, &source.kind)
-                && !matrix.wave_height_m.is_empty()
+                && matrix.wave_direction_count != 0
             {
                 base = Polar::empty(
                     matrix.twa_deg.iter().map(|v| f64::from(*v)).collect(),
@@ -288,14 +264,30 @@ fn sources_for(
                 let mut counts = vec![0u32; sums.len()];
                 if let Some(sog) = &matrix.sog {
                     let mut wave_index = 0;
-                    for h in &matrix.wave_height_m {
-                        for d in &matrix.wave_angle_deg {
-                            for p in &matrix.wave_period_s {
-                                if in_cell(
-                                    bins,
-                                    cell,
-                                    [f64::from(*h), f64::from(*d), f64::from(*p)],
-                                ) {
+                    let heights = MatrixAxisBins {
+                        cutoffs: matrix
+                            .wave_height_cutoffs_m
+                            .iter()
+                            .map(|v| f64::from(*v))
+                            .collect(),
+                    }
+                    .centers(100.0);
+                    let directions = MatrixDirectionBins {
+                        count: matrix.wave_direction_count,
+                    }
+                    .centers();
+                    let periods = MatrixAxisBins {
+                        cutoffs: matrix
+                            .wave_period_cutoffs_s
+                            .iter()
+                            .map(|v| f64::from(*v))
+                            .collect(),
+                    }
+                    .centers(1000.0);
+                    for h in &heights {
+                        for d in &directions {
+                            for p in &periods {
+                                if in_cell(bins, cell, [*h, f64::from(*d), *p]) {
                                     for k in 0..sums.len() {
                                         if let Some(v) = sog[wave_index * sums.len() + k] {
                                             sums[k] += f64::from(v);
@@ -563,22 +555,20 @@ pub(crate) fn build(
             "The histogram on the project wind grid is too large; reduce its speed bins or wind grid",
         ));
     }
-    let (heights, angles, periods) = options
-        .waves
-        .as_ref()
-        .map_or((vec![], vec![], vec![]), |w| {
+    let (height_cutoffs, direction_count, period_cutoffs) =
+        options.waves.as_ref().map_or((vec![], 0, vec![]), |w| {
             (
-                w.height.centers(100.0),
-                w.angle.centers(),
-                w.period.centers(1000.0),
+                w.height.cutoffs.iter().map(|v| *v as f32).collect(),
+                w.angle.count(),
+                w.period.cutoffs.iter().map(|v| *v as f32).collect(),
             )
         });
     let mut matrix = WhirlwindMatrixPolar {
         twa_deg: twa.iter().map(|v| *v as f32).collect(),
         tws_kn: tws.iter().map(|v| *v as f32).collect(),
-        wave_height_m: heights,
-        wave_angle_deg: angles,
-        wave_period_s: periods,
+        wave_height_cutoffs_m: height_cutoffs,
+        wave_direction_count: direction_count,
+        wave_period_cutoffs_s: period_cutoffs,
         sog_bins_kn: if options.sampled_pdf {
             (0..options.sog_bins)
                 .map(|i| ((f64::from(i) + 0.5) * 60.0 / f64::from(options.sog_bins)) as f32)
@@ -628,4 +618,52 @@ pub(crate) fn build(
     }
     matrix.validate().map_err(|e| invalid(&e.to_string()))?;
     Ok(matrix)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_sectors_include_start_exclude_end_and_wrap_at_bow() {
+        for count in [2, 4, 8, 20] {
+            let bins = MatrixDirectionBins { count };
+            assert!(bins.validate().is_ok());
+            let width = 360.0 / f64::from(count);
+            for index in 0..count {
+                let center = f64::from(index) * width;
+                assert_eq!(bins.bucket(center), Some(index));
+                assert_eq!(bins.bucket(center - width / 2.0), Some(index));
+                assert_eq!(bins.bucket(center + width / 2.0 - 1e-6), Some(index));
+                assert_eq!(bins.bucket(center + width / 2.0), Some((index + 1) % count));
+            }
+            assert_eq!(bins.bucket(360.0), Some(0));
+            assert_eq!(bins.bucket(-360.0), Some(0));
+            assert_eq!(bins.bucket(f64::NAN), None);
+        }
+        for count in [0, 1, 3, 16, 18, 36] {
+            assert!(MatrixDirectionBins { count }.validate().is_err());
+        }
+    }
+
+    #[test]
+    fn height_and_period_membership_uses_the_serialized_float32_cutoffs() {
+        let bins = MatrixAxisBins {
+            cutoffs: vec![1.1, 3.0, 5.0],
+        };
+        let cutoff = f64::from(1.1f32);
+        assert_eq!(bins.bucket(cutoff, false), Some(1));
+        assert_eq!(bins.bucket(cutoff, true), Some(0));
+        assert_eq!(bins.bucket(cutoff - 1e-9, false), Some(0));
+        assert_eq!(bins.bucket(cutoff + 1e-9, true), Some(1));
+        assert_eq!(bins.bucket(0.0, true), Some(0));
+        assert_eq!(bins.bucket(10000.0, false), Some(3));
+        assert_eq!(bins.bucket(-1.0, false), None);
+        for cutoffs in [vec![1.0, 1.0 + 1e-9], vec![1e-100], vec![100.0 - 1e-9]] {
+            assert!(MatrixAxisBins { cutoffs }.validate(100.0).is_err());
+        }
+        let all = MatrixAxisBins { cutoffs: vec![] };
+        assert!(all.validate(100.0).is_ok());
+        assert_eq!(all.bucket(10000.0, true), Some(0));
+    }
 }

@@ -274,6 +274,7 @@ pub fn codex_home(home: &Path, codex_home_var: Option<OsString>) -> PathBuf {
 pub fn mcp_register_client(
     state: tauri::State<'_, AppState>,
     client: McpClient,
+    policy: Option<String>,
 ) -> Result<McpRegistered> {
     let mcp = state.with_session(|session| Ok(session.settings.mcp.clone()))?;
     if !mcp.enabled || mcp.token.is_empty() {
@@ -282,46 +283,19 @@ pub fn mcp_register_client(
             value: "off".to_owned(),
         });
     }
-    let url = format!("http://127.0.0.1:{}/mcp", mcp.port);
-    let home = directories::BaseDirs::new()
-        .map(|dirs| dirs.home_dir().to_path_buf())
-        .ok_or_else(|| AppError::Internal("this account has no home folder".to_owned()))?;
-    match client {
-        McpClient::ClaudeCode => {
-            let path_var = std::env::var_os("PATH");
-            let claude = locate("claude", &home, path_var.as_deref()).ok_or_else(|| {
-                AppError::Doing {
-                    doing: "add the MCP service to",
-                    what: "Claude Code".to_owned(),
-                    why: "the `claude` command was not found on this computer. Copy the command below and run it in a terminal instead".to_owned(),
-                }
-            })?;
-            let child_path = std::env::join_paths(search_dirs(&home, path_var.as_deref()))
-                .map_err(|err| AppError::Internal(err.to_string()))?;
-            register_claude_code(&claude, &child_path, &url, &mcp.token)?;
-            // After the server, so a refusal above leaves nothing behind.
-            let claude_home =
-                super::skill::claude_home(&home, std::env::var_os("CLAUDE_CONFIG_DIR"));
-            let skill = super::skill::install_for_claude_code(&claude_home)?;
-            Ok(McpRegistered {
-                skill: Some(skill.display().to_string()),
-            })
-        }
-        McpClient::ClaudeDesktop => {
-            let skill = super::desktop::register(&state.paths.settings_file())?;
-            Ok(McpRegistered {
-                skill: Some(skill.display().to_string()),
-            })
-        }
-        McpClient::Codex => {
-            register_codex(
-                &codex_home(&home, std::env::var_os("CODEX_HOME")),
-                &url,
-                &mcp.token,
-            )?;
-            Ok(McpRegistered { skill: None })
-        }
-    }
+    let policy = match policy.as_deref().unwrap_or("workflow") {
+        "workflow" => whirlwind_mcp::policy::Policy::Workflow,
+        "always_ask" => whirlwind_mcp::policy::Policy::AlwaysAsk,
+        "unrestricted" => whirlwind_mcp::policy::Policy::Unrestricted,
+        _ => return Err(AppError::Internal("Unknown assistant policy".into())),
+    };
+    super::native::connect(
+        client,
+        policy,
+        &format!("http://127.0.0.1:{}/mcp", mcp.port),
+    )
+    .map_err(|error| AppError::Internal(error.to_string()))?;
+    Ok(McpRegistered { skill: None })
 }
 
 #[cfg(test)]

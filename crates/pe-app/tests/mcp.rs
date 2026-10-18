@@ -352,10 +352,12 @@ async fn sessions_and_the_last_tool_are_counted() {
     assert_eq!(status.sessions, 1);
     assert_eq!(status.last_tool.as_deref(), Some("polarexplorer_guide"));
     client.cancel().await.expect("close");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while service.status(&settings).sessions != 0 && std::time::Instant::now() < deadline {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+    assert_eq!(
+        service.status(&settings).sessions,
+        1,
+        "recent activity survives transport disconnect"
+    );
+    service.apply(app.handle(), &settings);
     assert_eq!(service.status(&settings).sessions, 0);
     assert_eq!(service.status(&settings).last_tool, None);
 }
@@ -423,13 +425,7 @@ async fn switching_off_leaves_nobody_counted() {
 
     let (port, token) = serve(&app);
     let second = client(port, &token).await;
-    // Counted when the server reads the client's `initialized`, a
-    // notification the client sends without waiting for an answer: so it
-    // may land after `client` has returned.
-    let counted = std::time::Instant::now() + SOON;
-    while service.status(&settings).sessions == 0 && std::time::Instant::now() < counted {
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
+    call(&second, "project_status", json!({})).await;
     assert_eq!(service.status(&settings).sessions, 1);
     // The first client's goodbye, to a listener that is gone.
     let _ = first.cancel().await;
@@ -532,7 +528,7 @@ async fn unsaved_work_is_refused_without_discard() {
         let message = call_err(&client, tool, args).await;
         assert!(message.contains("has unsaved changes"), "{tool}: {message}");
         // The refusal says what to do about it, and whose call it is.
-        assert!(message.contains("discard_unsaved"), "{tool}: {message}");
+        assert!(message.contains("project_discard"), "{tool}: {message}");
         // "One" is still open, so the frontend must not be told a different
         // project opened: `opened` is true only when the tool succeeded.
         let payload = changed
@@ -542,12 +538,16 @@ async fn unsaved_work_is_refused_without_discard() {
         assert_eq!(payload["project"]["name"], "One", "{tool}");
     }
 
-    let summary = call(
+    let refused = call_err(
         &client,
         "project_new",
-        json!({ "name": "Two", "discard_unsaved": true }),
+        json!({"name":"Two","discard_unsaved":true}),
     )
     .await;
+    assert!(refused.contains("project_discard"));
+    call(&client, "project_discard", json!({})).await;
+    let _ = changed.recv_timeout(SOON).expect("discard event");
+    let summary = call(&client, "project_new", json!({"name":"Two"})).await;
     assert_eq!(summary["name"], "Two");
     let payload = changed.recv_timeout(SOON).expect("event");
     assert_eq!(payload["opened"], true);
@@ -602,10 +602,7 @@ async fn a_relative_path_is_refused() {
     call(&client, "project_new", json!({ "name": "Here" })).await;
     for (tool, args) in [
         ("project_save", json!({ "path": "here.wpsproj" })),
-        (
-            "project_open",
-            json!({ "path": "../elsewhere.wpsproj", "discard_unsaved": true }),
-        ),
+        ("project_open", json!({ "path": "../elsewhere.wpsproj" })),
     ] {
         let message = call_err(&client, tool, args).await;
         assert!(message.contains("absolute"), "{tool}: {message}");
@@ -747,7 +744,7 @@ async fn a_write_tool_emits_document_changed_once_and_a_read_tool_emits_nothing(
         "a read tool tells the frontend nothing"
     );
 
-    call(&client, "project_close", json!({ "discard_unsaved": true })).await;
+    call(&client, "project_discard", json!({})).await;
     let closed = changed.recv_timeout(SOON).expect("closing is reported");
     assert_eq!(closed["project"], Value::Null);
     client.cancel().await.expect("close");
@@ -1242,42 +1239,29 @@ async fn weather_estimate_answers_without_fetching() {
 /// counted. (The mock application runs no fetch thread, so the queued fetch
 /// would otherwise wait for ever: nothing here reaches the network.)
 #[tokio::test]
-async fn a_dropped_weather_call_cancels_its_fetch_and_frees_its_session() {
+async fn weather_jobs_survive_disconnect_and_cancel_explicitly() {
     let root = TempRoot::new("mcp-dropped");
     let app = mock_app(&root);
     let (port, token) = serve(&app);
     let (client, id) = with_track(&root, port, &token).await;
-    let service = app.state::<McpService>();
-    let settings = pe_app::settings::McpSettings::default();
-    let jobs = || app.state::<AppState>().env_jobs.status().tracks.len();
-
-    let waiting = {
-        let params = CallToolRequestParams::new("weather_fetch").with_arguments(
-            json!({ "sources": [id], "restart": true })
-                .as_object()
-                .cloned()
-                .unwrap(),
-        );
-        let peer = client.peer().clone();
-        tokio::spawn(async move { peer.call_tool(params).await })
-    };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while jobs() == 0 && std::time::Instant::now() < deadline {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    assert_eq!(jobs(), 1, "the fetch was queued");
-    assert_eq!(service.status(&settings).sessions, 1);
-
-    waiting.abort();
+    let request = json!({"sources":[id],"restart":true,"request_id":"weather-once"});
+    let started = call(&client, "weather_fetch", request.clone()).await;
+    assert!(started["job_id"].is_string());
     client.cancel().await.expect("close");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    while (jobs() != 0 || service.status(&settings).sessions != 0)
-        && std::time::Instant::now() < deadline
-    {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-    assert_eq!(jobs(), 0, "the dropped call's fetch was cancelled");
-    assert_eq!(service.status(&settings).sessions, 0);
+    assert_eq!(
+        app.state::<AppState>().env_jobs.status().tracks.len(),
+        1,
+        "disconnect keeps the fetch"
+    );
+    let reconnected = self::client(port, &token).await;
+    let retried = call(&reconnected, "weather_fetch", request).await;
+    assert_eq!(retried["job_id"], started["job_id"]);
+    assert_eq!(retried["reused"], true);
+    call(&reconnected, "weather_cancel", json!({"sources":[id]})).await;
+    assert!(app.state::<AppState>().env_jobs.status().tracks.is_empty());
+    let jobs = call(&reconnected, "assistant_jobs", json!({})).await;
+    assert_eq!(jobs["jobs"][0]["state"], "cancelled");
+    reconnected.cancel().await.expect("close");
 }
 
 /// A key a patch misspells is refused, naming the keys there are: applied
@@ -2260,9 +2244,21 @@ async fn the_instructions_and_the_guide_name_only_what_exists() {
             known.extend(properties.keys().cloned());
         }
     }
-    // The two interpolation rules and the wire names of things a client
-    // types as values, which the guide may name.
-    known.extend(["monotone_spline", "discard_unsaved"].map(str::to_owned));
+    // Wire values, nested matrix fields, returned job IDs and the explicitly
+    // named Hindsight Router handoff are documented beyond top-level inputs.
+    known.extend(
+        [
+            "monotone_spline",
+            "discard_unsaved",
+            "whirlwind_matrix_polar",
+            "sampled_pdf",
+            "gaussian_pdf",
+            "sog_bins",
+            "job_id",
+            "polar_import",
+        ]
+        .map(str::to_owned),
+    );
 
     let guide = call(&client, "polarexplorer_guide", json!({})).await;
     let guide = guide["guide"].as_str().expect("guide").to_owned();
@@ -2305,80 +2301,6 @@ async fn the_instructions_and_the_guide_name_only_what_exists() {
 }
 
 // ---------------------------------------------- Claude Desktop extension
-
-/// The bridge as Claude Desktop runs it: a child `node` speaking JSON-RPC
-/// over its stdin and stdout.
-struct Bridge {
-    child: std::process::Child,
-    lines: std::sync::mpsc::Receiver<Value>,
-    seen: Vec<Value>,
-}
-
-impl Bridge {
-    fn start(script: &std::path::Path, settings: &std::path::Path) -> Self {
-        use std::io::BufRead;
-        let mut child = std::process::Command::new("node")
-            .arg(script)
-            .env("PE_SETTINGS", settings)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("node");
-        let stdout = std::io::BufReader::new(child.stdout.take().expect("stdout"));
-        let (tx, lines) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            for line in stdout.lines().map_while(std::result::Result::ok) {
-                if let Ok(message) = serde_json::from_str(&line) {
-                    let _ = tx.send(message);
-                }
-            }
-        });
-        Self {
-            child,
-            lines,
-            seen: Vec::new(),
-        }
-    }
-
-    /// Sends a request and waits for the answer with its id; whatever else
-    /// arrives meanwhile — notifications — is kept in `seen`.
-    fn ask(&mut self, id: u64, method: &str, params: Value) -> Value {
-        use std::io::Write;
-        let request = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-        let stdin = self.child.stdin.as_mut().expect("stdin");
-        writeln!(stdin, "{request}").expect("write");
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-        while std::time::Instant::now() < deadline {
-            match self
-                .lines
-                .recv_timeout(std::time::Duration::from_millis(200))
-            {
-                Ok(message) if message["id"] == id => return message,
-                Ok(message) => self.seen.push(message),
-                Err(_) => {}
-            }
-        }
-        panic!("no answer to {method} (id {id}); seen: {:?}", self.seen);
-    }
-
-    fn tool_names(&mut self, id: u64) -> Vec<String> {
-        let listed = self.ask(id, "tools/list", json!({}));
-        listed["result"]["tools"]
-            .as_array()
-            .unwrap_or_else(|| panic!("tools: {listed}"))
-            .iter()
-            .map(|tool| tool["name"].as_str().expect("name").to_owned())
-            .collect()
-    }
-}
-
-impl Drop for Bridge {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
 
 /// The bundle is what the manifest specification says a bundle is, and holds
 /// nothing secret. The required fields are MANIFEST.md's (manifest 0.3):
@@ -2466,27 +2388,25 @@ fn the_desktop_bundle_is_a_valid_extension_with_no_secret_in_it() {
     assert!(!text.contains("token"), "{text}");
 }
 
-/// The bridge, as Claude Desktop runs it, against the service as the
-/// application runs it: through a restart of the application, the service
-/// switched off, and switched on again, all without being restarted itself.
-/// Skipped where there is no `node`.
-#[test]
-fn the_bridge_follows_the_application_through_a_restart_and_off_and_on() {
-    use std::io::Read;
-    if std::process::Command::new("node")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        eprintln!("skipped: no node on PATH");
-        return;
+/// The native bridge follows endpoint rotation without a host reinstall.
+#[tokio::test]
+async fn the_native_bridge_follows_restart_rotation_and_access_off() {
+    use std::sync::Arc;
+    use whirlwind_mcp::bridge::{Bridge, Launch, Timing};
+    struct NeverLaunch;
+    impl Launch for NeverLaunch {
+        fn launch(&self) -> Result<(), String> {
+            Err("The test never launches a GUI".into())
+        }
     }
-    let root = TempRoot::new("mcp-bridge");
+    let root = TempRoot::new("native-bridge");
     let app = mock_app(&root);
-    let port = free_port();
-    // Through the command, so the settings file the bridge reads is the one
-    // the application writes and not this test's idea of it.
-    let set = |enabled: bool| {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let set = |enabled| {
         pe_app::settings::mcp_set(
             app.handle().clone(),
             app.state(),
@@ -2494,102 +2414,45 @@ fn the_bridge_follows_the_application_through_a_restart_and_off_and_on() {
             enabled,
             port,
         )
-        .expect("mcp_set")
+        .unwrap()
     };
     let first = set(true);
-    let settings = app.state::<AppState>().paths.settings_file();
-
-    let bundle = root.0.join("PolarExplorer.mcpb");
-    pe_app::mcp::desktop::write_bundle(&bundle, &settings).expect("bundle");
-    let script = root.0.join("index.js");
-    let mut source = String::new();
-    zip::ZipArchive::new(std::fs::File::open(&bundle).expect("open"))
-        .expect("zip")
-        .by_name("server/index.js")
-        .expect("bridge")
-        .read_to_string(&mut source)
-        .expect("read");
-    std::fs::write(&script, source).expect("write");
-
-    let mut bridge = Bridge::start(&script, &settings);
-    let hello = bridge.ask(
-        1,
-        "initialize",
-        json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } }),
-    );
-    // The application's own answer, not the bridge's stand-in.
+    let dir = app.state::<AppState>().paths.config_dir.join("mcp");
+    let handler = pe_app::mcp::tools::PolarExplorer::new(app.handle().clone());
+    let info = rmcp::ServerHandler::get_info(&handler);
+    drop(handler);
+    let bridge = Bridge::new(dir, Arc::new(NeverLaunch), Timing::DEFAULT)
+        .unwrap()
+        .with_catalog(
+            info,
+            pe_app::mcp::tools::PolarExplorer::<MockRuntime>::catalogue(),
+        );
+    let (server_io, client_io) = tokio::io::duplex(65536);
+    let serving = tokio::spawn(async move {
+        let service = bridge.serve(server_io).await.unwrap();
+        let _ = service.waiting().await;
+    });
+    let client = ().serve(client_io).await.unwrap();
     assert_eq!(
-        hello["result"]["serverInfo"]["version"],
-        env!("CARGO_PKG_VERSION"),
-        "{hello}"
+        client
+            .peer_info()
+            .unwrap()
+            .server_info
+            .as_ref()
+            .unwrap()
+            .version,
+        env!("CARGO_PKG_VERSION")
     );
-    assert!(
-        bridge
-            .tool_names(2)
-            .iter()
-            .any(|name| name == "project_status")
-    );
-    let status = bridge.ask(
-        3,
-        "tools/call",
-        json!({ "name": "project_status", "arguments": {} }),
-    );
-    assert_eq!(
-        status["result"]["structuredContent"]["project"],
-        Value::Null,
-        "{status}"
-    );
-
-    // The application restarts: a new token, and every session forgotten.
+    call(&client, "project_status", json!({})).await;
     set(false);
-    let second = set(true);
-    assert_ne!(first.token, second.token);
-    assert!(
-        bridge
-            .tool_names(4)
-            .iter()
-            .any(|name| name == "project_status"),
-        "reconnected without the client doing anything"
-    );
-
-    // Off: the extension stays up and says what is wrong.
+    let message = call_err(&client, "project_status", json!({})).await;
+    assert!(message.contains("off"), "{message}");
+    let next = set(true);
+    assert_ne!(first.token, next.token);
+    assert!(call(&client, "project_status", json!({})).await["project"].is_null());
+    client.cancel().await.unwrap();
+    serving.await.unwrap();
     set(false);
-    assert_eq!(bridge.tool_names(5), ["polarexplorer_status"]);
-    let refused = bridge.ask(
-        6,
-        "tools/call",
-        json!({ "name": "project_status", "arguments": {} }),
-    );
-    assert_eq!(refused["result"]["isError"], true, "{refused}");
-    assert!(
-        refused["result"]["content"][0]["text"]
-            .as_str()
-            .expect("text")
-            .contains("MCP service")
-    );
-
-    // On again: the stand-in tool connects, and the client is told to look.
-    set(true);
-    let connected = bridge.ask(
-        7,
-        "tools/call",
-        json!({ "name": "polarexplorer_status", "arguments": {} }),
-    );
-    assert_ne!(connected["result"]["isError"], true, "{connected}");
-    assert!(
-        bridge
-            .seen
-            .iter()
-            .any(|m| m["method"] == "notifications/tools/list_changed"),
-        "{:?}",
-        bridge.seen
-    );
-    assert!(
-        bridge
-            .tool_names(8)
-            .iter()
-            .any(|name| name == "project_status")
-    );
 }
 
 /// Registering needs the service on: there is no address or token to give
@@ -2599,7 +2462,7 @@ fn a_client_cannot_be_registered_while_the_service_is_off() {
     let root = TempRoot::new("mcp-register-off");
     let app = mock_app(&root);
     for client in pe_app::mcp::clients::McpClient::available() {
-        let refused = pe_app::mcp::clients::mcp_register_client(app.state(), client);
+        let refused = pe_app::mcp::clients::mcp_register_client(app.state(), client, None);
         assert_eq!(refused.unwrap_err().kind(), "bad-option", "{client:?}");
     }
 }
@@ -2727,7 +2590,7 @@ async fn race_project_opens_a_tab_per_boat_with_its_track_and_certificates() {
         json!({ "tracker": "yellowbrick", "url": "mcprace" }),
     )
     .await;
-    assert!(unsaved.contains("discard_unsaved"), "{unsaved}");
+    assert!(unsaved.contains("project_discard"), "{unsaved}");
     client.cancel().await.expect("close");
 }
 

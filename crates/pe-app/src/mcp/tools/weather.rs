@@ -19,6 +19,7 @@ use crate::env::EnvJobsStatus;
 const POLL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WeatherSourcesParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -31,7 +32,11 @@ pub struct WeatherSourcesParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WeatherFetchParams {
+    /// Reuse this key only when retrying the identical fetch.
+    #[serde(default)]
+    pub request_id: Option<String>,
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
     pub boat: Option<u64>,
@@ -46,6 +51,7 @@ pub struct WeatherFetchParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WeatherCancelParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -54,31 +60,6 @@ pub struct WeatherCancelParams {
     /// boat's.
     #[serde(default)]
     pub sources: Option<Vec<u64>>,
-}
-
-/// Cancels a fetch whose tool call ended without it finishing: the client
-/// went away or cancelled the request (invariant 6), or the queue could not
-/// be read. Disarmed when the fetch runs to its end.
-struct CancelOnDrop<R: tauri::Runtime> {
-    app: tauri::AppHandle<R>,
-    /// The boat's own id, never "every boat": source ids are each boat's.
-    boat: u64,
-    sources: Vec<u64>,
-    armed: bool,
-}
-
-impl<R: tauri::Runtime> Drop for CancelOnDrop<R> {
-    fn drop(&mut self) {
-        if self.armed {
-            // The command itself, so the interface's queue display hears it.
-            let _ = crate::env::cancel_env_fetch(
-                self.app.clone(),
-                self.app.state::<AppState>(),
-                Some(self.boat),
-                Some(std::mem::take(&mut self.sources)),
-            );
-        }
-    }
 }
 
 /// Whether a queued or running fetch is `boat`'s fetch of one of `sources`.
@@ -116,96 +97,122 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     }
 
     #[tool(
-        description = "Fetches reanalysis wind, waves and current for the given tracks' positions: a download from the public ERA5 and ocean-current archives, which gives each sample its place in the polar. Waits until those tracks are done, reporting progress, and answers the job queue's final state (a `failure` there names what went wrong) and the `project`. Cancelling the call cancels the fetch; what was already fetched is kept."
+        description = "Fetches reanalysis wind, waves and current for the given tracks' positions: a download from the public ERA5 and ocean-current archives, which gives each sample its place in the polar. Returns a durable job_id immediately. Poll weather_jobs. The fetch continues if the assistant disconnects; weather_cancel explicitly cancels it and keeps fetched samples."
     )]
-    async fn weather_fetch(
-        &self,
-        Parameters(p): Parameters<WeatherFetchParams>,
-        ctx: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> ToolResult {
-        let (boat, sources, restart) = (p.boat, p.sources.clone(), p.restart);
-        let interval = p.interval;
-        let (owner, queued) = {
-            let sources = sources.clone();
-            self.run("weather_fetch", move |app| {
-                let owner = boat_id(&app.state::<AppState>(), boat)?;
-                let interval = interval.unwrap_or_else(|| "hourly".into());
-                let queued = crate::env::start_env_fetch(
+    async fn weather_fetch(&self, Parameters(p): Parameters<WeatherFetchParams>) -> ToolResult {
+        let dir = self.app.state::<AppState>().paths.config_dir.join("mcp");
+        let journal = super::super::native::journal(&dir).map_err(super::ToolError::Refused)?;
+        let owner = boat_id(&self.app.state::<AppState>(), p.boat)?;
+        let target=serde_json::json!({"boat":owner,"sources":p.sources,"restart":p.restart,"interval":p.interval.as_deref().unwrap_or("hourly")}).to_string();
+        let key = p.request_id.clone().unwrap_or_else(|| {
+            format!(
+                "weather:{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_nanos())
+            )
+        });
+        let (record, new) = journal
+            .start(&key, "weather_fetch", &target)
+            .map_err(|e| super::ToolError::Refused(e.to_string()))?;
+        if !new {
+            return json(&serde_json::json!({"job_id":record.id,"job":record,"reused":true}));
+        }
+        let sources = p.sources.clone();
+        let boat = p.boat;
+        let queued = self
+            .run("weather_fetch", move |app| {
+                crate::env::start_env_fetch(
                     app.clone(),
                     app.state(),
                     boat,
-                    sources,
-                    interval,
-                    restart,
-                )?;
-                Ok((owner, queued))
+                    p.sources,
+                    p.interval.unwrap_or_else(|| "hourly".into()),
+                    p.restart,
+                )
             })
-            .await?
-        };
-        let mut guard = CancelOnDrop {
-            app: self.app.clone(),
-            boat: owner,
-            sources: sources.clone(),
-            armed: true,
-        };
-
-        let token = ctx.meta.get_progress_token();
-        let mut status = queued;
-        let mut told = -1.0;
-        while pending(&status, owner, &sources) {
-            // The fraction done over these tracks: a finished one has left
-            // the queue, so it counts whole.
-            let waiting: f64 = status
-                .tracks
-                .iter()
-                .filter(|track| ours(track, owner, &sources))
-                .map(|track| 1.0 - track.fraction)
-                .sum();
-            let done = sources.len() as f64 - waiting;
-            if let Some(token) = &token
-                && done != told
-            {
-                told = done;
-                let mut param = rmcp::model::ProgressNotificationParam::new(token.clone(), done);
-                param.total = Some(sources.len() as f64);
-                param.message = status
-                    .tracks
-                    .iter()
-                    .find(|track| ours(track, owner, &sources))
-                    .map(|track| track.label.clone());
-                let _ = ctx.peer.notify_progress(param).await;
+            .await;
+        let queued = match queued {
+            Ok(status) => status,
+            Err(error) => {
+                let _ = journal.finish(
+                    &record.id,
+                    whirlwind_mcp::jobs::State::Failed,
+                    None,
+                    Some("Could not queue weather fetch".into()),
+                );
+                return Err(error);
             }
-            // `rmcp` does not drop this future when the client cancels the
-            // request or goes away: it cancels the request's token, which a
-            // long tool has to watch. Returning here drops `guard`, armed,
-            // which cancels the fetch (invariant 6).
-            tokio::select! {
-                () = ctx.ct.cancelled() => {
-                    return Err(super::ToolError::Refused(
-                        "the weather fetch was cancelled with its request; what was already fetched is kept".to_owned(),
-                    ));
+        };
+        let app = self.app.clone();
+        let id = record.id.clone();
+        let journal_for_job = journal.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                match crate::env::env_jobs(app.state(), boat) {
+                    Ok(status) if pending(&status, owner, &sources) => {}
+                    Ok(status) => {
+                        let failed = status.failure.is_some();
+                        let _ = journal_for_job.finish(
+                            &id,
+                            if failed {
+                                whirlwind_mcp::jobs::State::Failed
+                            } else {
+                                whirlwind_mcp::jobs::State::Succeeded
+                            },
+                            serde_json::to_value(status).ok(),
+                            None,
+                        );
+                        break;
+                    }
+                    Err(error) => {
+                        let _ = journal_for_job.finish(
+                            &id,
+                            whirlwind_mcp::jobs::State::Failed,
+                            None,
+                            Some(error.to_string()),
+                        );
+                        break;
+                    }
                 }
-                () = tokio::time::sleep(POLL) => {}
+                tokio::time::sleep(POLL).await;
             }
-            status =
-                crate::env::env_jobs(self.app.state(), boat).map_err(super::ToolError::from)?;
-        }
-        guard.armed = false;
-
-        // The fetch wrote samples into the project: the frontend heard it
-        // from the job itself, and the client reads the result here.
-        let project = self
-            .run("weather_fetch", move |app| {
-                crate::projects::project_summary(app.state(), boat)
-            })
-            .await?;
-        json(&serde_json::json!({ "jobs": status, "project": project }))
+        });
+        json(
+            &serde_json::json!({"job_id":record.id,"state":"running","jobs":queued,"poll":"weather_jobs","cancel":"weather_cancel"}),
+        )
     }
 
     #[tool(
         description = "Cancels the weather fetches of the given tracks of the boat, or all of that boat's. What was already fetched is kept."
     )]
     async fn weather_cancel(&self, Parameters(p): Parameters<WeatherCancelParams>) -> ToolResult {
+        let owner = boat_id(&self.app.state::<AppState>(), p.boat)?;
+        let cancelled = p.sources.clone();
+        let dir = self.app.state::<AppState>().paths.config_dir.join("mcp");
+        let journal = super::super::native::journal(&dir).map_err(super::ToolError::Refused)?;
+        // Commit the cancellation before removing jobs from the queue, so the completion
+        // monitor cannot mistakenly report success when it observes the emptied queue.
+        for job in journal
+            .list()
+            .map_err(|e| super::ToolError::Refused(e.to_string()))?
+        {
+            let target = serde_json::from_str::<serde_json::Value>(&job.target).unwrap_or_default();
+            if job.operation == "weather_fetch"
+                && job.state == whirlwind_mcp::jobs::State::Running
+                && target["boat"].as_u64() == Some(owner)
+                && cancelled.as_ref().is_none_or(|ids| {
+                    target["sources"].as_array().is_some_and(|sources| {
+                        sources
+                            .iter()
+                            .filter_map(serde_json::Value::as_u64)
+                            .any(|id| ids.contains(&id))
+                    })
+                })
+            {
+                journal.finish(&job.id,whirlwind_mcp::jobs::State::Cancelled,None,Some("Explicit cancellation; already fetched samples are retained. Check weather_jobs for any other tracks still running.".into())).map_err(|e|super::ToolError::Refused(e.to_string()))?;
+            }
+        }
         let status = self
             .run("weather_cancel", move |app| {
                 // The boat by its id: the command reads no boat as every
@@ -218,6 +225,17 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
     }
 
     #[tool(
+        description = "List durable weather job IDs, results and interrupted jobs from earlier app runs. Detailed active progress is available from weather_jobs."
+    )]
+    async fn assistant_jobs(&self) -> ToolResult {
+        let dir = self.app.state::<AppState>().paths.config_dir.join("mcp");
+        let journal = super::super::native::journal(&dir).map_err(super::ToolError::Refused)?;
+        json(
+            &serde_json::json!({"jobs":journal.list().map_err(|e|super::ToolError::Refused(e.to_string()))?}),
+        )
+    }
+
+    #[tool(
         description = "The weather job queue: the track being fetched and how far along it is, the ones waiting, and the last `failure` or `warning`."
     )]
     async fn weather_jobs(&self, Parameters(p): Parameters<BoatParams>) -> ToolResult {
@@ -226,6 +244,16 @@ impl<R: tauri::Runtime> PolarExplorer<R> {
                 crate::env::env_jobs(app.state(), p.boat)
             })
             .await?;
-        json(&status)
+        let dir = self.app.state::<AppState>().paths.config_dir.join("mcp");
+        let journal = super::super::native::journal(&dir).map_err(super::ToolError::Refused)?;
+        let mut value =
+            serde_json::to_value(status).map_err(|e| super::ToolError::Refused(e.to_string()))?;
+        value["assistant_jobs"] = serde_json::to_value(
+            journal
+                .list()
+                .map_err(|e| super::ToolError::Refused(e.to_string()))?,
+        )
+        .map_err(|e| super::ToolError::Refused(e.to_string()))?;
+        json(&value)
     }
 }

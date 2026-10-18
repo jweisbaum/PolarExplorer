@@ -1041,13 +1041,51 @@ adds the current certificates to it from ORC's own service (D31).
 
 ### 6.1 WhirlwindMatrixPolar binary v1
 
-All integers and IEEE-754 f32 values are little-endian. The fixed header is
-`WWMPOLAR` (8 bytes), version `u16` (1), mode flags `u16` (bit 0 = SOG,
-bit 1 = sampled PDF, bit 2 = Gaussian PDF), six `u32` axis counts in this
-order: TWA, TWS, wave height, wave angle, wave period, SOG bin; then SOG and
-sampled-PDF quantization scales as two f32 values. The axes follow as f32
-arrays in that same order. The final block is LZ4 block compression with its
-uncompressed byte count prepended.
+All integers and IEEE-754 f32 values are little-endian. The 44-byte header is
+`WWMPOLAR` (8 bytes), version `u16` (**1**), mode flags `u16` (bit 0 = SOG,
+bit 1 = sampled PDF, bit 2 = Gaussian PDF), six `u32` counts in this order:
+TWA (`T`), TWS (`W`), wave height buckets (`H`), wave directions (`D`), wave
+period buckets (`P`), SOG samples (`B`); then SOG and sampled-PDF quantization
+scales as two f32 values. H, D and P are at byte offsets 20, 24 and 28.
+
+`D` is exactly **0, 2, 4, 8 or 20**. Zero means no wave conditioning at all:
+`H = P = 0`, no wave metadata, and one wind matrix. Otherwise `H` and `P`
+are each 1–64. Directions are **incoming, clockwise relative to the bow**:
+`(wave_from − heading) mod 360`; 0° is ahead, 90° starboard, 180° astern and
+270° port. For `D > 0`, sector `i` has center `i × 360/D` and width `360/D`.
+It includes its starting edge and excludes its ending edge, cyclically:
+
+| D | Sector width | Sector zero | Centers |
+|---|---|---|---|
+| 2 | 180° | `[-90,90)` | 0° (bow), 180° (stern) |
+| 4 | 90° | `[-45,45)` | 0°, 90°, 180°, 270° |
+| 8 | 45° | `[-22.5,22.5)` | 0°, 45°, …, 315° |
+| 20 | 18° | `[-9,9)` | 0°, 18°, …, 342° |
+
+No direction coordinate or edge array is stored. There is no implicit tack
+mirroring: TWA coordinates are interpreted as supplied; a 0–180° axis does
+not instruct a reader to synthesize the other tack.
+
+After the header come five uncompressed f32 arrays in this order:
+
+1. `T` TWA coordinates, degrees (0–360).
+2. `W` TWS coordinates, knots (0–70).
+3. `max(H−1,0)` interior height cutoffs, metres, strictly between 0 and 100.
+4. `max(P−1,0)` interior period cutoffs, seconds, strictly between 0 and 1000.
+5. `B` SOG sample coordinates, knots (0–60).
+
+Every array must be finite and strictly increasing. Height/period have
+implicit endpoints 0 and positive infinity, so one all-values bucket stores
+no cutoffs. Heights equal to a cutoff enter the next bucket (`[lo,hi)`);
+periods equal to a cutoff stay in the preceding bucket (`[0,hi]`, then
+`(lo,hi]`). Final buckets are open-ended. These exact stored f32 boundaries
+govern membership; representative midpoints are not serialized.
+
+The payload starts at `E = 44 + 4 × (T + W + max(H−1,0) + max(P−1,0) + B)`
+with a `u32` uncompressed byte count followed by a raw LZ4 block (not an LZ4
+frame). The version stays **1** by design; previous coordinate-based wave
+layouts and the former v2 transition format are unsupported, with no legacy
+reader branch or migration.
 
 The SOG payload has one u16 per `[wave height][wave angle][wave period][TWA]
 [TWS]` cell (wave dimensions omitted when their counts are all zero). Values
@@ -1068,13 +1106,10 @@ mean.
 Any combination of the SOG, sampled PDF, and Gaussian PDF payloads may be
 present. In the compressed body, present payloads follow in SOG, sampled PDF,
 then Gaussian PDF order.
-The three wave axes must either all be empty or all contain at least one
-value. Axes are strictly increasing and use metres, degrees, seconds, and
-knots as named. Readers reject unknown versions, unknown mode bits, invalid
-dimensions, invalid scales, and payloads larger than the format limits. A
-brief version 2 transition format that stored Gaussian parameters under the
-PDF flag remains readable. LZ4 compression and little-endian values keep
-bytes consistent across operating systems.
+Readers reject unsupported direction counts, inconsistent wave counts, invalid
+cutoffs, unknown versions, unknown mode bits, invalid dimensions/scales, and
+payloads larger than the format limits. LZ4 compression and little-endian
+values keep bytes consistent across operating systems.
 
 The **Matrix data modes** section in both export dialogs is collapsible and
 starts closed. Its defaults apply while closed; validation errors remain
@@ -1093,25 +1128,22 @@ height/period cutoffs add or remove bins (0–63 cutoffs, yielding 1–64 bins).
 Cutoffs are positive, strictly increasing, below 100 m / 1000 s respectively;
 final bins have no upper limit. Heights at a cutoff enter the next bin;
 periods at a cutoff stay in the preceding bin. Empty cutoffs mean one bin.
-Direction boundaries contain 2–65 strictly increasing entries spanning one
-full 360° turn, starting in `[-360,360)`. A sector includes its starting
-boundary and excludes its ending boundary. Counts are derived from the
-entered boundaries. **Reset wave buckets** restores the defaults. Disabling
-**Split by wave conditions** exports empty wave axes. These defaults also
-apply to omitted API matrix settings; `waves:null` explicitly disables waves.
+Direction is selected from 2, 4, 8 or 20 equal sectors as defined above.
+**Reset wave buckets** restores the defaults. Disabling **Split by wave
+conditions** exports `H = D = P = 0`. These defaults also apply to omitted API
+matrix settings; `waves:null` explicitly disables all waves. Otherwise use
+`waves: {height: {cutoffs: [...]}, angle: {count: 4}, period: {cutoffs: [...]}}`.
 
-Wave directions use `(wave_from − heading) mod 360`, retaining port/starboard
-information even for symmetric wind polars; current-corrected heading is used
-when that blend setting is enabled. Finite height/period bins store midpoint
-coordinates; the final coordinate is its cutoff plus half the preceding bin
-width, capped at the binary axis limit. One all-values bin stores 0. Direction
-coordinates are sector midpoints normalized to `[0,360)` and sorted; the
-payload follows that same order. Default coordinates are height
-`[0.5,2,4,6]`, direction `[0,90,180,270]`, period `[2.5,7.5]`.
-Coordinates must stay distinct at float32 precision. The v1 binary layout is
-unchanged: it stores representative coordinates, not the custom cutoffs or
-open-tail bounds. Its angle reference frame is an application convention,
-not serialized metadata. Older exports used unsigned angles over 0–180°.
+Current-corrected heading is used when that blend setting is enabled.
+Port/starboard wave sectors remain distinct even for symmetric wind polars.
+Cutoffs are narrowed to f32 before sample membership is evaluated and must
+remain positive, below their axis limit and strictly increasing at that
+precision. The defaults store height cutoffs `[1,3,5]`, direction count `4`,
+and period cutoffs `[5]`. The importer retains those exact bucket definitions.
+For rebinning imported SOG cells onto different export buckets, finite source
+buckets use midpoint representatives; an open tail uses its cutoff plus half
+the preceding width, capped at 100 m / 1000 s. A sole all-values bucket uses 0.
+Those representative values are derived, not stored.
 
 Every wave combination is derived separately from the admitted samples:
 source visibility, exclusions, global/source/wave filters, priority groups,
@@ -1119,7 +1151,7 @@ weights, confidence, track/polar statistics, interpolation, smoothing and
 corrections apply. Track samples missing any required wave value or heading, or having negative
 height/period values, do not enter wave-conditioned exports. Ordinary
 2D polars contribute the same baseline to each wave combination; imported wave
-matrices contribute the SOG coordinates falling within that combination.
+matrices contribute the SOG bucket representatives falling within that combination.
 Wind interpolation never fills across wave combinations.
 
 Histogram mode uses 2–512 equal-width speed bins over 0–60 kn. Within each
@@ -1142,10 +1174,8 @@ recomputed on export. An empty result is refused. Export runs off the UI
 thread and never edits its source project. The polar importer keeps only SOG,
 clears both PDF modes and their speed axis, and rejects files without SOG.
 
-The reader now follows the writer's axis order and step-size scale convention.
-This corrects the v0.3.12 reader's axis assignment and extra scale division;
-the v1 writer layout is unchanged. See the standalone HTML reference in
-`docs/whirlwind-matrix-polar-format.html` for offsets and compatibility notes.
+See the standalone HTML reference in
+`docs/whirlwind-matrix-polar-format.html` for byte offsets and examples.
 
 ---
 
@@ -2598,3 +2628,7 @@ in the scene, bit 3; asked 2026-10-04). Track dots additionally show UTC
 time, the time of day (§10.2), wave height, angle and period, current speed, and
 excluded/filtered status.
 Hover follows visible dot picking and clears during navigation or selection.
+
+## Shared native MCP architecture
+
+The [versioned Whirlwind MCP contract](vendor/whirlwind-mcp/README.md) is the current authority for assistant transport, installation, permission policy and job lifecycle. It supersedes earlier direct-HTTP registration, shell launchers, token-copy reinstall steps, permission-by-annotation guidance and cancellation-on-disconnect behavior. Domain tool behavior and existing file formats remain governed by the sections above.

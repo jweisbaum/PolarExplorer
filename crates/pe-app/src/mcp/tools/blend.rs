@@ -23,6 +23,7 @@ use crate::projects::ProjectSummary;
 const DEFAULT_THRESHOLD_KN: f64 = 0.05;
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BlendSetParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -41,6 +42,7 @@ pub struct BlendSetParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BlendFiltersParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -71,6 +73,7 @@ pub struct BlendFiltersParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PolarReadParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -82,6 +85,7 @@ pub struct PolarReadParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BlendCellParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -93,6 +97,7 @@ pub struct BlendCellParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PolarEditParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -127,6 +132,7 @@ pub struct CellAt {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CompareParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]

@@ -17,6 +17,7 @@ name = "pe-app"
 path = "src/main.rs"
 
 [dependencies]
+whirlwind-mcp = { path = "../../vendor/whirlwind-mcp", version = "=0.1.0" }
 pe-core = { workspace = true }
 pe-polar = { workspace = true }
 pe-orc = { workspace = true }

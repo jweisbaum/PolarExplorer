@@ -18,6 +18,7 @@ const DEFAULT_LIMIT: u32 = 20;
 const MAX_LIMIT: u32 = 100;
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SourceSetParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -41,6 +42,7 @@ pub struct SourceSetParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SourceRefParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -50,6 +52,7 @@ pub struct SourceRefParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SourceMoveParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -62,6 +65,7 @@ pub struct SourceMoveParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CatalogueSearchParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -85,6 +89,7 @@ pub struct CatalogueSearchParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct OrcAddParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -97,6 +102,7 @@ pub struct OrcAddParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct OrrAddParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]
@@ -106,12 +112,14 @@ pub struct OrrAddParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct OrrRefreshParams {
     /// The certificate year to download, 2018 or later.
     pub year: i32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PolarFilesParams {
     /// The boat's id, from boats_list. Without it, the first boat.
     #[serde(default)]

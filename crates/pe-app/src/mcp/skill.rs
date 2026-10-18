@@ -57,7 +57,7 @@ fn description() -> String {
 }
 
 /// Where the tools are, and what it means when they are not there.
-const TOOLS: &str = "The tools belong to the MCP server named `polarexplorer` (in Claude Code their names begin `mcp__polarexplorer__`; where tools are loaded on demand, search for that name). `polarexplorer_guide` returns the text above with today's date.\n\nIf no such tool is listed, PolarExplorer is not running or its MCP service is off. Say so and ask the user to open PolarExplorer and turn on Settings > MCP service, then try again. Do not build the polar some other way instead: what was asked for is the application's result, which the user can see and correct there, and a table computed by hand is not it.";
+const TOOLS: &str = "The tools belong to the MCP server named `polarexplorer` (in Claude Code their names begin `mcp__plugin_polarexplorer_polarexplorer__`; where tools are loaded on demand, search for that name). `polarexplorer_guide` returns the text above with today's date.\n\nThe native bridge opens the app when a tool needs it. If no such tool is listed, the plugin may need connecting or repair. Say so and ask the user to open PolarExplorer and turn on Settings > AI assistants, then try again. Do not build the polar some other way instead: what was asked for is the application's result, which the user can see and correct there, and a table computed by hand is not it.";
 
 /// Where Claude Code keeps its configuration: `$CLAUDE_CONFIG_DIR`, or
 /// `~/.claude`.
@@ -139,8 +139,8 @@ mod tests {
     fn the_body_is_the_guide_and_says_what_missing_tools_mean() {
         let text = skill_md();
         assert!(text.contains(guide::GUIDE));
-        assert!(text.contains("mcp__polarexplorer__"));
-        assert!(text.contains("Settings > MCP service"));
+        assert!(text.contains("mcp__plugin_polarexplorer_polarexplorer__"));
+        assert!(text.contains("Settings > AI assistants"));
     }
 
     #[test]

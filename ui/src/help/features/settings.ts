@@ -8,6 +8,8 @@ import type { Feature } from "../features";
 const open = (section: string) => ["settings:", `settings:${section}`];
 
 const features: Feature[] = [
+  { id: "settings:mcp", label: msg("AI assistants"), description: msg("Connect once. Assistants can inspect, edit, calculate, download and export within your workflow."), keywords: ["MCP","Claude","Codex"], topic: "settings", reveal: open("mcp") },
+  { id: "settings:mcp-clients", label: msg("Permission policy"), description: msg("Routine work automatically; ask before irreversible actions"), keywords: ["MCP",msg("AI")], topic: "settings", reveal: open("mcp") },
   { id: "settings:cache-directory", label: msg("Cache directory"), description: msg("Leave empty to use the application cache directory"),
     keywords: ["Whirlwind", msg("cache")], topic: "settings", reveal: open("cache") },
   { id: "settings:cache-browse", label: msg("Choose cache directory"), description: msg("Choose cache directory"),
@@ -50,7 +52,7 @@ const features: Feature[] = [
   { id: "settings:mcp-port", label: msg("MCP service port"), description: msg("The port on this computer the MCP service listens on."),
     keywords: ["MCP", msg("network"), msg("port")], topic: "settings", reveal: open("mcp") },
   { id: "settings:mcp-token", label: msg("Rotate the MCP token"),
-    description: msg("Issue a new token for the MCP service. Clients added before must be added again."),
+    description: msg("Rotate token"),
     keywords: ["MCP", msg("password"), msg("security"), msg("token")], topic: "settings", reveal: open("mcp"), landing: "settings:mcp-enable" },
   { id: "settings:mcp-add", label: msg("Add PolarExplorer to an AI client"),
     description: msg("Add the MCP service to Claude Code or Codex, or open its extension in Claude Desktop."),
@@ -59,7 +61,7 @@ const features: Feature[] = [
     description: msg("The address and token of the MCP service as text, for a client that has no button."),
     keywords: ["MCP", msg("configuration"), "JSON", "ChatGPT"], topic: "settings", reveal: open("mcp"), landing: "settings:mcp-enable" },
   { id: "settings:mcp-copy", label: msg("Copy an MCP client configuration"),
-    description: msg("Copy the Claude Code command, the HTTP client entry or the stdio bridge command."),
+    description: msg("Copy HTTP client JSON"),
     keywords: ["MCP", msg("copy"), msg("clipboard")], topic: "settings", reveal: open("mcp"), landing: "settings:mcp-enable" },
 ];
 

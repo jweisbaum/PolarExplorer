@@ -10,12 +10,14 @@ use super::{PolarExplorer, ToolResult, json};
 use crate::commands::AppState;
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BoatAddParams {
     /// The new boat's name.
     pub name: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BoatRenameParams {
     /// The boat's id, from boats_list.
     pub boat: u64,
@@ -24,6 +26,7 @@ pub struct BoatRenameParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BoatRefParams {
     /// The boat's id, from boats_list.
     pub boat: u64,

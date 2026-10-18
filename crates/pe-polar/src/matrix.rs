@@ -1,14 +1,13 @@
 //! Compact, self-describing WhirlwindMatrixPolar binary format.
 //!
 //! Version 1 supports independent SOG, sampled-PDF, and Gaussian-PDF modes.
-//! Version 2 files from the brief transition are also readable.
+//! Wave sectors are fixed by their count; height and period store bucket cutoffs.
 
 use pe_core::polar::{GaussianPdf, PolarGrid, WhirlwindMatrixPolar, validate_axis};
 use thiserror::Error;
 
 const MAGIC: &[u8; 8] = b"WWMPOLAR";
 const VERSION: u16 = 1;
-const TRANSITION_VERSION: u16 = 2;
 const MODE_SOG: u16 = 1;
 const MODE_PDF: u16 = 2;
 const MODE_GAUSSIAN: u16 = 4;
@@ -29,7 +28,7 @@ pub enum MatrixError {
     Modes,
     #[error("the WhirlwindMatrixPolar data is too large")]
     TooLarge,
-    #[error("the WhirlwindMatrixPolar wave axes must all be empty or all be populated")]
+    #[error("the WhirlwindMatrixPolar wave bucket counts are invalid")]
     WaveAxes,
     #[error("the WhirlwindMatrixPolar axis {0} is invalid")]
     Axis(&'static str),
@@ -62,9 +61,9 @@ impl MatrixPolarExt for WhirlwindMatrixPolar {
         let matrix = Self {
             twa_deg: polar.twa.iter().map(|v| *v as f32).collect(),
             tws_kn: polar.tws.iter().map(|v| *v as f32).collect(),
-            wave_height_m: Vec::new(),
-            wave_angle_deg: Vec::new(),
-            wave_period_s: Vec::new(),
+            wave_height_cutoffs_m: Vec::new(),
+            wave_direction_count: 0,
+            wave_period_cutoffs_s: Vec::new(),
             sog_bins_kn: Vec::new(),
             sog: Some(sog),
             pdf: None,
@@ -81,22 +80,23 @@ impl MatrixPolarExt for WhirlwindMatrixPolar {
         }
         validate_f32_axis(&self.twa_deg, "TWA", 0.0, 360.0)?;
         validate_f32_axis(&self.tws_kn, "TWS", 0.0, 70.0)?;
-        let wave_count = [
-            self.wave_height_m.len(),
-            self.wave_angle_deg.len(),
-            self.wave_period_s.len(),
-        ];
-        if wave_count.contains(&0) && wave_count.iter().any(|n| *n != 0) {
+        validate_wave_counts(
+            self.wave_height_count(),
+            self.wave_direction_count as usize,
+            self.wave_period_count(),
+        )?;
+        if self.wave_direction_count == 0
+            && (!self.wave_height_cutoffs_m.is_empty() || !self.wave_period_cutoffs_s.is_empty())
+        {
             return Err(MatrixError::WaveAxes);
         }
-        validate_f32_axis(&self.wave_height_m, "wave height", 0.0, 100.0)?;
-        validate_f32_axis(&self.wave_angle_deg, "wave angle", 0.0, 360.0)?;
-        validate_f32_axis(&self.wave_period_s, "wave period", 0.0, 1000.0)?;
+        validate_cutoffs(&self.wave_height_cutoffs_m, "wave height cutoffs", 100.0)?;
+        validate_cutoffs(&self.wave_period_cutoffs_s, "wave period cutoffs", 1000.0)?;
         validate_f32_axis(&self.sog_bins_kn, "SOG bins", 0.0, 60.0)?;
         let wind_cells = checked_product(&[
-            self.wave_height_m.len().max(1),
-            self.wave_angle_deg.len().max(1),
-            self.wave_period_s.len().max(1),
+            self.wave_height_count().max(1),
+            (self.wave_direction_count as usize).max(1),
+            self.wave_period_count().max(1),
             self.twa_deg.len(),
             self.tws_kn.len(),
         ])?;
@@ -104,9 +104,8 @@ impl MatrixPolarExt for WhirlwindMatrixPolar {
             .twa_deg
             .len()
             .saturating_add(self.tws_kn.len())
-            .saturating_add(self.wave_height_m.len())
-            .saturating_add(self.wave_angle_deg.len())
-            .saturating_add(self.wave_period_s.len())
+            .saturating_add(self.wave_height_cutoffs_m.len())
+            .saturating_add(self.wave_period_cutoffs_s.len())
             .saturating_add(self.sog_bins_kn.len());
         if axis_values > MAX_MATRIX_VALUES {
             return Err(MatrixError::TooLarge);
@@ -157,9 +156,9 @@ impl MatrixPolarExt for WhirlwindMatrixPolar {
     /// wave slices. PDF-only files use the Gaussian expected speed.
     fn to_polar(&self) -> Result<PolarGrid, MatrixError> {
         self.validate()?;
-        let wave_cells = self.wave_height_m.len().max(1)
-            * self.wave_angle_deg.len().max(1)
-            * self.wave_period_s.len().max(1);
+        let wave_cells = self.wave_height_count().max(1)
+            * (self.wave_direction_count as usize).max(1)
+            * self.wave_period_count().max(1);
         let twas = self.twa_deg.len();
         let twss = self.tws_kn.len();
         let mut bsp = vec![vec![None; twss]; twas];
@@ -227,9 +226,9 @@ pub fn write(matrix: &WhirlwindMatrixPolar) -> Result<Vec<u8>, MatrixError> {
     let counts = [
         matrix.twa_deg.len(),
         matrix.tws_kn.len(),
-        matrix.wave_height_m.len(),
-        matrix.wave_angle_deg.len(),
-        matrix.wave_period_s.len(),
+        matrix.wave_height_count(),
+        matrix.wave_direction_count as usize,
+        matrix.wave_period_count(),
         if matrix.pdf.is_some() {
             matrix.sog_bins_kn.len()
         } else {
@@ -240,9 +239,8 @@ pub fn write(matrix: &WhirlwindMatrixPolar) -> Result<Vec<u8>, MatrixError> {
     for axis in [
         &matrix.twa_deg,
         &matrix.tws_kn,
-        &matrix.wave_height_m,
-        &matrix.wave_angle_deg,
-        &matrix.wave_period_s,
+        &matrix.wave_height_cutoffs_m,
+        &matrix.wave_period_cutoffs_s,
     ] {
         for value in axis {
             axes.extend_from_slice(&value.to_le_bytes());
@@ -321,21 +319,17 @@ pub fn write(matrix: &WhirlwindMatrixPolar) -> Result<Vec<u8>, MatrixError> {
     Ok(out)
 }
 
-/// Decode and validate v1 files and the brief v2 transition format.
+/// Decode and validate the current v1 layout. Earlier layouts are not supported.
 pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
     if bytes.len() > MAX_MATRIX_FILE_BYTES || bytes.len() < HEADER_LEN + 4 || &bytes[..8] != MAGIC {
         return Err(MatrixError::Header);
     }
     let version = read_u16(bytes, 8)?;
-    if version != VERSION && version != TRANSITION_VERSION {
+    if version != VERSION {
         return Err(MatrixError::Version(version));
     }
     let flags = read_u16(bytes, 10)?;
-    let known_modes = if version == TRANSITION_VERSION {
-        MODE_SOG | MODE_PDF
-    } else {
-        MODE_SOG | MODE_PDF | MODE_GAUSSIAN
-    };
+    let known_modes = MODE_SOG | MODE_PDF | MODE_GAUSSIAN;
     if flags == 0 || flags & !known_modes != 0 {
         return Err(MatrixError::Modes);
     }
@@ -349,7 +343,21 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
     if !sog_scale.is_finite() || sog_scale < 0.0 || !pdf_scale.is_finite() || pdf_scale < 0.0 {
         return Err(MatrixError::Values);
     }
-    let axis_bytes = counts
+    let [t, w, h_count, d_count, p_count, b] = counts;
+    validate_wave_counts(h_count, d_count, p_count)?;
+    if t == 0 || w == 0 || (flags & MODE_PDF != 0) != (b > 0) {
+        return Err(MatrixError::Shape);
+    }
+    // Directions have no coordinate array. H and P count buckets, so only
+    // their interior boundaries are serialized (zero and infinity are implicit).
+    let axis_counts = [
+        t,
+        w,
+        h_count.saturating_sub(1),
+        p_count.saturating_sub(1),
+        b,
+    ];
+    let axis_bytes = axis_counts
         .iter()
         .try_fold(0usize, |sum, n| sum.checked_add(n.checked_mul(4)?))
         .ok_or(MatrixError::TooLarge)?;
@@ -360,8 +368,8 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
         return Err(MatrixError::Header);
     }
     let mut pos = HEADER_LEN;
-    let mut axes = Vec::with_capacity(6);
-    for count in counts {
+    let mut axes = Vec::with_capacity(5);
+    for count in axis_counts {
         let mut axis = Vec::with_capacity(count);
         for _ in 0..count {
             axis.push(read_f32(bytes, pos)?);
@@ -372,29 +380,24 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
     let th = axes.remove(0);
     let ts = axes.remove(0);
     let h = axes.remove(0);
-    let a = axes.remove(0);
     let p = axes.remove(0);
     let speed_bins = axes.remove(0);
     let wind_cells = checked_product(&[
-        h.len().max(1),
-        a.len().max(1),
-        p.len().max(1),
+        h_count.max(1),
+        d_count.max(1),
+        p_count.max(1),
         th.len(),
         ts.len(),
     ])?;
     let sog_count = if flags & MODE_SOG != 0 { wind_cells } else { 0 };
-    let histogram_count = if version == VERSION && flags & MODE_PDF != 0 {
+    let histogram_count = if flags & MODE_PDF != 0 {
         wind_cells
             .checked_mul(speed_bins.len())
             .ok_or(MatrixError::TooLarge)?
     } else {
         0
     };
-    let gaussian_mode = if version == TRANSITION_VERSION {
-        flags & MODE_PDF != 0
-    } else {
-        flags & MODE_GAUSSIAN != 0
-    };
+    let gaussian_mode = flags & MODE_GAUSSIAN != 0;
     let gaussian_count = if gaussian_mode {
         wind_cells.checked_mul(2).ok_or(MatrixError::TooLarge)?
     } else {
@@ -429,7 +432,7 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
     }
     let mut pdf = None;
     let mut pdf_gaussians = None;
-    if version == VERSION && flags & MODE_PDF != 0 {
+    if flags & MODE_PDF != 0 {
         let mut values = Vec::with_capacity(histogram_count);
         for _ in 0..histogram_count {
             let q = read_u16(&raw, cursor)?;
@@ -442,14 +445,7 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
         pdf = Some(values);
     }
     if gaussian_mode {
-        let scale = if version == TRANSITION_VERSION {
-            if !speed_bins.is_empty() || pdf_scale <= 0.0 || pdf_scale > 60.0 {
-                return Err(MatrixError::Values);
-            }
-            pdf_scale
-        } else {
-            60.0
-        };
+        let scale = 60.0;
         let mut values = Vec::with_capacity(wind_cells);
         for _ in 0..wind_cells {
             let mean = read_u16(&raw, cursor)?;
@@ -471,9 +467,9 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
     let matrix = WhirlwindMatrixPolar {
         twa_deg: th,
         tws_kn: ts,
-        wave_height_m: h,
-        wave_angle_deg: a,
-        wave_period_s: p,
+        wave_height_cutoffs_m: h,
+        wave_direction_count: d_count as u32,
+        wave_period_cutoffs_s: p,
         sog_bins_kn: speed_bins,
         sog,
         pdf,
@@ -481,6 +477,24 @@ pub fn read(bytes: &[u8]) -> Result<WhirlwindMatrixPolar, MatrixError> {
     };
     matrix.validate()?;
     Ok(matrix)
+}
+
+fn validate_wave_counts(h: usize, d: usize, p: usize) -> Result<(), MatrixError> {
+    if (d == 0 && h == 0 && p == 0)
+        || (matches!(d, 2 | 4 | 8 | 20) && (1..=64).contains(&h) && (1..=64).contains(&p))
+    {
+        Ok(())
+    } else {
+        Err(MatrixError::WaveAxes)
+    }
+}
+
+fn validate_cutoffs(values: &[f32], name: &'static str, maximum: f32) -> Result<(), MatrixError> {
+    validate_f32_axis(values, name, 0.0, maximum)?;
+    if values.iter().any(|v| *v <= 0.0 || *v >= maximum) {
+        return Err(MatrixError::Axis(name));
+    }
+    Ok(())
 }
 
 fn validate_f32_axis(
