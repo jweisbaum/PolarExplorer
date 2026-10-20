@@ -18,7 +18,7 @@ fn public_s3_reads_metadata_and_chunk_ranges_without_signing() {
     let cancel = Arc::new(AtomicBool::new(false));
     let metadata = w
         .runtime
-        .block_on(w.s3.get("zarr.json", None, &cancel))
+        .block_on(w.transport.get("zarr.json", None, &cancel))
         .unwrap()
         .unwrap();
     assert_eq!(&metadata[..], b"{\"zarr_format\":3}");
@@ -852,4 +852,99 @@ fn a_float64_archive_is_refused() {
         )
         .is_err()
     );
+}
+
+fn folder(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("pe-whirlwind-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn folder_reader(dir: &std::path::Path) -> Whirlwind {
+    let reference = ArchiveRef {
+        identity: format!("file://{}", dir.display()),
+        location: testing::file_location(dir),
+    };
+    Whirlwind::new(
+        reference,
+        Duration::from_secs(5),
+        BlockCache::new(16 << 20),
+        4,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_folder_archive_samples_like_the_served_one() {
+    let dir = folder("samples");
+    testing::write_fixture(&dir);
+    let server = serve(fixture(), 206);
+    let served = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
+    let local = folder_reader(&dir);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let from_folder = local.sample(&[point()], &options(), &cancel).unwrap();
+    let from_server = served.sample(&[point()], &options(), &cancel).unwrap();
+    assert_eq!(from_folder, from_server);
+    assert_eq!(from_folder[0].wind.unwrap().u, 1.5);
+    assert_eq!(local.net_totals(), (0, 0));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_missing_shard_file_is_missing_data_and_a_vanished_folder_fails_the_open_with_its_path() {
+    let dir = folder("missing");
+    testing::write_fixture(&dir);
+    let local = folder_reader(&dir);
+    let cancel = AtomicBool::new(false);
+    let missing = local
+        .runtime
+        .block_on(local.transport.get("data/c/9/9/9/9", None, &cancel))
+        .unwrap();
+    assert!(missing.is_none());
+    let past = local.runtime.block_on(local.transport.get(
+        "zarr.json",
+        Some(Range::Bytes(1 << 20, 4)),
+        &cancel,
+    ));
+    assert!(past.unwrap_err().to_string().contains("zarr.json"));
+    std::fs::remove_dir_all(&dir).unwrap();
+    let error = local
+        .runtime
+        .block_on(local.transport.get("zarr.json", None, &cancel))
+        .unwrap_err();
+    assert!(error.to_string().contains(&dir.display().to_string()));
+    let reference = ArchiveRef {
+        identity: "file".into(),
+        location: testing::file_location(&dir),
+    };
+    let error = Whirlwind::new(
+        reference,
+        Duration::from_secs(5),
+        BlockCache::new(1 << 20),
+        4,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains(&dir.display().to_string()));
+}
+
+#[test]
+fn folder_archives_use_memory_but_never_the_disk_cache() {
+    let dir = folder("nocache");
+    testing::write_fixture(&dir);
+    let cache_dir = folder("nocache-disk");
+    let disk = DiskCache::open(&cache_dir, 16 << 20).unwrap();
+    let local = folder_reader(&dir).with_disk_cache(Arc::clone(&disk));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let out = local.sample(&[point()], &options(), &cancel).unwrap();
+    assert!(out[0].wind.is_some());
+    assert_eq!(disk.size().unwrap(), 0);
+    // The second sample is answered from memory.
+    let before = local.decoded_chunks.load(Ordering::SeqCst);
+    assert_eq!(local.sample(&[point()], &options(), &cancel).unwrap(), out);
+    assert_eq!(local.decoded_chunks.load(Ordering::SeqCst), before);
+    drop(local);
+    drop(disk);
+    std::fs::remove_dir_all(dir).unwrap();
+    std::fs::remove_dir_all(cache_dir).unwrap();
 }

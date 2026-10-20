@@ -1515,6 +1515,8 @@ indexes, compressed chunks and decoded chunks across routes, including
 when a later request needs different parameters
 from the same chunk. Whirlwind additionally keeps validated compressed chunks
 in the bounded disk cache in Settings (§3.4), including across restarts.
+A local archive is read from its folder with the same byte ranges and no disk
+cache.
 S3 reads use an async runtime with up to 64 requests in flight across tracks
 and parameters. Each shard's chunks can download as soon as its index arrives,
 without waiting for unrelated indexes. Decoding uses at most eight CPU workers;

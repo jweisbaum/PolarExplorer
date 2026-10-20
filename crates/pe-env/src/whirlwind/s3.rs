@@ -169,18 +169,6 @@ impl S3 {
         })
     }
 
-    pub async fn get(
-        &self,
-        key: &str,
-        range: Option<Range>,
-        cancel: &AtomicBool,
-    ) -> Result<Option<Bytes>> {
-        Ok(self
-            .get_versioned(key, range, cancel)
-            .await?
-            .map(|object| object.bytes))
-    }
-
     pub async fn get_versioned(
         &self,
         key: &str,

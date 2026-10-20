@@ -434,6 +434,7 @@ pub(super) fn whirlwind_with(
 
 /// A reader whose layout is not preset: it opens the archive from the
 /// metadata the stub at `endpoint` serves.
+#[cfg(test)]
 pub(super) fn whirlwind_opening(
     endpoint: &str,
     concurrency: usize,
@@ -464,4 +465,25 @@ pub(crate) fn whirlwind_at(
 pub fn reader_at(endpoint: &str) -> Reanalysis {
     let memory = BlockCache::new(16 << 20);
     Reanalysis::from_reader(whirlwind_at(endpoint, 4, Arc::clone(&memory)), memory)
+}
+
+/// Writes `objects` (a [`fixture`]) under `dir`, one file per key.
+pub fn write_fixture_objects(dir: &std::path::Path, objects: &BTreeMap<String, Vec<u8>>) {
+    for (key, bytes) in objects {
+        let path = dir.join(key);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+}
+
+/// Writes the [`fixture`] archive under `dir`.
+pub fn write_fixture(dir: &std::path::Path) {
+    write_fixture_objects(dir, &fixture());
+}
+
+/// The folder `dir` as an archive location.
+pub fn file_location(dir: &std::path::Path) -> ArchiveLocation {
+    ArchiveLocation::File {
+        path: dir.to_owned(),
+    }
 }
