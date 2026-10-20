@@ -169,14 +169,13 @@ export default function SettingsDialog({ settings, onSettings, onClose }: {
             <select data-feature="settings:data-source" value={settings.data_source}
               title={t("Choose the archive for historical wind, waves and currents.")}
               onChange={(e) => save(api.setDataSource(e.target.value as AppSettings["data_source"]))}>
-              <option value="open_data">{t("Open Data (Slow)")}</option>
               <option value="whirlwind">{t("Whirlwind (Fast) S3")}</option>
               <option value="whirlwind_r2">{t("Whirlwind (Fast) R2")}</option>
               <option value="whirlwind_tigris">{t("Whirlwind (Fast) Tigris")}</option>
             </select>
           </label>
           <p className="muted">
-            {t("A fetch downloads only the parts of the archives that hold a track's positions, and the project keeps only the wind, waves and current at each position: kilobytes per track. Open Data downloads are kept in memory for this session.")}
+            {t("A fetch downloads only the parts of the archives that hold a track's positions, and the project keeps only the wind, waves and current at each position: kilobytes per track.")}
           </p>
           <label className="settings-field">
             {t("Keep downloaded weather in memory for this session (MB)")}
@@ -194,17 +193,7 @@ export default function SettingsDialog({ settings, onSettings, onClose }: {
 
         <section data-section="settings:network">
           <h3>{t("Network")}</h3>
-          {settings.data_source !== "open_data" ? (
-            <p className="muted">{t("Whirlwind downloads up to 64 chunks at once.")}</p>
-          ) : (
-            <label className="settings-field">
-              {t("Concurrent requests")}
-              <IntegerField data-feature="settings:concurrency" aria-label={t("Concurrent requests")}
-                title={t("How many downloads run at once (1–32)")}
-                value={settings.network.concurrency} min={1} max={32}
-                onCommit={(value) => save(api.setNetwork({ ...settings.network, concurrency: value }))} />
-            </label>
-          )}
+          <p className="muted">{t("Whirlwind downloads up to 64 chunks at once.")}</p>
           <label className="settings-field">
             {t("Request timeout (s)")}
             <IntegerField data-feature="settings:timeout" aria-label={t("Request timeout (s)")}

@@ -154,12 +154,12 @@ jobs:
         run: tools/check-grib.sh sample.grib2 crates/pe-grib/tests/golden/reanalysis.grib2
 
       # The golden export (pinned by crates/pe-app/tests/grib_export.rs)
-      # holds WeatherBench2's u10 at 50N 5W, 2020-07-27T12Z, as numcodecs
-      # decodes it from the recorded chunk: 9.382978 m/s.
+      # holds the Whirlwind fixture archive's u10 at 45N 80W,
+      # 2000-01-01T01Z: 2 × 1 h + (60 − 45) / 30 = 2.5 m/s.
       - name: The golden export holds the archive's value
         run: |
           grib_get_data -w count=7 crates/pe-grib/tests/golden/reanalysis.grib2 \
-            | awk '$1 + 0 == 50 && $2 + 0 == 355 { d = $3 - 9.382978; if (d < 0) d = -d; if (d < 0.001) ok = 1 } END { exit !ok }'
+            | awk '$1 + 0 == 45 && $2 + 0 == 280 { d = $3 - 2.5; if (d < 0) d = -d; if (d < 0.001) ok = 1 } END { exit !ok }'
 
   bindings:
     name: typescript bindings are current

@@ -1,8 +1,8 @@
 //! The environment of every track sample, fetched as a job (spec.md 7.5,
 //! 7.7, 13).
 //!
-//! **Jobs.** Whirlwind tracks share time-ordered batches and one bounded
-//! chunk-download/decode pipeline. Open Data retains its single-track runner.
+//! **Jobs.** Queued tracks share time-ordered batches and one bounded
+//! chunk-download/decode pipeline; a track queued alone runs by itself.
 //! Only requested positions are sampled; compressed Whirlwind chunks can be
 //! reused from the disk cache, and decoded chunks share the memory budget.
 //!
@@ -52,15 +52,11 @@ pub const PROGRESS_EVENT: &str = "env://progress";
 pub const CHANGED_EVENT: &str = "env://changed";
 
 /// The most samples one batch asks for.
-const BATCH_SAMPLES: usize = 400;
+const BATCH_SAMPLES: usize = 10_000;
 
-/// The longest stretch of track time one batch covers: three hours.
-/// Short enough that a cold batch (about
-/// sixteen chunks, a block or two of each) finishes in seconds, so
-/// progress moves and a cancel loses little.
-fn batch_span_s(interval: Interval) -> i64 {
-    3 * interval.seconds()
-}
+/// The longest stretch of track time one batch covers: 72 hours, one
+/// archive inner chunk's span, so a batch plans and decodes each chunk once.
+const BATCH_SPAN_S: i64 = 72 * 3600;
 
 // ------------------------------------------------------------- status
 
@@ -233,20 +229,18 @@ impl EnvJobs {
                 && let Some(task) = queue.waiting.pop_front()
             {
                 let mut tasks = vec![task.clone()];
-                if task.data_source.whirlwind_source().is_some() {
-                    let mut kept = VecDeque::new();
-                    while let Some(next) = queue.waiting.pop_front() {
-                        if tasks.len() < 128
-                            && next.data_source == task.data_source
-                            && next.interval == task.interval
-                        {
-                            tasks.push(next);
-                        } else {
-                            kept.push_back(next);
-                        }
+                let mut kept = VecDeque::new();
+                while let Some(next) = queue.waiting.pop_front() {
+                    if tasks.len() < 128
+                        && next.data_source == task.data_source
+                        && next.interval == task.interval
+                    {
+                        tasks.push(next);
+                    } else {
+                        kept.push_back(next);
                     }
-                    queue.waiting = kept;
                 }
+                queue.waiting = kept;
                 queue.cancel = Arc::new(AtomicBool::new(false));
                 queue.running = tasks
                     .iter()
@@ -498,9 +492,11 @@ fn gather(state: &AppState, task: &Task, now: i64) -> Result<Option<Prepared>> {
             track.env_meta.interval_s = Some(seconds);
             track.env_meta.stokes_drift = Some(stokes);
             // Keep source identity even when every requested cell is missing.
-            if let Some(source) = task.data_source.whirlwind_source() {
-                record(&mut track.env_meta, source.dataset(), now);
-            }
+            record(
+                &mut track.env_meta,
+                task.data_source.whirlwind_source().dataset(),
+                now,
+            );
             let todo: Vec<(usize, Point)> = track
                 .samples
                 .iter()
@@ -534,7 +530,7 @@ fn gather(state: &AppState, task: &Task, now: i64) -> Result<Option<Prepared>> {
         })
 }
 
-/// Runs one Open Data task, or one independently requested Whirlwind track.
+/// Runs one independently requested track.
 fn run(
     state: &AppState,
     task: &Task,
@@ -567,20 +563,7 @@ fn run(
             Outcome::Failed(error.to_string())
         };
     }
-    let span = if task.data_source.whirlwind_source().is_some() {
-        72 * 3600
-    } else {
-        batch_span_s(task.interval)
-    };
-    for batch in batches_with_limit(
-        &todo,
-        span,
-        if task.data_source.whirlwind_source().is_some() {
-            10_000
-        } else {
-            BATCH_SAMPLES
-        },
-    ) {
+    for batch in batches_with_limit(&todo, BATCH_SPAN_S, BATCH_SAMPLES) {
         if outcome != Outcome::Done {
             break;
         }
@@ -634,12 +617,7 @@ fn run(
 }
 
 /// Consecutive runs of `todo` (in time order, as samples are) covering at
-/// most `span_s` of track time and [`BATCH_SAMPLES`] samples each.
-#[cfg(test)]
-fn batches(todo: &[(usize, Point)], span_s: i64) -> Vec<&[(usize, Point)]> {
-    batches_with_limit(todo, span_s, BATCH_SAMPLES)
-}
-
+/// most `span_s` of track time and `limit` samples each.
 fn batches_with_limit(
     todo: &[(usize, Point)],
     span_s: i64,
@@ -740,12 +718,12 @@ fn provider_for_source(state: &AppState, data_source: DataSource) -> Result<Arc<
     }
     let timeout = std::time::Duration::from_secs(key.timeout_s);
     let memory = pe_env::BlockCache::new(key.memory_bytes);
-    let reanalysis = Arc::new(match key.data_source.whirlwind_source() {
-        None => Reanalysis::http(timeout, memory, key.concurrency as usize),
-        Some(source) => Reanalysis::whirlwind(source, source.credentials(), timeout, memory)
+    let source = key.data_source.whirlwind_source();
+    let reanalysis = Arc::new(
+        Reanalysis::whirlwind(source, source.credentials(), timeout, memory)
             .map_err(|e| AppError::Internal(e.to_string()))?
             .with_whirlwind_cache(crate::weather_cache::open(state, &key.weather_cache)?),
-    });
+    );
     *slot = Some((key, Arc::clone(&reanalysis)));
     Ok(reanalysis)
 }
@@ -822,21 +800,11 @@ struct Gathered {
     points: Vec<Point>,
 }
 
+/// Whether a track's weather came from anywhere but `source`: then a fetch
+/// starts it over, so a track never mixes archives.
 fn different_source(meta: &EnvMeta, source: DataSource) -> bool {
-    let whirlwind = source.whirlwind_source().map(|s| s.dataset());
-    if meta.datasets.is_empty() {
-        return whirlwind.is_some();
-    }
-    meta.datasets.iter().any(|d| match whirlwind {
-        Some(wanted) => d.name != wanted.id(),
-        None => [
-            Dataset::WhirlwindHindsight,
-            Dataset::WhirlwindR2,
-            Dataset::WhirlwindTigris,
-        ]
-        .iter()
-        .any(|w| d.name == w.id()),
-    })
+    let wanted = source.whirlwind_source().dataset();
+    meta.datasets.is_empty() || meta.datasets.iter().any(|d| d.name != wanted.id())
 }
 
 /// The positions of the named tracks still to fetch (all of them when
@@ -903,23 +871,13 @@ pub struct EnvEstimate {
 /// (measured on real tracks, M14e: see plan.md).
 pub const STORED_BYTES_PER_SAMPLE: u64 = 8;
 
-/// [`env_estimate`] without a Tauri handle; `memory` holds what this
-/// session has already downloaded.
-pub fn estimate_for(
-    state: &AppState,
-    sources: &[u64],
-    restart: bool,
-    memory: Option<&pe_env::BlockCache>,
-) -> Result<EnvEstimate> {
+/// [`env_estimate`] without a Tauri handle, through the session's
+/// provider (what it already holds is not counted).
+pub fn estimate_for(state: &AppState, sources: &[u64], restart: bool) -> Result<EnvEstimate> {
     let points = positions(state, sources, restart)?.points;
-    let source = state.with_session(|s| Ok(s.settings.data_source))?;
-    let e = if source.whirlwind_source().is_some() {
-        provider(state)?
-            .estimate(&points)
-            .map_err(|e| AppError::Internal(e.to_string()))?
-    } else {
-        pe_env::estimate(&points, memory)
-    };
+    let e = provider(state)?
+        .estimate(&points)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(EnvEstimate {
         samples: u32::try_from(points.len()).unwrap_or(u32::MAX),
         hourly_bytes: e.hourly_bytes,
@@ -942,12 +900,9 @@ pub async fn env_estimate(
     // and reading indexes: doing that there panics, leaving the IPC promise
     // unanswered and the busy indicator running. Provider replacement also
     // drops that runtime, so keep the entire operation on a blocking worker.
-    tauri::async_runtime::spawn_blocking(move || {
-        let provider = provider(&state)?;
-        estimate_for(&state, &source_ids, restart, Some(provider.memory()))
-    })
-    .await
-    .map_err(|e| AppError::Internal(format!("Weather estimate worker failed: {e}")))?
+    tauri::async_runtime::spawn_blocking(move || estimate_for(&state, &source_ids, restart))
+        .await
+        .map_err(|e| AppError::Internal(format!("Weather estimate worker failed: {e}")))?
 }
 
 /// [`start_env_fetch`] without a Tauri handle: queues one task per track.
@@ -1076,12 +1031,16 @@ mod tests {
     #[test]
     fn batches_split_by_span_and_count() {
         let todo: Vec<_> = (0..10).map(|k| at(k * 3600)).collect();
-        let sizes: Vec<usize> = batches(&todo, 3 * 3600).iter().map(|b| b.len()).collect();
-        assert_eq!(sizes, vec![3, 3, 3, 1]);
+        let split = |todo: &[(usize, Point)], span: i64| -> Vec<usize> {
+            batches_with_limit(todo, span, 400)
+                .iter()
+                .map(|b| b.len())
+                .collect()
+        };
+        assert_eq!(split(&todo, 3 * 3600), vec![3, 3, 3, 1]);
         let dense: Vec<_> = (0..1000).map(at).collect();
-        let sizes: Vec<usize> = batches(&dense, 3 * 3600).iter().map(|b| b.len()).collect();
-        assert_eq!(sizes, vec![400, 400, 200]);
-        assert!(batches(&[], 3600).is_empty());
+        assert_eq!(split(&dense, 3 * 3600), vec![400, 400, 200]);
+        assert!(split(&[], 3600).is_empty());
     }
 
     /// Hand-computed: u = −3, v = −4 m/s is 5 m/s blowing toward the
@@ -1105,13 +1064,13 @@ mod tests {
             wind: Some(pe_env::Vector {
                 u: -3.0,
                 v: -4.0,
-                dataset: Dataset::Wb2Era5Hourly,
+                dataset: Dataset::WhirlwindHindsight,
             }),
             waves: None,
             current: Some(pe_env::Vector {
                 u: 1.0,
                 v: 0.0,
-                dataset: Dataset::GlobCurrentMy,
+                dataset: Dataset::WhirlwindR2,
             }),
         };
         ingest(&mut sample, &mut meta, &env, 42);
@@ -1126,9 +1085,9 @@ mod tests {
         assert_eq!(
             meta.datasets[1].has_tide,
             Some(true),
-            "GlobCurrent 202411 includes the tide (FES2022)"
+            "the Whirlwind current includes the tide"
         );
-        assert_eq!(meta.datasets[0].name, "wb2-era5-1h");
+        assert_eq!(meta.datasets[0].name, "whirlwind-hindsight");
         assert_eq!(meta.datasets[0].fetched_at, 42);
         // The same dataset again is the same record.
         ingest(&mut sample, &mut meta, &env, 99);

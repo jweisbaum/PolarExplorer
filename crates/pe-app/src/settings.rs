@@ -122,10 +122,8 @@ pub struct Units {
 #[ts(export_to = "DataSource.ts")]
 #[serde(rename_all = "snake_case")]
 pub enum DataSource {
-    /// Existing public archives and current-source fallbacks.
-    #[default]
-    OpenData,
     /// Whirlwind Hindsight on S3.
+    #[default]
     Whirlwind,
     /// Whirlwind Hindsight on Cloudflare R2 (Source 2).
     WhirlwindR2,
@@ -134,13 +132,12 @@ pub enum DataSource {
 }
 
 impl DataSource {
-    pub fn whirlwind_source(self) -> Option<pe_env::whirlwind::Source> {
+    pub fn whirlwind_source(self) -> pe_env::whirlwind::Source {
         use pe_env::whirlwind::Source;
         match self {
-            Self::OpenData => None,
-            Self::Whirlwind => Some(Source::S3),
-            Self::WhirlwindR2 => Some(Source::R2),
-            Self::WhirlwindTigris => Some(Source::Tigris),
+            Self::Whirlwind => Source::S3,
+            Self::WhirlwindR2 => Source::R2,
+            Self::WhirlwindTigris => Source::Tigris,
         }
     }
 }
@@ -716,6 +713,21 @@ pub fn legacy_chunk_dir(settings_file: &Path, default_cache_dir: &Path) -> PathB
         .join("chunks")
 }
 
+/// The dataset folders an earlier version's chunk cache wrote, one per
+/// archive it read.
+const LEGACY_CACHE_FOLDERS: [&str; 10] = [
+    "whirlwind-hindsight",
+    "whirlwind-hindsight-r2",
+    "whirlwind-hindsight-tigris",
+    "wb2-era5-1h",
+    "arco-era5",
+    "cmems-nws-my-uv-geo",
+    "cmems-ibi-my-cur-geo",
+    "cmems-glo-merged-uv-geo",
+    "globcurrent-my-geo",
+    "globcurrent-nrt-geo",
+];
+
 /// Whether `dir` looks like nothing but an earlier version's chunk cache:
 /// every entry a folder named for a dataset it read (`wb2-era5-1h`, …).
 /// A folder holding anything else is not ours to delete.
@@ -727,7 +739,7 @@ fn only_dataset_folders(dir: &Path) -> bool {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         (entry.file_type().is_ok_and(|kind| kind.is_dir())
-            && pe_env::Dataset::ALL.iter().any(|d| d.id() == name))
+            && LEGACY_CACHE_FOLDERS.contains(&name.as_ref()))
             || name == ".DS_Store"
     })
 }
@@ -995,7 +1007,7 @@ mod tests {
     fn the_defaults_are_the_ones_the_spec_names() {
         let s = Settings::default();
         assert_eq!(s.language, "en");
-        assert_eq!(s.data_source, DataSource::OpenData);
+        assert_eq!(s.data_source, DataSource::Whirlwind);
         assert_eq!(s.theme, "harbour");
         assert_eq!(s.units.speed, SpeedUnit::Kn);
         assert_eq!(s.units.wave_height, WaveHeightUnit::M);
@@ -1031,6 +1043,19 @@ mod tests {
         s.remember(Path::new("/y.wpsproj"));
         s.save(&file).unwrap();
         assert_eq!(Settings::load(&file), s);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The Open Data choice is gone: a file that saved it reads as the
+    /// default, Whirlwind on S3.
+    #[test]
+    fn a_saved_open_data_choice_reads_as_whirlwind() {
+        let dir = temp("open-data");
+        let file = dir.join("settings.json");
+        std::fs::write(&file, r#"{ "data_source": "open_data", "theme": "paper" }"#).unwrap();
+        let s = Settings::load(&file);
+        assert_eq!(s.data_source, DataSource::Whirlwind);
+        assert_eq!(s.theme, "paper");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

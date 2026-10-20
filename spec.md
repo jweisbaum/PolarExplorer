@@ -318,8 +318,7 @@ or a failed write leaves the previous setting in place.
 - **Units**: boat and wind speed (kn default, m/s, km/h), wave height (m,
   ft), distance (nm, km).
 - **Autosave**: recovery (default), save, off.
-- **Data sources**: **Open Data (Slow)** (default) keeps the existing public
-  archives and current-source fallback chain. **Whirlwind (Fast) S3** reads
+- **Data sources**: **Whirlwind (Fast) S3** (default) reads
   `s3://whirlwind-hindsight/hindsight-routing`, in `us-east-1`, for wind,
   waves and current. **Whirlwind (Fast) R2** reads Cloudflare R2 at the
   configured account endpoint; **Whirlwind (Fast) Tigris** reads Tigris at
@@ -342,9 +341,8 @@ or a failed write leaves the previous setting in place.
 - **Downloaded weather**: "Keep downloaded weather in memory for this
   session (MB)" (default 256, 16–4096). The blocks a fetch downloads (§7.5)
   are kept in memory, least recently used first to go, so other boats of the
-  same race reuse them. Open Data downloads stay in memory and quitting
-  forgets them (D27). Whirlwind's compressed inner chunks also use the disk
-  cache below (asked 2026-10-07). An earlier version's on-disk chunk cache (the
+  same race reuse them; quitting forgets them (D27). The compressed inner
+  chunks also use the disk cache below (asked 2026-10-07). An earlier version's on-disk chunk cache (the
   `chunks` folder in its settings' `chunk_cache.location`, or in the platform
   cache directory) is announced on the status line the first time a project
   window opens, then removed in the background — only that folder, and only
@@ -362,9 +360,9 @@ or a failed write leaves the previous setting in place.
   limit prunes immediately. Clearing removes owned cache entries only and
   invalidates in-flight writes and memory chunk reuse. Weather saved in projects
   is unchanged. Changing directory applies to later fetches; older cache files
-  remain in their original directory. Open Data does not use the disk cache.
-- **Network**: request concurrency (default 8, 1–32), timeout (default 60 s,
-  5–600 s).
+  remain in their original directory.
+- **Network**: timeout (default 60 s, 5–600 s). Whirlwind downloads up to
+  64 chunks at once, which is not a setting.
 - **Map projection** (§9.1), remembered here rather than in the project.
 - **Polar plot dot band** (§9.2): how far from the plot's wind speed a
   sample may be and still be drawn, ±0.25 to ±5 kn (default ±1 kn). A display
@@ -1478,7 +1476,7 @@ reanalysis request. Repeated clicks are disabled while the start request is
 pending; a failed start reports its error and keeps the selected tracks for
 retry. Progress and cancellation remain in the status bar and track list.
 
-With **Whirlwind (Fast) S3** selected, the route reader uses the archive's Zarr v3
+The route reader uses the archive's Zarr v3
 metadata, coordinate axes and parameter names. All three Whirlwind sources
 expect the combined layout published on S3 under `hindsight-routing`: `data`
 contains `u10`, `v10`,
@@ -1516,24 +1514,13 @@ fail the fetch. The optional MCP estimate counts actual compressed byte lengths 
 needed indexes, counting each combined chunk once. Whirlwind provenance is
 `whirlwind-hindsight`, `whirlwind-hindsight-r2` or `whirlwind-hindsight-tigris`,
 version `hindsight-v3`; its current is the HistorySyncer GlobCurrent tidal current.
-Public archive network concurrency remains the existing setting.
 
-With **Open Data (Slow)** selected:
-
-| Quantity | Dataset | Variable |
-|---|---|---|
-| 10 m wind u, v | **WeatherBench2** ERA5, hourly 0.25° (D12) | `10m_u_component_of_wind`, `10m_v_component_of_wind` |
-| Significant wave height | **ARCO-ERA5**, hourly 0.25° | `significant_height_of_combined_wind_waves_and_swell` |
-| Mean wave direction (from) | ARCO-ERA5 | `mean_wave_direction` |
-| Surface current, total incl. tides | see §7.5.1 | u, v |
+For every sample:
 
 - Values are interpolated bilinearly in space and linearly in time. Wind and
   current interpolate their u and v; wave direction interpolates as a unit
   vector. Land cells (NaN) are ignored in the stencil; if all four are NaN the
   value is missing.
-- **WeatherBench2 ends on 2023-01-10.** For times after its last hour, wind
-  comes from ARCO-ERA5 (same variables, same grid, same model). Each sample
-  records which dataset supplied it. See D12.
 - From these, each sample stores: TWS (kn), TWD (from), TWA (0–180),
   tack side, Hs (m), wave direction (from), wave angle relative to the bow,
   current speed and direction (toward), and dataset ids. Units are
@@ -1550,23 +1537,6 @@ With **Open Data (Slow)** selected:
   and load give back. TWA, tack, the corrected values and the wave angle, and
   the sample's time and place (its fix's), are recomputed on load. Measured
   on Fastnet 2025 boats: 7.5–8.8 bytes per sample of environment, deflated.
-- **How it is downloaded** (D27): every ERA5 store is chunked one global
-  field per hour (≈ 3.3 MB), a blosc container of eight blocks that decode
-  independently (131,072 values, ≈ 91 rows, each). A fetch reads each needed
-  chunk's first 64 bytes (header and block offsets) by HTTP Range, then only
-  the blocks holding its positions' stencil rows (adjacent blocks in one
-  request), and decodes those. A stencil across two blocks, the poles, the
-  0/360 seam and an uncompressed (memcpyed) container are handled; a server
-  that answers a Range with 200 and the whole chunk has it used whole (up to
-  the 64 MB body cap) and is then read whole. Values are read from the bytes
-  just fetched, never back through the size-bounded memory; a chunk whose
-  header was served but whose blocks then 404 fails the batch (resumable),
-  never "fetched, no data". A fetch first reads the heads of every ERA5
-  chunk the track needs, side by side, so each batch waits for one round
-  trip per chunk. The values relate() derives are rounded to canonical
-  precision, so libm differences between platforms cannot reach an export. The current geoChunks are read
-  the same way (a block is 1,024–8,192 hours of a box). About an eighth of
-  the whole-chunk bytes: a 5-day race hourly ≈ 150–160 MB, not ≈ 1.3 GB.
 - TWA is the angle between the heading and where the wind comes from; the
   wind over the starboard side is starboard tack, and head to wind or dead
   downwind is neither. The wave angle is measured off the bow (0° head
@@ -1587,62 +1557,6 @@ With **Open Data (Slow)** selected:
   **Include Stokes drift** option is gone (asked 2026-10-02): the document
   keeps the setting for the fetch's sake, a loaded project has it off
   (migration 7 → 8), and no control sets it.
-
-#### 7.5.1 Current source
-
-Every tier below includes the tide (settled from the stores' own metadata
-on 2026-09-28, `plan.md` §6, Q7); they differ in resolution and in how the
-tide is modelled. The app takes each sample from the first source in this
-chain that covers its time and place (D20):
-
-1. **Regional tidal reanalyses**, 1993 to a few months ago. They are tidally
-   forced models, so `uo`/`vo` is already the total current:
-   - NW European Shelf, `NWSHELF_MULTIYEAR_PHY_004_009`,
-     `cmems_mod_nws_phy-uv_my_7km-2D_PT1H-i` (7 km, hourly, 40–65N,
-     20W–13E; int16 with `scale_factor`).
-   - Iberia–Biscay–Ireland, `IBI_MULTIYEAR_PHY_005_002`,
-     `cmems_mod_ibi_phy-cur_my_0.027deg_PT1H-m` (1/36°, hourly means,
-     26–56N, 19W–5E).
-2. **Global merged surface current**, 2020-11-01 onward:
-   `GLOBAL_ANALYSISFORECAST_PHY_001_024`,
-   `cmems_mod_glo_phy_anfc_merged-uv_PT1H-i` (1/12°, hourly). It carries
-   `uo` (circulation), `utide` (FES2014 tide), `vsdx` (Stokes drift) and
-   `utotal = uo + utide + vsdx`. The app uses `uo + utide`; the option to
-   include Stokes drift was removed 2026-10-02.
-3. **GlobCurrent** (`MULTIOBS_GLO_PHY_MYNRT_015_003`, the store VectorEffects
-   reads), 1993 onward, 0.25°, **with tide (FES2022)**: in version 202411
-   both the multi-year and near-real-time stores describe `uo` as "absolute
-   geostrophic velocity + depth Ekman + tide velocity". The multi-year
-   series (`cmems_obs-mob_glo_phy-cur_my_0.25deg_PT1H-i`) is read first and
-   the near-real-time one (`…_nrt_…`) after it ends; `uo`/`vo` are read at
-   the level nearest the surface (0 m of 0 and −15 m).
-
-Each dataset record says whether its current includes the tide; every
-tier above does, so no sample is marked "no tide" today. The "leave out
-currents without tide" filter stays for a tier without one should it ever
-be added.
-
-A position is looked for in a tier only if it lies inside that tier's grid
-and time axis (the regional tiers only inside their boxes, so a race
-elsewhere never opens those stores). A tier whose value is missing there —
-land, fill, or a chunk the archive does not have — passes the position to
-the next tier. A tier whose store will not open (the archive down, a
-version withdrawn) is left out for ten minutes, its positions going on to
-the next tier; the fetch goes on and reports "left out a current source
-that would not open" on the status line with the reason. The stores read (versions as recorded on each sample):
-`cmems_mod_nws_phy-uv_my_7km-2D_PT1H-i_202112`,
-`cmems_mod_ibi_phy-cur_my_0.027deg_PT1H-m_202511`,
-`cmems_mod_glo_phy_anfc_merged-uv_PT1H-i_202211`,
-`cmems_obs-mob_glo_phy-cur_{my,nrt}_0.25deg_PT1H-i_202411`. Integer-packed
-arrays (the NW Shelf and GlobCurrent `int16`) are unpacked with their own
-`scale_factor`/`add_offset`, and their fill value is missing.
-
-All are Copernicus Marine ARCO zarr v2 on `s3.waw3-1.cloudferro.com`, read
-anonymously with the same blosc/LZ4 codec as ERA5. For sampling along a
-track the **geoChunked** stores are used (one chunk covers months at one
-place). Their fill value is about 9.97e36, and a missing chunk comes back as
-HTTP 403 or 404; both mean "no data".
-
 
 ### 7.6 Sample filters
 

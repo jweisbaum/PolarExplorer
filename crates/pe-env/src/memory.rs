@@ -6,22 +6,16 @@
 //! only the values interpolated at its samples (invariant 3), and quitting
 //! the application forgets the rest.
 //!
-//! What is kept, per `(dataset, chunk key)`:
-//! - its blosc header and block offsets, or that the archive has no such
-//!   chunk;
-//! - each block downloaded, compressed exactly as served (a wind block is
-//!   about 0.4 MB, a wave block 0.2 MB), decoded again on each use;
-//! - for a chunk that is not blosc (a test store), its decoded values.
-//! - Whirlwind's decoded float16 inner chunks, sharing the same byte limit.
+//! What is kept, per `(archive, shard key)`:
+//! - its shard index, or that the archive has no such shard;
+//! - each inner chunk downloaded, compressed exactly as served;
+//! - each inner chunk's decoded float16 bytes, sharing the same byte limit.
 
 use std::collections::BTreeMap;
-use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use zarrs_storage::Bytes;
-
-use crate::blosc;
+use bytes::Bytes;
 
 /// The default in-memory limit when no setting is given, bytes.
 pub const DEFAULT_LIMIT: u64 = 256 << 20;
@@ -29,34 +23,23 @@ pub const DEFAULT_LIMIT: u64 = 256 << 20;
 /// Which part of a chunk an entry holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Part {
-    /// The header and block offsets (or that the chunk is missing).
+    /// A shard's index (or that the shard is missing).
     Head,
-    /// One block, by number.
+    /// One inner chunk, compressed, by number.
     Block(u32),
-    /// The whole chunk, decoded.
-    Whole,
-    /// One Whirlwind inner chunk, decoded float16 bytes.
+    /// One inner chunk, decoded float16 bytes.
     Decoded(u32),
 }
 
 /// What an entry holds.
 #[derive(Debug, Clone)]
 pub enum Held {
-    /// The archive has no such chunk: no data, never an error.
+    /// The archive has no such object: no data, never an error.
     Missing,
-    /// A blosc chunk's header and where each block lies in it.
-    Head {
-        /// The checked header.
-        header: blosc::Header,
-        /// Each block's compressed bytes within the chunk.
-        extents: Arc<Vec<Range<usize>>>,
-    },
-    /// One block's compressed bytes.
+    /// Compressed bytes exactly as served (a shard index or an inner chunk).
     Compressed(Bytes),
     /// Validated decoded bytes, retained without expanding float16 values.
     Decoded(Bytes),
-    /// A whole chunk's values, unpacked.
-    Values(Arc<Vec<f32>>),
 }
 
 impl Held {
@@ -66,9 +49,7 @@ impl Held {
         // cache full of headers from growing without bound.
         64 + match self {
             Self::Missing => 0,
-            Self::Head { extents, .. } => 16 * extents.len() as u64,
             Self::Compressed(bytes) | Self::Decoded(bytes) => bytes.len() as u64,
-            Self::Values(values) => 4 * values.len() as u64,
         }
     }
 }
@@ -219,21 +200,6 @@ impl BlockCache {
             lru.order.remove(&used);
             lru.total -= size;
         }
-    }
-
-    /// The sizes of every chunk whose header is held, summed: what the same
-    /// reads would have downloaded as whole chunks (for the measurements in
-    /// `plan.md`).
-    pub fn whole_chunk_bytes(&self) -> u64 {
-        self.lru.lock().map_or(0, |lru| {
-            lru.entries
-                .values()
-                .map(|(held, ..)| match held {
-                    Held::Head { header, .. } => header.cbytes as u64,
-                    _ => 0,
-                })
-                .sum()
-        })
     }
 
     /// Forgets everything.

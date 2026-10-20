@@ -265,7 +265,7 @@ beforeEach(() => {
       database: { host: "localhost", port: 5432, name: "syrfbackendprod", user: "postgres", password: "", tls: false } },
     recent_projects: [], autosave: "recovery", language: "en", theme: "harbour",
     units: { speed: "kn", wave_height: "m", distance: "nm" },
-    weather_cache: { directory: "", max_size_gb: 10 }, data_source: "open_data", weather_memory_mb: 256, network: { concurrency: 8, timeout_s: 60 },
+    weather_cache: { directory: "", max_size_gb: 10 }, data_source: "whirlwind", weather_memory_mb: 256, network: { concurrency: 8, timeout_s: 60 },
     projection: "equirectangular", plot_tws_band_kn: 1,
     mcp: { enabled: false, port: 47392, token: "" },
     catalogues: { orc_schedule: "on_demand", orr_schedule: "on_demand" },

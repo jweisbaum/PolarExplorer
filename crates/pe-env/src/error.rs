@@ -9,19 +9,6 @@ pub enum EnvError {
     #[error("could not open the archive: {0}")]
     Open(String),
 
-    /// A read against the store failed.
-    #[error("reading {what} failed: {source}")]
-    Read {
-        /// What was being read, for the message.
-        what: String,
-        /// The underlying error.
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
-    /// A blosc chunk could not be decoded.
-    #[error("blosc decode failed: {0}")]
-    Blosc(String),
-
     /// The store is not shaped the way this crate requires.
     #[error("unexpected archive layout: {0}")]
     Layout(String),

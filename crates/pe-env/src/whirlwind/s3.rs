@@ -1,18 +1,44 @@
 //! Read-only, bucket-scoped transport: anonymous S3 or signed R2/Tigris reads.
 //! Secrets never enter URLs or errors.
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use bytes::Bytes;
 use hmac::{Hmac, Mac};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use zarrs_storage::Bytes;
 
 use super::Source;
-use crate::http::{NetStats, RETRIES};
 use crate::{EnvError, Result};
+
+/// How many times a transient failure is tried again before it is reported.
+const RETRIES: u32 = 3;
+
+/// Counters for what went over the network.
+#[derive(Debug, Default)]
+pub(super) struct NetStats {
+    /// Requests sent, including ones answered "missing".
+    pub requests: AtomicU64,
+    /// Body bytes received.
+    pub bytes: AtomicU64,
+    /// Keys the archive answered 403 or 404 for.
+    pub missing: AtomicU64,
+    /// Requests sent again after a transient failure.
+    pub retries: AtomicU64,
+}
+
+impl NetStats {
+    /// `(requests, bytes, missing)` at this moment.
+    pub fn snapshot(&self) -> (u64, u64, u64) {
+        (
+            self.requests.load(Ordering::Relaxed),
+            self.bytes.load(Ordering::Relaxed),
+            self.missing.load(Ordering::Relaxed),
+        )
+    }
+}
 
 const EMPTY_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
@@ -130,7 +156,7 @@ pub(super) struct S3 {
     credentials: Option<Credentials>,
     pub stats: Arc<NetStats>,
     permits: tokio::sync::Semaphore,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     pub endpoint: Option<String>,
 }
 
@@ -153,7 +179,7 @@ impl S3 {
             credentials,
             stats: Arc::new(NetStats::default()),
             permits: tokio::sync::Semaphore::new(concurrency.max(1)),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "testing"))]
             endpoint: None,
         })
     }
@@ -232,7 +258,7 @@ impl S3 {
                 headers
             };
             let url = url.to_string();
-            #[cfg(test)]
+            #[cfg(any(test, feature = "testing"))]
             let url = self.endpoint.as_ref().map_or(url, |e| format!("{e}/{key}"));
             self.stats.requests.fetch_add(1, Ordering::Relaxed);
             let request = async {

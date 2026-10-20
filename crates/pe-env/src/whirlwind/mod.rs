@@ -10,13 +10,13 @@ pub use s3::Credentials;
 pub use source::Source;
 pub const URL: &str = Source::S3.url();
 
+use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use zarrs_storage::Bytes;
 
 use crate::dataset::Cell;
 use crate::memory::{BlockCache, Held, Part};
@@ -26,8 +26,8 @@ use crate::{EnvError, EnvPoint, Estimate, Options, Point, Provider, Result, Vect
 use layout::{Archive, Array, Chunk, bad};
 use s3::{Range, S3};
 
-/// S3 supports many small parallel reads; a separate cap keeps public-source
-/// network preferences unchanged and bounds sockets and decoding memory.
+/// S3 supports many small parallel reads; this cap bounds sockets and
+/// decoding memory.
 pub const CONCURRENCY: usize = 64;
 
 type ChunkPlan = BTreeMap<Chunk, BTreeSet<Cell>>;
@@ -562,5 +562,7 @@ impl Provider for Whirlwind {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 #[cfg(test)]
 mod tests;

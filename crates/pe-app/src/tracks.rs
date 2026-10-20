@@ -122,7 +122,7 @@ pub struct TrackFilters {
     pub wave_from: Option<f64>,
     /// Absolute wave direction range end.
     pub wave_to: Option<f64>,
-    /// Leave out samples whose current has no tide (spec.md 7.5.1).
+    /// Leave out samples whose current has no tide (spec.md 7.5).
     pub exclude_no_tide: bool,
     /// Require complete wave data.
     #[serde(default)]

@@ -3,4 +3,4 @@
 /**
  * Archive used for newly requested historical weather.
  */
-export type DataSource = "open_data" | "whirlwind" | "whirlwind_r2" | "whirlwind_tigris";
+export type DataSource = "whirlwind" | "whirlwind_r2" | "whirlwind_tigris";

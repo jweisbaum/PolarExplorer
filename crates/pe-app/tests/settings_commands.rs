@@ -36,14 +36,14 @@ fn every_setting_is_saved_and_read_back_after_a_restart() {
         },
     )
     .unwrap();
-    settings::data_source_set(&app, settings::DataSource::Whirlwind).unwrap();
+    settings::data_source_set(&app, settings::DataSource::WhirlwindTigris).unwrap();
     let last = settings::projection_set(&app, MapProjection::Orthographic).unwrap();
 
     let restarted = root.state();
     let read = settings::current(&restarted).unwrap();
     assert_eq!(read, last);
     assert_eq!(read.language, "fr");
-    assert_eq!(read.data_source, settings::DataSource::Whirlwind);
+    assert_eq!(read.data_source, settings::DataSource::WhirlwindTigris);
     assert_eq!(read.theme, "paper");
     assert_eq!(read.units, units);
     assert_eq!(read.weather_memory_mb, 1024);
@@ -59,7 +59,6 @@ fn every_weather_source_survives_a_restart_without_credentials_in_settings() {
         DataSource::WhirlwindR2,
         DataSource::WhirlwindTigris,
         DataSource::Whirlwind,
-        DataSource::OpenData,
     ] {
         let app = root.state();
         settings::data_source_set(&app, source).unwrap();

@@ -11,9 +11,11 @@ export default {
     await d.click('[data-feature="shell:settings"]');
     await d.waitFor('.modal.settings');
     const selector = '[data-feature="settings:data-source"]';
-    assert.equal(await d.run(`done(document.querySelector('${selector}').value)`), "open_data");
+    assert.equal(await d.run(`done(document.querySelector('${selector}').value)`), "whirlwind");
     assert.deepEqual(await d.run(`done(Array.from(document.querySelector('${selector}').options, o => o.text))`),
-      ["Open Data (Slow)", "Whirlwind (Fast) S3", "Whirlwind (Fast) R2", "Whirlwind (Fast) Tigris"]);
+      ["Whirlwind (Fast) S3", "Whirlwind (Fast) R2", "Whirlwind (Fast) Tigris"]);
+    assert.ok((await d.text(".modal.settings")).includes("Whirlwind downloads up to 64 chunks at once."));
+    assert.equal(await d.exists('[data-feature="settings:concurrency"]'), false);
     for (const source of ["whirlwind_r2", "whirlwind_tigris"]) {
       await d.type(selector, source);
       assert.ok((await d.text(".modal.settings")).includes("Whirlwind downloads up to 64 chunks at once."));
@@ -61,11 +63,11 @@ export default {
     await t.shot("direct-fetch-failure-stops-spinner");
     await d.click('[data-feature="shell:settings"]');
     await d.waitFor(selector);
-    await d.type(selector, "open_data");
+    await d.type(selector, "whirlwind_r2");
     await d.click('[data-feature="settings:close"]');
     await d.waitGone('.modal.settings');
     const restored = JSON.parse(await readFile(join(d.automationRoot, "config", "settings.json"), "utf8"));
-    assert.equal(restored.data_source, "open_data");
+    assert.equal(restored.data_source, "whirlwind_r2");
     assert.equal(await d.exists('.env-fetch'), false);
     await d.waitFor('[data-feature="tracks:fetch-weather"]:not(:disabled)');
     await t.shot("source-switched-without-estimate");

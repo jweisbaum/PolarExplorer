@@ -19,23 +19,20 @@ half = "2.7"
 crc32c = "0.6"
 hmac = "0.12"
 sha2 = "0.10"
+bytes = "1"
 
-# `default-features = false` is load-bearing, as in VectorEffects' ve-zarr:
-# the default set turns on `blosc`, which builds c-blosc and its bundled
-# Snappy through a C++ toolchain. Every store read here is blosc/lz4, which
-# `blosc.rs` decodes in Rust. `filesystem` reads recorded fixture stores.
-zarrs = { version = "0.23", default-features = false, features = ["filesystem"] }
-zarrs_storage = "0.4"
-lz4_flex = { version = "0.14", default-features = false, features = ["std"] }
-
-# The archives are read over HTTPS by `http.rs`, not `zarrs_http` (which takes
-# reqwest's default native-tls, i.e. OpenSSL on Linux). reqwest's `rustls`
-# feature selects the aws-lc-rs provider, a C library; `rustls-no-provider`
+# The archive is read over HTTPS with reqwest. reqwest's `rustls` feature
+# selects the aws-lc-rs provider, a C library; `rustls-no-provider`
 # plus our own ring-backed `ClientConfig` (`net.rs`) keeps the build pure
 # Rust on all five targets (CLAUDE.md, D6).
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "rustls-no-provider", "http2"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 rustls-platform-verifier = "0.7"
+
+[features]
+# The fixture archive and loopback S3 stub (`whirlwind::testing`), for other
+# crates' integration tests. Never enabled by a build.
+testing = []
 
 [lints]
 workspace = true

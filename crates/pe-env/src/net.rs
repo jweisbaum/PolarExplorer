@@ -39,8 +39,12 @@ fn tls_config() -> Result<rustls::ClientConfig> {
 const MAX_REDIRECTS: usize = 10;
 
 /// The archive hosts (invariant 4; `tools/check-offline.sh` holds the same
-/// list with the path prefixes each dataset lives under).
-const HOSTS: [&str; 2] = ["storage.googleapis.com", "s3.waw3-1.cloudferro.com"];
+/// list with the path prefix the archive lives under).
+const HOSTS: [&str; 3] = [
+    "whirlwind-hindsight.s3.us-east-1.amazonaws.com",
+    "3d5456ad10ebc32c8a3c259aa84e6c64.r2.cloudflarestorage.com",
+    "fly.storage.tigris.dev",
+];
 
 /// Whether a redirect from `from` to `to` may be followed: never to a
 /// userinfo URL or from HTTPS down to HTTP; to the same host, or over HTTPS
@@ -123,20 +127,24 @@ mod tests {
 
     #[test]
     fn redirects_stay_on_the_host_or_the_archive_hosts() {
-        let from = url("https://storage.googleapis.com/weatherbench2/x/.zarray");
+        let from =
+            url("https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x");
         assert!(redirect_allowed(
             Some(&from),
-            &url("https://storage.googleapis.com/weatherbench2/other")
+            &url("https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/other")
         ));
         assert!(redirect_allowed(
             Some(&from),
-            &url("https://s3.waw3-1.cloudferro.com/mdl-arco-geo-015/x")
+            &url("https://fly.storage.tigris.dev/whirlwind-hindsight/hindsight-routing/x")
         ));
         for to in [
             "https://evil.invalid/x",
-            "https://storage.googleapis.com.evil.invalid/x",
-            &format!("{}user@storage.googleapis.com/x", "https://"),
-            "http://storage.googleapis.com/weatherbench2/x",
+            "https://whirlwind-hindsight.s3.us-east-1.amazonaws.com.evil.invalid/x",
+            &format!(
+                "{}user@whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x",
+                "https://"
+            ),
+            "http://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x",
             "file:///etc/passwd",
         ] {
             assert!(!redirect_allowed(Some(&from), &url(to)), "{to}");

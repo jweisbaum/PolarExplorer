@@ -89,10 +89,9 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 # contains no `axum` and opens no port. `npm run check:offline` cannot enforce
 # that — it reads source URLs, bundle references and the CSP, not listeners —
 # so the enforcement is that the dependency is not compiled in at all
-# (`tests/webdriver_optional.rs`). The feature also gates the three
-# automation seams in this crate: `PE_AUTOMATION_ROOT` (`paths.rs`),
-# `PE_DRIVER_YELLOWBRICK` (`trackers.rs`) and `PE_DRIVER_REANALYSIS`
-# (`grib.rs`).
+# (`tests/webdriver_optional.rs`). The feature also gates the two
+# automation seams in this crate: `PE_AUTOMATION_ROOT` (`paths.rs`) and
+# `PE_DRIVER_YELLOWBRICK` (`trackers.rs`).
 #
 #   npm run dev:webdriver     # the app with the endpoint
 #   npm run ux                # the agentic UX suite (tools/webdriver/ux)
@@ -113,6 +112,9 @@ tempfile = "3"
 sha2 = "0.10.9"
 # The GRIB export's tests decode what it wrote with the test-only reader.
 pe-grib = { workspace = true, features = ["testing"] }
+# The GRIB export's tests read the fixture archive from pe-env's loopback S3
+# stub.
+pe-env = { workspace = true, features = ["testing"] }
 # Unique temporary directories for the track library's tests.
 uuid = { version = "1", features = ["v4", "v5"] }
 

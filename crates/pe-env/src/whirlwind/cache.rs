@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 use std::time::SystemTime;
 
+use bytes::Bytes;
 use sha2::{Digest, Sha256};
-use zarrs_storage::Bytes;
 
 const DIRECTORY: &str = "whirlwind-hindsight-v1";
 const MAGIC: &[u8; 8] = b"PEWWC001";
