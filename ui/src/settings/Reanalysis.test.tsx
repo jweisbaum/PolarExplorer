@@ -56,6 +56,7 @@ const reanalysis = (port: number, connected_once: boolean, archive: RememberedAr
 function backend() {
   invoke.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
+      case "app_settings": return settings;
       case "reanalysis_probe": return probe;
       case "reanalysis_scan": return scan();
       case "set_reanalysis_port":
@@ -167,7 +168,7 @@ describe("the Reanalysis section", () => {
     await settle();
     expect(invoke).toHaveBeenCalledWith("set_reanalysis_archive", { id: "c1" });
     expect(feature<HTMLSelectElement>("settings:reanalysis-archive")!.value).toBe("c1");
-    expect(host.textContent).toContain("1990-01-01 to 2025-12-31");
+    expect(host.textContent).toContain("1990-01-01 to 2025-12-31 · global");
     // The prompt goes once something is chosen.
     expect(host.textContent).not.toContain("Choose an archive…");
 
@@ -178,7 +179,7 @@ describe("the Reanalysis section", () => {
     });
     await settle();
     expect(invoke).toHaveBeenCalledWith("set_reanalysis_archive", { id: "l1" });
-    expect(host.textContent).toContain("from 2020-01-01, ongoing");
+    expect(host.textContent).toContain("from 2020-01-01, ongoing · region");
   });
 
   it("a remembered archive missing from the list is appended as (no longer listed) and stays selected", async () => {
@@ -232,6 +233,36 @@ describe("the Reanalysis section", () => {
     expect(commands()).toEqual(["set_reanalysis_port", "reanalysis_probe"]);
     expect(invoke).toHaveBeenCalledWith("set_reanalysis_port", { port: 9000 });
     expect(feature<HTMLInputElement>("settings:reanalysis-port")!.value).toBe("9000");
+  });
+
+  it("a scan that finds Hindsight Sync on another port shows the saved port, and a later miss is the quiet line", async () => {
+    // Rust saves the port it answered on and that it connected, as `probe_port` does.
+    scan = async () => {
+      settings = reanalysis(9100, true, settings.reanalysis.archive);
+      probe = { ...LISTING, port: 9100 };
+      return probe;
+    };
+    await mount();
+    expect(q(".reanalysis-warning")).not.toBeNull();
+    await act(async () => { feature<HTMLButtonElement>("settings:reanalysis-scan")!.click(); });
+    await settle();
+    expect(commands()).toContain("app_settings");
+    expect(feature<HTMLInputElement>("settings:reanalysis-port")!.value).toBe("9100");
+    expect(host.textContent).toContain("Connected to Hindsight Sync on port 9100");
+
+    // Hindsight Sync stops answering: a probe of another port finds nothing.
+    probe = { ...ABSENT, port: 9200 };
+    const port = feature<HTMLInputElement>("settings:reanalysis-port")!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setter.call(port, "9200");
+      port.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { port.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    await settle();
+    expect(invoke).toHaveBeenCalledWith("set_reanalysis_port", { port: 9200 });
+    expect(q(".reanalysis-warning")).toBeNull();
+    expect(host.textContent).toContain("Hindsight Sync is not running. No archive is chosen.");
   });
 
   it("the link opens the site through ipc, never through window.open", async () => {

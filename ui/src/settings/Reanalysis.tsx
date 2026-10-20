@@ -40,21 +40,32 @@ export default function Reanalysis({ settings, onSettings, onError, pushed }: {
   const [scanning, setScanning] = useState(false);
   const { port, connected_once, archive } = settings.reanalysis;
 
+  /**
+   * A probe or scan that finds Hindsight Sync saves what it found (the port
+   * it answered on, that it connected, the chosen archive's fresh copy), so
+   * the settings are read again: what is shown is what is on disk.
+   */
+  const adopt = (found: ScanResult) => {
+    setResult(found);
+    if (found.detected) return api.appSettings().then(onSettings);
+    return undefined;
+  };
+
   useEffect(() => {
     let live = true;
-    api.reanalysisProbe().then(found => { if (live) setResult(found); }, failure => { if (live) onError(failure); });
+    api.reanalysisProbe().then(found => live ? adopt(found) : undefined).catch(failure => { if (live) onError(failure); });
     return () => { live = false; };
   }, []);
   useEffect(() => { if (pushed) setResult(pushed); }, [pushed]);
 
   const scan = () => {
     setScanning(true);
-    api.reanalysisScan().then(setResult, onError).finally(() => setScanning(false));
+    api.reanalysisScan().then(adopt).catch(onError).finally(() => setScanning(false));
   };
   const savePort = (value: number) => {
     api.setReanalysisPort(value)
       .then(next => { onSettings(next); return api.reanalysisProbe(); })
-      .then(setResult)
+      .then(adopt)
       .catch(onError);
   };
   const choose = (id: string) => {
@@ -100,9 +111,10 @@ export default function Reanalysis({ settings, onSettings, onError, pushed }: {
 
   const listed = archive !== null && result.archives.some(a => a.id === archive.id);
   const empty = result.archives.length === 0 && result.unavailable.length === 0;
-  const range = archive === null ? null : archive.stop === null
+  // The mode is Hindsight Sync's identifier (`global`, …), shown as it is.
+  const range = archive === null ? null : `${archive.stop === null
     ? t("from {start}, ongoing", { start: day(archive.start) })
-    : t("{start} to {stop}", { start: day(archive.start), stop: day(archive.stop) });
+    : t("{start} to {stop}", { start: day(archive.start), stop: day(archive.stop) })} · ${archive.mode}`;
   const status = [t("Connected to Hindsight Sync on port {port}", { port: result.port }), range].filter(Boolean).join(" — ");
 
   return <>
