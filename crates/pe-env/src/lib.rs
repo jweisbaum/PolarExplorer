@@ -14,6 +14,7 @@
 pub mod dataset;
 pub mod error;
 pub mod grid;
+pub mod hindsight;
 pub mod memory;
 pub mod net;
 pub mod sampler;

@@ -48,7 +48,7 @@ URL='https?://[^"'"'"'`[:space:])>]+'
 # pe-env names no archive: it reads the location it is given, so its one
 # host is Amazon S3's virtual-hosted template, and the S3 archive's address
 # in a test that checks the template expands to it.
-ENV_HOSTS='^https?://(\{bucket\}\.s3\.\{region\}\.amazonaws\.com([/:?#]|$)|whirlwind-hindsight\.s3\.us-east-1\.amazonaws\.com/hindsight-routing)'
+ENV_HOSTS='^https?://(127\.0\.0\.1([/:?#]|$)|\{bucket\}\.s3\.\{region\}\.amazonaws\.com([/:?#]|$)|whirlwind-hindsight\.s3\.us-east-1\.amazonaws\.com/hindsight-routing)'
 # The three fixed archive endpoints, named in pe-app's settings only:
 # temporary until Hindsight Sync supplies locations (Task 4).
 SETTINGS_HOSTS='^https://(3d5456ad10ebc32c8a3c259aa84e6c64\.r2\.cloudflarestorage\.com|fly\.storage\.tigris\.dev)$'
