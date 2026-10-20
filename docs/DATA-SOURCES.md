@@ -68,10 +68,11 @@ use of Copernicus information or for its derived results.
 
 Generated using E.U. Copernicus Marine Service Information. The archives'
 surface current, tide included, is Copernicus Marine's GlobCurrent total
-current. Its product page on the
-[Copernicus Marine data store](https://data.marine.copernicus.eu/products)
-provides its scientific references and licence. When sharing derived work,
-cite the product and retain the sample provenance. See the service's
+current, product `MULTIOBS_GLO_PHY_MYNRT_015_003` (multiyear and
+near-real-time, DOI [10.48670/mds-00327](https://doi.org/10.48670/mds-00327)).
+Its product page provides its scientific references and licence. When
+sharing derived work, cite that product and retain the sample provenance.
+See the service's
 [citation guidance](https://help.marine.copernicus.eu/en/articles/4444611-citing-copernicus-marine-products-and-services).
 
 ## Basemap and imported tracks

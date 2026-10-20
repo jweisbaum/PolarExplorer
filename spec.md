@@ -1770,12 +1770,14 @@ race downloads little.
 
 The environment fetch in detail (M9):
 
-- One runner takes the queued tracks one after another, so a second boat
-  reads the chunks the first one just cached instead of downloading them at
-  the same moment. Within a track, samples go in batches of at most three
-  hours of track time and 400
-  samples; each batch's chunk reads run on a pool of the network
-  concurrency setting (§3.4), each chunk fetched and decoded once.
+- One runner takes the queued work: the first waiting track together with
+  the other waiting tracks that read the same archive at the same interval,
+  up to 128 tracks in all, so overlapping boats share downloads instead of
+  fetching the same chunks at the same moment; a track reading another
+  archive waits for the next run. Samples go in time-ordered batches of at most 72 hours
+  of track time (one inner chunk's span) and 10,000 samples, across all the
+  run's tracks; each batch plans its chunk reads once, with up to 64 in
+  flight (not a setting, §3.4), each chunk fetched and decoded once.
 - Each finished batch is written into the project at once. Cancel stops at
   the next chunk read, keeping every finished batch. Each sample's values
   depend only on its own time and place, so a resumed fetch ends exactly

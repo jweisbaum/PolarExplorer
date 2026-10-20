@@ -48,14 +48,14 @@ stop and raise it rather than working around it.
 4. **Nothing is fetched that the user did not ask for, and nothing reaches
    in.** No CDN fonts, no map tiles, no telemetry, no remote schema fetches.
    The webview's CSP stays `'self'`-only. Only two crates may use the network:
-   `pe-env` (Hindsight Sync's loopback API on `127.0.0.1` and the
-   reanalysis archive location it hands out, an S3-compatible endpoint or a
-   folder, nothing else; D35) and `pe-trackers` (YellowBrick, Geovoile,
+   `pe-env` (reanalysis, D35) and `pe-trackers` (YellowBrick, Geovoile,
    Blue Water Tracks, and the certificate catalogues' scraping: ORR on
-   `www.regattaman.com`, ORC on `data.orc.org`), each for its allow-listed
-   hosts only. A catalogue scrape runs when the person starts it, or at
-   startup or shutdown once they have chosen that schedule for it in
-   Settings, and then at most once a day (spec §5.4).
+   `www.regattaman.com`, ORC on `data.orc.org`). `pe-trackers` reaches its
+   allow-listed hosts only; `pe-env` reaches only Hindsight Sync's loopback
+   API on `127.0.0.1` and the archive location it hands out (an
+   S3-compatible endpoint or a folder). A catalogue scrape runs when the
+   person starts it, or at startup or shutdown once they have chosen that
+   schedule for it in Settings, and then at most once a day (spec §5.4).
    The SYRF track library is files the person points Settings at (asked
    2026-10-04). Its race scraper, through `pe-trackers`, saves finished
    races only, into those files, when the person starts it or on the
