@@ -38,18 +38,10 @@ fn tls_config() -> Result<rustls::ClientConfig> {
 /// The most redirects one request follows.
 const MAX_REDIRECTS: usize = 10;
 
-/// The archive hosts (invariant 4; `tools/check-offline.sh` holds the same
-/// list with the path prefix the archive lives under).
-const HOSTS: [&str; 3] = [
-    "whirlwind-hindsight.s3.us-east-1.amazonaws.com",
-    "3d5456ad10ebc32c8a3c259aa84e6c64.r2.cloudflarestorage.com",
-    "fly.storage.tigris.dev",
-];
-
 /// Whether a redirect from `from` to `to` may be followed: never to a
-/// userinfo URL or from HTTPS down to HTTP; to the same host, or over HTTPS
-/// to an archive host. Anything else would let a server send the app to a
-/// host invariant 4 does not allow.
+/// userinfo URL or from HTTPS down to HTTP, and only to the same host. The
+/// archive's location names the one host it is read from (invariant 4);
+/// anything else would let a server send the app elsewhere.
 pub fn redirect_allowed(from: Option<&reqwest::Url>, to: &reqwest::Url) -> bool {
     let Some(host) = to.host_str() else {
         return false;
@@ -61,10 +53,8 @@ pub fn redirect_allowed(from: Option<&reqwest::Url>, to: &reqwest::Url) -> bool 
     if !secure && (to.scheme() != "http" || from.is_some_and(|f| f.scheme() == "https")) {
         return false;
     }
-    let same_host = from
-        .and_then(reqwest::Url::host_str)
-        .is_some_and(|h| h.eq_ignore_ascii_case(host));
-    same_host || (secure && HOSTS.iter().any(|h| h.eq_ignore_ascii_case(host)))
+    from.and_then(reqwest::Url::host_str)
+        .is_some_and(|h| h.eq_ignore_ascii_case(host))
 }
 
 fn redirect_policy() -> reqwest::redirect::Policy {
@@ -126,19 +116,16 @@ mod tests {
     }
 
     #[test]
-    fn redirects_stay_on_the_host_or_the_archive_hosts() {
+    fn redirects_stay_on_the_host() {
         let from =
             url("https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x");
         assert!(redirect_allowed(
             Some(&from),
             &url("https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/other")
         ));
-        assert!(redirect_allowed(
-            Some(&from),
-            &url("https://fly.storage.tigris.dev/whirlwind-hindsight/hindsight-routing/x")
-        ));
         for to in [
             "https://evil.invalid/x",
+            "https://another-archive.invalid/whirlwind-hindsight/hindsight-routing/x",
             "https://whirlwind-hindsight.s3.us-east-1.amazonaws.com.evil.invalid/x",
             &format!(
                 "{}user@whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x",

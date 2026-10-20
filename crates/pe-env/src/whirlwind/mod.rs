@@ -2,13 +2,11 @@
 //! Indexes stay in memory; validated compressed chunks can also be kept on disk.
 mod cache;
 mod layout;
+mod location;
 mod s3;
-mod source;
 
 pub use cache::DiskCache;
-pub use s3::Credentials;
-pub use source::Source;
-pub const URL: &str = Source::S3.url();
+pub use location::{ArchiveLocation, ArchiveRef, Credentials};
 
 use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -45,6 +43,7 @@ fn cache_error(error: std::io::Error) -> EnvError {
 
 #[derive(Debug)]
 pub struct Whirlwind {
+    reference: ArchiveRef,
     s3: S3,
     runtime: tokio::runtime::Runtime,
     memory: Arc<BlockCache>,
@@ -58,9 +57,12 @@ pub struct Whirlwind {
 }
 
 impl Whirlwind {
+    /// A reader of `archive`. Only S3 locations are read so far.
+    ///
+    /// # Errors
+    /// A folder location, a bad endpoint, or the workers not starting.
     pub fn new(
-        source: Source,
-        credentials: Option<Credentials>,
+        archive: ArchiveRef,
         timeout: Duration,
         memory: Arc<BlockCache>,
         concurrency: usize,
@@ -72,7 +74,8 @@ impl Whirlwind {
             .build()
             .map_err(|e| EnvError::Open(format!("Whirlwind workers: {e}")))?;
         Ok(Self {
-            s3: S3::new(source, credentials, timeout, concurrency)?,
+            s3: S3::new(&archive.location, timeout, concurrency)?,
+            reference: archive,
             runtime,
             memory,
             concurrency: concurrency.max(1),
@@ -89,6 +92,11 @@ impl Whirlwind {
         })
     }
 
+    /// The archive read.
+    pub fn reference(&self) -> &ArchiveRef {
+        &self.reference
+    }
+
     pub fn with_disk_cache(mut self, cache: Arc<DiskCache>) -> Self {
         self.disk = Some(cache);
         self
@@ -101,7 +109,7 @@ impl Whirlwind {
     }
 
     fn chunk_namespace(&self, generation: u64) -> String {
-        format!("{}/chunks/{generation}", self.s3.source.url())
+        format!("{}/chunks/{generation}", self.reference.identity)
     }
 
     pub fn net_totals(&self) -> (u64, u64) {
@@ -218,7 +226,7 @@ impl Whirlwind {
     }
 
     async fn index(&self, key: &str, len: usize, cancel: &AtomicBool) -> Result<Index> {
-        let cached = self.memory.get(self.s3.source.url(), key, Part::Head);
+        let cached = self.memory.get(&self.reference.identity, key, Part::Head);
         let bytes = match cached {
             Some(Held::Compressed(b)) => Some(b),
             Some(Held::Missing) => None,
@@ -250,7 +258,7 @@ impl Whirlwind {
                     )?;
                 }
                 self.memory.put(
-                    self.s3.source.url(),
+                    &self.reference.identity,
                     key,
                     Part::Head,
                     bytes.clone().map_or(Held::Missing, Held::Compressed),
@@ -316,7 +324,7 @@ impl Whirlwind {
                 };
                 // The shard ETag prevents reuse after archive rewrites, even if
                 // an inner chunk's offset and compressed length stay identical.
-                let disk_key = index.etag.as_deref().map(|etag| DiskCache::key(self.s3.source.url(),&key,etag,offset,len));
+                let disk_key = index.etag.as_deref().map(|etag| DiskCache::key(&self.reference.identity,&key,etag,offset,len));
                 let expected = array.decoded_len();
                 let raw = match self.memory.get(namespace, &memory_key, Part::Decoded(chunk.inner)) {
                     Some(Held::Decoded(raw)) => raw,
@@ -333,7 +341,7 @@ impl Whirlwind {
                                     let object = self.s3.get_versioned(&key,Some(Range::Bytes(offset,len)),cancel).await?
                                         .ok_or_else(|| bad("Whirlwind shard disappeared after its index was read; retry the fetch"))?;
                                     if index.etag != object.etag {
-                                        self.memory.remove(self.s3.source.url(),&key,Part::Head);
+                                        self.memory.remove(&self.reference.identity,&key,Part::Head);
                                         return Err(bad("Whirlwind shard changed while reading; retry the fetch"));
                                     }
                                     object.bytes
@@ -406,7 +414,7 @@ impl Whirlwind {
                 let on_disk = match (&self.disk, &index.etag) {
                     (Some(cache), Some(etag)) => cache
                         .contains(
-                            &DiskCache::key(self.s3.source.url(), &key, etag, offset, len),
+                            &DiskCache::key(&self.reference.identity, &key, etag, offset, len),
                             len,
                         )
                         .map_err(cache_error)?,
@@ -523,7 +531,7 @@ impl Provider for Whirlwind {
                 }
             })
             .collect::<Vec<_>>();
-        let dataset = self.s3.source.dataset();
+        let dataset = crate::Dataset::Hindsight;
         Ok((0..points.len())
             .map(|i| {
                 let vector = |a: usize, b: usize| {

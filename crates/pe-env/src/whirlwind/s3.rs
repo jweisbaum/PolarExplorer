@@ -1,5 +1,5 @@
-//! Read-only, bucket-scoped transport: anonymous S3 or signed R2/Tigris reads.
-//! Secrets never enter URLs or errors.
+//! Read-only, bucket-scoped transport: anonymous or signed reads of any
+//! S3-compatible location. Secrets never enter URLs or errors.
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -7,10 +7,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bytes::Bytes;
 use hmac::{Hmac, Mac};
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::Source;
+use super::{ArchiveLocation, Credentials};
 use crate::{EnvError, Result};
 
 /// How many times a transient failure is tried again before it is reported.
@@ -42,30 +41,7 @@ impl NetStats {
 
 const EMPTY_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-/// Only the Rust transport owns credentials, never IPC or project data.
-#[derive(Clone, Deserialize)]
-pub struct Credentials {
-    access_key_id: String,
-    secret_access_key: String,
-    #[serde(default)]
-    session_token: Option<String>,
-}
-
-impl std::fmt::Debug for Credentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Credentials([redacted])")
-    }
-}
-
 impl Credentials {
-    pub(super) fn fixed(access_key_id: &str, secret_access_key: &str) -> Self {
-        Self {
-            access_key_id: access_key_id.into(),
-            secret_access_key: secret_access_key.into(),
-            session_token: None,
-        }
-    }
-
     fn headers(
         &self,
         url: &reqwest::Url,
@@ -78,6 +54,10 @@ impl Credentials {
         let host = url
             .host_str()
             .ok_or_else(|| EnvError::Open("invalid S3 endpoint".into()))?;
+        // The Host header names a port that is not the scheme's default.
+        let host = url
+            .port()
+            .map_or_else(|| host.to_owned(), |p| format!("{host}:{p}"));
         let mut canonical = format!("host:{host}\n");
         let mut signed = "host".to_owned();
         if let Some(range) = range {
@@ -151,13 +131,13 @@ pub(super) enum Range {
 /// A single shared async connection pool and request limit for every job.
 #[derive(Debug)]
 pub(super) struct S3 {
-    pub source: Source,
+    /// The object root, with no trailing `/`.
+    base: String,
+    region: String,
     client: reqwest::Client,
     credentials: Option<Credentials>,
     pub stats: Arc<NetStats>,
     permits: tokio::sync::Semaphore,
-    #[cfg(any(test, feature = "testing"))]
-    pub endpoint: Option<String>,
 }
 
 #[derive(Debug)]
@@ -167,20 +147,25 @@ pub(super) struct Object {
 }
 
 impl S3 {
-    pub fn new(
-        source: Source,
-        credentials: Option<Credentials>,
-        timeout: Duration,
-        concurrency: usize,
-    ) -> Result<Self> {
-        Ok(Self {
-            source,
-            client: crate::net::s3_client(timeout)?,
+    pub fn new(location: &ArchiveLocation, timeout: Duration, concurrency: usize) -> Result<Self> {
+        let base = location.base_url()?;
+        let ArchiveLocation::S3 {
+            region,
             credentials,
+            ..
+        } = location
+        else {
+            return Err(EnvError::Open(
+                "a folder archive is not read over S3".into(),
+            ));
+        };
+        Ok(Self {
+            base,
+            region: region.clone(),
+            client: crate::net::s3_client(timeout)?,
+            credentials: credentials.clone(),
             stats: Arc::new(NetStats::default()),
             permits: tokio::sync::Semaphore::new(concurrency.max(1)),
-            #[cfg(any(test, feature = "testing"))]
-            endpoint: None,
         })
     }
 
@@ -232,7 +217,7 @@ impl S3 {
             if cancel.load(Ordering::SeqCst) {
                 return Err(EnvError::Cancelled);
             }
-            let url = reqwest::Url::parse(&format!("{}/{key}", self.source.url()))
+            let url = reqwest::Url::parse(&format!("{}/{key}", self.base))
                 .map_err(|_| EnvError::Open("invalid S3 endpoint".into()))?;
             let headers = if let Some(credentials) = &self.credentials {
                 let now = SystemTime::now()
@@ -240,12 +225,7 @@ impl S3 {
                     .unwrap_or_default()
                     .as_secs() as i64;
                 let timestamp = crate::time::to_iso(now).replace(['-', ':'], "");
-                credentials.headers(
-                    &url,
-                    self.source.region(),
-                    range_text.as_deref(),
-                    &timestamp,
-                )?
+                credentials.headers(&url, &self.region, range_text.as_deref(), &timestamp)?
             } else {
                 let mut headers = HeaderMap::new();
                 if let Some(range) = &range_text {
@@ -258,8 +238,6 @@ impl S3 {
                 headers
             };
             let url = url.to_string();
-            #[cfg(any(test, feature = "testing"))]
-            let url = self.endpoint.as_ref().map_or(url, |e| format!("{e}/{key}"));
             self.stats.requests.fetch_add(1, Ordering::Relaxed);
             let request = async {
                 let mut response = self.client.get(&url).headers(headers).send().await?;
@@ -403,17 +381,23 @@ mod tests {
 
     #[test]
     fn credential_debug_and_errors_never_contain_secrets() {
-        let c = Credentials {
-            access_key_id: "TEST".into(),
-            secret_access_key: "secret-never-print".into(),
-            session_token: Some("token-never-print".into()),
+        let mut c = Credentials::new("TEST", "secret-never-print");
+        c.session_token = Some("token-never-print".into());
+        let location = ArchiveLocation::S3 {
+            bucket: "whirlwind-hindsight".into(),
+            prefix: "hindsight-routing".into(),
+            endpoint_url: None,
+            region: "us-east-1".into(),
+            force_path_style: false,
+            credentials: None,
         };
         let debug = format!("{c:?}");
         assert!(!debug.contains("secret-never-print") && !debug.contains("token-never-print"));
         let headers = c
             .headers(
-                &reqwest::Url::parse(&format!("{}/data/c/0/0/1/2", Source::S3.url())).unwrap(),
-                Source::S3.region(),
+                &reqwest::Url::parse(&format!("{}/data/c/0/0/1/2", location.base_url().unwrap()))
+                    .unwrap(),
+                "us-east-1",
                 Some("bytes=0-63"),
                 "20261007T010203Z",
             )

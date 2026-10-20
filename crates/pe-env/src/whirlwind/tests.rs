@@ -10,9 +10,6 @@ fn reader(server: &Server, concurrency: usize) -> Whirlwind {
 
 #[test]
 fn public_s3_reads_metadata_and_chunk_ranges_without_signing() {
-    assert!(Source::S3.credentials().is_none());
-    assert!(Source::R2.credentials().is_some());
-    assert!(Source::Tigris.credentials().is_some());
     let mut objects = fixture();
     objects.insert("zarr.json".into(), b"{\"zarr_format\":3}".to_vec());
     let server = serve(objects, 206);
@@ -63,7 +60,7 @@ fn sparse_ranges_interpolate_and_reuse_cache() {
     assert_eq!(out[0], out[1]);
     let wind = out[0].wind.unwrap();
     assert_eq!((wind.u, wind.v), (1.5, 4.)); // half an hour + half a latitude cell
-    assert_eq!(wind.dataset, Dataset::WhirlwindHindsight);
+    assert_eq!(wind.dataset, Dataset::Hindsight);
     let waves = out[0].waves.unwrap();
     assert!((waves.from.unwrap() % 360.).abs() < 1e-5);
     assert_eq!((waves.hs, waves.period_s), (Some(2.5), Some(8.)));
@@ -199,8 +196,10 @@ fn live_whirlwind_anonymous_sample() {
         return;
     }
     let w = Whirlwind::new(
-        Source::S3,
-        Source::S3.credentials(),
+        ArchiveRef {
+            identity: "s3://whirlwind-hindsight/hindsight-routing".into(),
+            location: s3_bare("whirlwind-hindsight", "hindsight-routing"),
+        },
         Duration::from_secs(30),
         BlockCache::new(32 << 20),
         CONCURRENCY,
@@ -353,29 +352,6 @@ fn a_new_shard_version_cannot_reuse_old_disk_chunks() {
 }
 
 #[test]
-fn storage_sources_do_not_share_cached_chunks_or_provenance() {
-    let path = std::env::temp_dir().join(format!("pe-whirlwind-sources-{}", std::process::id()));
-    let disk = DiskCache::open(&path, 16 << 20).unwrap();
-    let server = serve(fixture(), 206);
-    let cancel = Arc::new(AtomicBool::new(false));
-    for source in [Source::S3, Source::R2, Source::Tigris] {
-        let mut w = reader(&server, 4).with_disk_cache(Arc::clone(&disk));
-        w.s3.source = source;
-        assert!(w.estimate(&[point()]).unwrap().hourly_bytes > 0);
-        let out = w.sample(&[point()], &options(), &cancel).unwrap();
-        assert_eq!(out[0].wind.unwrap().dataset, source.dataset());
-        assert_eq!(out[0].current.unwrap().dataset, source.dataset());
-        assert_eq!(out[0].waves.unwrap().dataset, source.dataset());
-        assert_eq!(w.estimate(&[point()]).unwrap().hourly_bytes, 0);
-    }
-    // All three have the same shard key, ETag, extent and data, but each
-    // source must read its own chunk before that source can reuse it.
-    assert_eq!(server.requests.lock().unwrap().len(), 6);
-    drop(disk);
-    std::fs::remove_dir_all(path).unwrap();
-}
-
-#[test]
 fn fetching_wind_then_waves_reuses_the_same_combined_chunk() {
     let server = serve(fixture(), 206);
     let w = reader(&server, 4);
@@ -423,57 +399,6 @@ fn reads_the_recorded_s3_layout_with_five_degree_inner_chunks() {
     let (east, _) = data.locate((73, 203, 1127));
     assert_eq!(east.key(), chunk.key());
     assert_eq!(east.inner, 136);
-}
-
-/// R2 and Tigris stay selectable, but since 2026-10-11 neither holds
-/// weather: the request authenticates, then either the metadata is absent
-/// (the reader says so) or the metadata opens and every chunk is missing
-/// (missing weather, not an error). A credential or layout failure fails.
-#[test]
-#[ignore = "live R2 and Tigris; run explicitly with PE_TEST_LIVE=1"]
-fn live_r2_and_tigris_hold_no_weather() {
-    if std::env::var("PE_TEST_LIVE").as_deref() != Ok("1") {
-        return;
-    }
-    for source in [Source::R2, Source::Tigris] {
-        let w = Whirlwind::new(
-            source,
-            source.credentials(),
-            Duration::from_secs(45),
-            BlockCache::new(32 << 20),
-            CONCURRENCY,
-        )
-        .unwrap();
-        let cancel = Arc::new(AtomicBool::new(false));
-        let p = Point {
-            t: crate::time::parse_utc("2000-01-03T12:30:00").unwrap(),
-            lat: 48.,
-            lon: -5.,
-        };
-        match w.archive(&cancel) {
-            Err(error) => {
-                let error = error.to_string();
-                eprintln!("{source:?} live: {error} ({:?})", w.net_totals());
-                assert!(
-                    error.contains("Whirlwind metadata missing"),
-                    "{source:?}: {error}"
-                );
-            }
-            Ok(archive) => {
-                assert_eq!(archive.data.inner, [72, 7, 20, 20]);
-                let out = w.sample(&[p], &options(), &cancel).unwrap();
-                eprintln!(
-                    "{source:?} live: metadata only, {out:?} ({:?})",
-                    w.net_totals()
-                );
-                assert_eq!(
-                    out,
-                    vec![EnvPoint::default()],
-                    "{source:?} still serves weather"
-                );
-            }
-        }
-    }
 }
 
 #[test]
@@ -588,4 +513,199 @@ fn chunk_downloads_start_before_unrelated_shard_indexes_finish() {
         server.pipelined.load(Ordering::SeqCst),
         "a slow index must not hold up chunks from other shards"
     );
+}
+
+fn s3(endpoint_url: Option<&str>, region: &str, path_style: bool) -> ArchiveLocation {
+    ArchiveLocation::S3 {
+        bucket: "whirlwind-hindsight".into(),
+        prefix: "hindsight-routing".into(),
+        endpoint_url: endpoint_url.map(str::to_owned),
+        region: region.into(),
+        force_path_style: path_style,
+        credentials: None,
+    }
+}
+
+#[test]
+fn base_url_follows_the_provider_rules() {
+    assert_eq!(
+        s3(None, "us-east-1", false).base_url().unwrap(),
+        "https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing"
+    );
+    assert_eq!(
+        s3(None, "us-east-1", false).place(),
+        "whirlwind-hindsight.s3.us-east-1.amazonaws.com"
+    );
+    // `.invalid` (RFC 2606) stands for an R2 account host: never resolved.
+    let r2 = s3(
+        Some("https://acct.r2.cloudflarestorage.invalid"),
+        "auto",
+        true,
+    );
+    assert_eq!(
+        r2.base_url().unwrap(),
+        "https://acct.r2.cloudflarestorage.invalid/whirlwind-hindsight/hindsight-routing"
+    );
+    assert_eq!(r2.place(), "acct.r2.cloudflarestorage.invalid");
+    // Trailing slashes on the endpoint and the prefix are dropped.
+    let mut slashed = s3(
+        Some("https://acct.r2.cloudflarestorage.invalid/"),
+        "auto",
+        true,
+    );
+    if let ArchiveLocation::S3 { prefix, .. } = &mut slashed {
+        prefix.push('/');
+    }
+    assert_eq!(slashed.base_url().unwrap(), r2.base_url().unwrap());
+    // Without path style the bucket is a subdomain of the endpoint.
+    assert_eq!(
+        s3(Some("https://store.example.invalid:9000"), "auto", false)
+            .base_url()
+            .unwrap(),
+        "https://whirlwind-hindsight.store.example.invalid:9000/hindsight-routing"
+    );
+    let folder = ArchiveLocation::File {
+        path: "/data/hindsight".into(),
+    };
+    assert!(matches!(folder.base_url(), Err(EnvError::Open(_))));
+    assert_eq!(folder.place(), "/data/hindsight");
+    assert!(
+        s3(Some("ftp://host.invalid"), "auto", true)
+            .base_url()
+            .is_err()
+    );
+}
+
+#[test]
+fn signed_reads_carry_the_location_region_and_never_the_secret() {
+    let server = testing::serve_signed(fixture());
+    let mut location = testing::location(server.endpoint());
+    if let ArchiveLocation::S3 {
+        region,
+        credentials,
+        ..
+    } = &mut location
+    {
+        *region = "auto".into();
+        *credentials = Some(Credentials::new("KEYID", "secret-never-sent"));
+    }
+    let reference = ArchiveRef {
+        identity: "r2://whirlwind-hindsight/hindsight-routing".into(),
+        location,
+    };
+    let debug = format!("{reference:?}");
+    assert!(debug.contains("Credentials([redacted])") && !debug.contains("secret-never-sent"));
+    let w = testing::whirlwind_for(reference, 4, BlockCache::new(16 << 20));
+    let out = w
+        .sample(&[point()], &options(), &Arc::new(AtomicBool::new(false)))
+        .unwrap();
+    assert!(out[0].wind.is_some());
+    let headers = server.headers.lock().unwrap();
+    assert!(!headers.is_empty());
+    for request in headers.iter() {
+        let auth = request
+            .lines()
+            .find_map(|l| l.strip_prefix("authorization: "))
+            .expect("every read is signed");
+        assert!(auth.starts_with("AWS4-HMAC-SHA256 Credential=KEYID/"));
+        assert!(auth.contains("/auto/s3/aws4_request"), "{auth}");
+        assert!(!request.contains("secret-never-sent"));
+    }
+}
+
+#[test]
+fn two_identities_never_share_cached_chunks() {
+    let path = std::env::temp_dir().join(format!("pe-whirlwind-identities-{}", std::process::id()));
+    let disk = DiskCache::open(&path, 16 << 20).unwrap();
+    let memory = BlockCache::new(16 << 20);
+    let server = serve(fixture(), 206);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let mut counts = Vec::new();
+    for identity in [
+        "s3://whirlwind-hindsight/hindsight-routing",
+        "r2://whirlwind-hindsight/hindsight-routing",
+    ] {
+        let reference = ArchiveRef {
+            identity: identity.into(),
+            location: testing::location(server.endpoint()),
+        };
+        let w = testing::whirlwind_for(reference, 4, Arc::clone(&memory))
+            .with_disk_cache(Arc::clone(&disk));
+        assert!(w.estimate(&[point()]).unwrap().hourly_bytes > 0);
+        let out = w.sample(&[point()], &options(), &cancel).unwrap();
+        assert_eq!(out[0].wind.unwrap().dataset, Dataset::Hindsight);
+        assert_eq!(w.estimate(&[point()]).unwrap().hourly_bytes, 0);
+        counts.push(server.requests.lock().unwrap().len());
+    }
+    // Same shard key, ETag, extent, bytes, memory and disk cache: the second
+    // identity still reads its own index and chunk.
+    assert_eq!(counts, [2, 4]);
+    drop(disk);
+    std::fs::remove_dir_all(path).unwrap();
+}
+
+#[test]
+fn the_location_json_round_trips_hindsight_syncs_shape() {
+    // Hindsight Sync's `location` objects (src/api/catalog.rs), with the
+    // fields the reader ignores.
+    let cloud = serde_json::json!({
+        "protocol": "s3", "provider": "r2",
+        "bucket": "whirlwind-hindsight", "prefix": "hindsight-routing",
+        "s3_uri": "r2://whirlwind-hindsight/hindsight-routing",
+        "endpoint_url": "https://acct.r2.cloudflarestorage.invalid",
+        "region": "auto", "force_path_style": true,
+        "credentials": {"access_key_id": "KEYID", "secret_access_key": "SECRET", "session_token": null},
+        "credential_error": null,
+    });
+    let parsed: ArchiveLocation = serde_json::from_value(cloud.clone()).unwrap();
+    assert_eq!(
+        parsed,
+        ArchiveLocation::S3 {
+            bucket: "whirlwind-hindsight".into(),
+            prefix: "hindsight-routing".into(),
+            endpoint_url: Some("https://acct.r2.cloudflarestorage.invalid".into()),
+            region: "auto".into(),
+            force_path_style: true,
+            credentials: Some(Credentials::new("KEYID", "SECRET")),
+        }
+    );
+    let written = serde_json::to_value(&parsed).unwrap();
+    let mut expected = cloud;
+    for ignored in ["provider", "s3_uri", "credential_error"] {
+        expected.as_object_mut().unwrap().remove(ignored);
+    }
+    assert_eq!(written, expected);
+    assert_eq!(
+        serde_json::from_value::<ArchiveLocation>(written).unwrap(),
+        parsed
+    );
+    // Amazon S3 without credentials: no endpoint, a credential error instead.
+    let aws: ArchiveLocation = serde_json::from_value(serde_json::json!({
+        "protocol": "s3", "provider": "s3", "bucket": "b", "prefix": "p",
+        "endpoint_url": null, "region": "us-east-1", "force_path_style": false,
+        "credentials": null, "credential_error": "missing",
+    }))
+    .unwrap();
+    assert_eq!(aws, s3_bare("b", "p"));
+
+    let local = serde_json::json!({"protocol": "file", "path": "/Users/sailor/Hindsight/routing"});
+    let parsed: ArchiveLocation = serde_json::from_value(local.clone()).unwrap();
+    assert_eq!(
+        parsed,
+        ArchiveLocation::File {
+            path: "/Users/sailor/Hindsight/routing".into()
+        }
+    );
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), local);
+}
+
+fn s3_bare(bucket: &str, prefix: &str) -> ArchiveLocation {
+    ArchiveLocation::S3 {
+        bucket: bucket.into(),
+        prefix: prefix.into(),
+        endpoint_url: None,
+        region: "us-east-1".into(),
+        force_path_style: false,
+        credentials: None,
+    }
 }

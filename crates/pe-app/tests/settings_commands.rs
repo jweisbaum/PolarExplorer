@@ -192,7 +192,7 @@ fn whirlwind_disk_cache_settings_persist_and_clear_preserves_other_files() {
     );
     let cache = pe_app::weather_cache::open(&app, &saved.weather_cache).unwrap();
     let key = pe_env::whirlwind::DiskCache::key(
-        pe_env::whirlwind::URL,
+        "s3://whirlwind-hindsight/hindsight-routing",
         "data/c/0/0/0/0",
         "version",
         0,

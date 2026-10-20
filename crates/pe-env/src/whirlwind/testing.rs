@@ -7,7 +7,7 @@
 )]
 
 use super::layout::{Archive, Array, Chunk};
-use super::{Source, Whirlwind};
+use super::{ArchiveLocation, ArchiveRef, Whirlwind};
 use crate::Reanalysis;
 use crate::grid::{Axis, Grid};
 use crate::memory::BlockCache;
@@ -117,13 +117,21 @@ pub fn fixture() -> BTreeMap<String, Vec<u8>> {
     objects
 }
 
-/// A loopback stub answering S3 reads of the given objects; it refuses
-/// any signed or `x-amz-` request.
+/// The bucket and prefix the stub serves under, path style.
+pub const BUCKET: &str = "whirlwind-hindsight";
+/// See [`BUCKET`].
+pub const PREFIX: &str = "hindsight-routing";
+
+/// A loopback stub answering path-style S3 reads of the given objects under
+/// `/{BUCKET}/{PREFIX}/`; unless made by [`serve_signed`] it refuses any
+/// signed or `x-amz-` request.
 #[derive(Debug)]
 pub struct Server {
     endpoint: String,
     /// Every request as `(key, Range header)`.
     pub requests: Arc<Mutex<Vec<(String, String)>>>,
+    /// Every request's line and headers, as received.
+    pub headers: Arc<Mutex<Vec<String>>>,
     /// The most requests answered at once.
     pub peak: Arc<AtomicUsize>,
     stop: Arc<AtomicBool>,
@@ -163,11 +171,26 @@ pub fn serve_delayed(
     revision: &str,
     slow_index: Option<String>,
 ) -> Server {
+    serve_with(objects, status, revision, slow_index, false)
+}
+/// [`serve`], accepting signed requests (and recording them in
+/// [`Server::headers`]).
+pub fn serve_signed(objects: BTreeMap<String, Vec<u8>>) -> Server {
+    serve_with(objects, 206, "fixture-v1", None, true)
+}
+fn serve_with(
+    objects: BTreeMap<String, Vec<u8>>,
+    status: u16,
+    revision: &str,
+    slow_index: Option<String>,
+    signed: bool,
+) -> Server {
     let revision = revision.to_owned();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let endpoint = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
     let requests = Arc::new(Mutex::new(Vec::new()));
+    let headers = Arc::new(Mutex::new(Vec::new()));
     let live = Arc::new(AtomicUsize::new(0));
     let peak = Arc::new(AtomicUsize::new(0));
     let stop = Arc::new(AtomicBool::new(false));
@@ -175,6 +198,7 @@ pub fn serve_delayed(
     let pipelined = Arc::new(AtomicBool::new(false));
     let pipelined_result = Arc::clone(&pipelined);
     let (r, p, s) = (Arc::clone(&requests), Arc::clone(&peak), Arc::clone(&stop));
+    let h = Arc::clone(&headers);
     let objects = Arc::new(objects);
     let thread = std::thread::spawn(move || {
         let mut workers = Vec::new();
@@ -183,6 +207,7 @@ pub fn serve_delayed(
                 std::thread::sleep(Duration::from_millis(2));
                 continue;
             };
+            let h = Arc::clone(&h);
             let (r, p, live, objects) = (
                 Arc::clone(&r),
                 Arc::clone(&p),
@@ -204,10 +229,15 @@ pub fn serve_delayed(
                     let n = socket.read(&mut buf).unwrap(); if n == 0 { return; } request.extend_from_slice(&buf[..n]);
                 }
                 let text = String::from_utf8(request).unwrap();
-                let key = text.split_whitespace().nth(1).unwrap().trim_start_matches('/').to_owned();
+                let path = text.split_whitespace().nth(1).unwrap();
+                // A request outside the bucket and prefix keeps its whole path, so misses.
+                let key = path.strip_prefix(&format!("/{BUCKET}/{PREFIX}/")).unwrap_or(path).to_owned();
                 let range = text.lines().find_map(|line| line.strip_prefix("range: ")).unwrap_or("").to_owned();
-                assert!(!text.to_ascii_lowercase().contains("authorization:"));
-                assert!(!text.to_ascii_lowercase().contains("x-amz-"));
+                if !signed {
+                    assert!(!text.to_ascii_lowercase().contains("authorization:"));
+                    assert!(!text.to_ascii_lowercase().contains("x-amz-"));
+                }
+                h.lock().unwrap().push(text.clone());
                 r.lock().unwrap().push((key.clone(),range.clone()));
                 if slow_index.as_ref() == Some(&key) && range.starts_with("bytes=-") {
                     std::thread::sleep(Duration::from_millis(250));
@@ -241,12 +271,38 @@ pub fn serve_delayed(
     Server {
         endpoint,
         requests,
+        headers,
         peak,
         stop,
         thread: Some(thread),
         pipelined: pipelined_result,
     }
 }
+/// An anonymous path-style location of the fixture archive on the stub at
+/// `endpoint` (a [`Server`]'s).
+pub fn location(endpoint: &str) -> ArchiveLocation {
+    ArchiveLocation::S3 {
+        bucket: BUCKET.into(),
+        prefix: PREFIX.into(),
+        endpoint_url: Some(endpoint.to_owned()),
+        region: "us-east-1".into(),
+        force_path_style: true,
+        credentials: None,
+    }
+}
+
+/// A reader of the fixture archive at `reference`, with `concurrency`
+/// requests at once; its layout is set, so only shards are read.
+pub(crate) fn whirlwind_for(
+    reference: ArchiveRef,
+    concurrency: usize,
+    memory: Arc<BlockCache>,
+) -> Whirlwind {
+    let w = Whirlwind::new(reference, Duration::from_secs(5), memory, concurrency).unwrap();
+    *w.archive.lock().unwrap() = Some(Arc::new(archive()));
+    w
+}
+
 /// A reader of the fixture archive over S3 at `endpoint` (a [`Server`]'s),
 /// with `concurrency` requests at once.
 pub(crate) fn whirlwind_at(
@@ -254,17 +310,11 @@ pub(crate) fn whirlwind_at(
     concurrency: usize,
     memory: Arc<BlockCache>,
 ) -> Whirlwind {
-    let mut w = Whirlwind::new(
-        Source::S3,
-        Source::S3.credentials(),
-        Duration::from_secs(5),
-        memory,
-        concurrency,
-    )
-    .unwrap();
-    w.s3.endpoint = Some(endpoint.to_owned());
-    *w.archive.lock().unwrap() = Some(Arc::new(archive()));
-    w
+    let reference = ArchiveRef {
+        identity: format!("s3://{BUCKET}/{PREFIX}"),
+        location: location(endpoint),
+    };
+    whirlwind_for(reference, concurrency, memory)
 }
 
 /// The provider reading the fixture archive from the stub at `endpoint`.

@@ -65,9 +65,16 @@ impl Work {
             Err(EnvError::Cancelled) => return self.finish(state, Outcome::Cancelled),
             Err(err) => return self.finish(state, Outcome::Failed(err.to_string())),
         };
+        let identity = self.task.data_source.archive().identity;
         if with_track(state, self.target, |track| {
             for (&index, env) in indices.iter().zip(&found) {
-                ingest(&mut track.samples[index], &mut track.env_meta, env, now);
+                ingest(
+                    &mut track.samples[index],
+                    &mut track.env_meta,
+                    env,
+                    &identity,
+                    now,
+                );
             }
             track.env_meta.status = status_of(&track.samples, false);
         })?

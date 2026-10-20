@@ -45,7 +45,14 @@ URL='https?://[^"'"'"'`[:space:])>]+'
 # them must *start* with one of these, so a line naming an allowed host cannot
 # smuggle a second one past the check. `{…}` stands for a format placeholder
 # in a subdomain, which is how Geovoile's per-race hosts are built.
-ENV_HOSTS='^https?://(whirlwind-hindsight\.s3\.us-east-1\.amazonaws\.com/hindsight-routing|3d5456ad10ebc32c8a3c259aa84e6c64\.r2\.cloudflarestorage\.com/whirlwind-hindsight/hindsight-routing|fly\.storage\.tigris\.dev/whirlwind-hindsight/hindsight-routing)'
+# pe-env names no archive: it reads the location it is given, so its one
+# host is Amazon S3's virtual-hosted template, and the S3 archive's address
+# in a test that checks the template expands to it.
+ENV_HOSTS='^https?://(\{bucket\}\.s3\.\{region\}\.amazonaws\.com([/:?#]|$)|whirlwind-hindsight\.s3\.us-east-1\.amazonaws\.com/hindsight-routing)'
+# The three fixed archive endpoints, named in pe-app's settings only:
+# temporary until Hindsight Sync supplies locations (Task 4).
+SETTINGS_HOSTS='^https://(3d5456ad10ebc32c8a3c259aa84e6c64\.r2\.cloudflarestorage\.com|fly\.storage\.tigris\.dev)$'
+SETTINGS=crates/pe-app/src/settings.rs
 TRACKER_HOSTS='^https?://(((cf|app)\.)?yb\.tl|([A-Za-z0-9_{}-]+\.)*geovoile\.com|(api|race)\.bluewatertracks\.com|www\.regattaman\.com|data\.orc\.org)([/:?#]|$)'
 
 fail=0
@@ -76,6 +83,7 @@ hits=$(grep -rnE 'https?://' ui/src ui/index.html 2>/dev/null \
 # naming the exceptions here.
 hits=$(find crates -name '*.rs' -not -path 'crates/pe-env/*' -not -path 'crates/pe-trackers/*' \
   -not -path 'crates/pe-app/src/library/tests.rs' -not -path 'crates/pe-app/src/library/scrape/tests.rs' \
+  -not -path "$SETTINGS" \
   -exec grep -nHE 'https?://' {} + 2>/dev/null \
   | grep -vE "$COMMENT" | grep -vE "$ALLOW" || true)
 [ -n "$hits" ] && report "absolute URL in rust source" "$hits"
@@ -83,6 +91,11 @@ hits=$(find crates -name '*.rs' -not -path 'crates/pe-env/*' -not -path 'crates/
 # In those crates, only the hosts they exist to read.
 hits=$(urls_in crates/pe-env | grep -vE ":[0-9]+:${ENV_HOSTS#^}" || true)
 [ -n "$hits" ] && report "unexpected remote host in pe-env" "$hits"
+
+# Temporary until Hindsight Sync supplies locations (Task 4): the settings
+# file may name the fixed archive endpoints, and nothing else.
+hits=$(urls_in "$SETTINGS" | grep -vE ":[0-9]+:${SETTINGS_HOSTS#^}" || true)
+[ -n "$hits" ] && report "unexpected remote host in pe-app settings" "$hits"
 
 hits=$(urls_in crates/pe-trackers | grep -vE ":[0-9]+:${TRACKER_HOSTS#^}" || true)
 [ -n "$hits" ] && report "unexpected remote host in pe-trackers" "$hits"

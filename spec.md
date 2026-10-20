@@ -1512,8 +1512,11 @@ per-track subsets to isolate the failure. Missing objects and
 inner chunks are missing data, while authentication errors and corrupt data
 fail the fetch. The optional MCP estimate counts actual compressed byte lengths from the
 needed indexes, counting each combined chunk once. Whirlwind provenance is
-`whirlwind-hindsight`, `whirlwind-hindsight-r2` or `whirlwind-hindsight-tigris`,
+the archive's identity, `s3://`, `r2://` or `tigris://whirlwind-hindsight/hindsight-routing`,
 version `hindsight-v3`; its current is the HistorySyncer GlobCurrent tidal current.
+A track whose recorded archive differs (including one fetched before this
+naming) is fetched again from the start. Memory and disk cache entries are
+keyed by the same identity.
 
 For every sample:
 

@@ -57,10 +57,13 @@ fn whirlwind_estimate_ipc_returns_errors_and_can_retry_without_hanging() {
     // The public S3 provider must initialise even with an invalid legacy file.
     // Inject invalid signing credentials explicitly to fail before HTTP.
     env::provider(&state).unwrap();
+    let mut archive = DataSource::Whirlwind.archive();
+    if let pe_env::whirlwind::ArchiveLocation::S3 { credentials, .. } = &mut archive.location {
+        *credentials = Some(serde_json::from_value(fake).unwrap());
+    }
     state.env_provider.lock().unwrap().as_mut().unwrap().1 = Arc::new(
-        pe_env::Reanalysis::whirlwind(
-            pe_env::whirlwind::Source::S3,
-            Some(serde_json::from_value(fake).unwrap()),
+        pe_env::Reanalysis::open(
+            archive,
             Duration::from_secs(1),
             pe_env::BlockCache::new(16 << 20),
         )
@@ -187,25 +190,25 @@ fn truth(p: &Point) -> EnvPoint {
         wind: Some(Vector {
             u: 5.0 + 0.1 * hours,
             v: -3.0 + 0.01 * p.lat,
-            dataset: Dataset::WhirlwindHindsight,
+            dataset: Dataset::Hindsight,
         }),
         waves: Some(Waves {
             period_s: Some(8.5),
             hs: Some(1.0 + 0.01 * p.lon),
             from: Some((p.t / 60).rem_euclid(360) as f64),
-            dataset: Dataset::WhirlwindHindsight,
+            dataset: Dataset::Hindsight,
         }),
         current: Some(if p.lat > 49.8 {
             Vector {
                 u: 0.2,
                 v: 0.1,
-                dataset: Dataset::WhirlwindHindsight,
+                dataset: Dataset::Hindsight,
             }
         } else {
             Vector {
                 u: 0.1,
                 v: -0.1,
-                dataset: Dataset::WhirlwindHindsight,
+                dataset: Dataset::Hindsight,
             }
         }),
     }
@@ -349,7 +352,10 @@ fn a_fetch_fills_every_sample_in_project_units() {
         .map(|d| (d.name.as_str(), d.has_tide))
         .collect();
     // One record for the archive every part came from.
-    assert_eq!(names, [("whirlwind-hindsight", Some(true))]);
+    assert_eq!(
+        names,
+        [("s3://whirlwind-hindsight/hindsight-routing", Some(true))]
+    );
     assert!(t.env_meta.datasets.iter().all(|d| d.fetched_at == NOW));
     let first = &t.samples[0];
     assert_eq!(first.wind_dataset, Some(0));
@@ -837,7 +843,7 @@ fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
     let sink = Sink::default();
     env::queue_fetch(&app, &[id], "hourly", false).unwrap();
     assert_eq!(
-        drain(&app, &Whirlwind(Dataset::WhirlwindHindsight), &sink),
+        drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
         vec![Outcome::Done]
     );
     // Existing values are from S3, so switching to R2 must replace even a
@@ -847,7 +853,7 @@ fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
     // A preference change after queueing must not change that queued request.
     settings::data_source_set(&app, DataSource::Whirlwind).unwrap();
     assert_eq!(
-        drain(&app, &Whirlwind(Dataset::WhirlwindR2), &sink),
+        drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
         vec![Outcome::Done]
     );
     let fetched = track(&app, id);
@@ -856,13 +862,22 @@ fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
             .env_meta
             .datasets
             .iter()
-            .all(|d| d.name == Dataset::WhirlwindR2.id())
+            .all(|d| d.name == "r2://whirlwind-hindsight/hindsight-routing")
     );
     assert!(fetched.samples.iter().all(|s| s.env_fetched));
-    for (source, dataset) in [
-        (DataSource::WhirlwindR2, Dataset::WhirlwindR2),
-        (DataSource::WhirlwindTigris, Dataset::WhirlwindTigris),
-        (DataSource::Whirlwind, Dataset::WhirlwindHindsight),
+    for (source, identity) in [
+        (
+            DataSource::WhirlwindR2,
+            "r2://whirlwind-hindsight/hindsight-routing",
+        ),
+        (
+            DataSource::WhirlwindTigris,
+            "tigris://whirlwind-hindsight/hindsight-routing",
+        ),
+        (
+            DataSource::Whirlwind,
+            "s3://whirlwind-hindsight/hindsight-routing",
+        ),
     ] {
         settings::data_source_set(&app, source).unwrap();
         // A ready route must be fetched again when its storage source changes.
@@ -872,13 +887,16 @@ fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
                 .tracks
                 .is_empty()
         );
-        assert_eq!(drain(&app, &Whirlwind(dataset), &sink), vec![Outcome::Done]);
+        assert_eq!(
+            drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
+            vec![Outcome::Done]
+        );
         assert!(
             track(&app, id)
                 .env_meta
                 .datasets
                 .iter()
-                .all(|d| d.name == dataset.id())
+                .all(|d| d.name == identity)
         );
     }
 }
@@ -1002,16 +1020,7 @@ impl Provider for FleetProvider<'_> {
         if self.fail_north && points.iter().any(|p| p.lat > 50.0015) {
             return Err(EnvError::OutOfRange("broken northern chunk".into()));
         }
-        Ok(points
-            .iter()
-            .map(|p| {
-                let mut env = truth(p);
-                env.wind.as_mut().unwrap().dataset = Dataset::WhirlwindR2;
-                env.waves.as_mut().unwrap().dataset = Dataset::WhirlwindR2;
-                env.current.as_mut().unwrap().dataset = Dataset::WhirlwindR2;
-                env
-            })
-            .collect())
+        Ok(points.iter().map(truth).collect())
     }
 }
 

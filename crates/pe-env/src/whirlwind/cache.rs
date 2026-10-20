@@ -345,8 +345,9 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
+    const IDENTITY: &str = "s3://whirlwind-hindsight/hindsight-routing";
     fn key(name: &str) -> String {
-        DiskCache::key(super::super::URL, name, "v1", 0, 100)
+        DiskCache::key(IDENTITY, name, "v1", 0, 100)
     }
     fn bytes() -> Bytes {
         Bytes::from(vec![7; 100])
@@ -407,17 +408,17 @@ mod tests {
         let restarted = DiskCache::open(&root.0, 1000).unwrap();
         assert_eq!(restarted.get(&key("a")).unwrap().unwrap(), bytes());
         assert_eq!(restarted.size().unwrap(), 140);
+        assert_ne!(key("a"), DiskCache::key(IDENTITY, "a", "v2", 0, 100));
+        assert_ne!(key("a"), DiskCache::key(IDENTITY, "a", "v1", 100, 100));
         assert_ne!(
             key("a"),
-            DiskCache::key(super::super::URL, "a", "v2", 0, 100)
-        );
-        assert_ne!(
-            key("a"),
-            DiskCache::key(super::super::URL, "a", "v1", 100, 100)
-        );
-        assert_ne!(
-            key("a"),
-            DiskCache::key(super::super::Source::R2.url(), "a", "v1", 0, 100)
+            DiskCache::key(
+                "r2://whirlwind-hindsight/hindsight-routing",
+                "a",
+                "v1",
+                0,
+                100
+            )
         );
     }
     #[test]

@@ -304,19 +304,23 @@ impl EnvJobs {
 
 // -------------------------------------------------------------- ingest
 
-/// The index of `dataset` in a track's dataset list, adding it (with the
+/// The version recorded with each archive, until Hindsight Sync supplies
+/// its layout version (Task 4).
+const ARCHIVE_VERSION: &str = "hindsight-v3";
+
+/// The index of the archive `identity` in a track's dataset list, adding it (with the
 /// fetch time) the first time a sample refers to it.
-fn record(meta: &mut EnvMeta, dataset: Dataset, now: i64) -> Option<u16> {
+fn record(meta: &mut EnvMeta, identity: &str, now: i64) -> Option<u16> {
     let found = meta
         .datasets
         .iter()
-        .position(|d| d.name == dataset.id() && d.version == dataset.version());
+        .position(|d| d.name == identity && d.version == ARCHIVE_VERSION);
     let index = found.unwrap_or_else(|| {
         meta.datasets.push(DatasetRecord {
-            name: dataset.id().to_owned(),
-            version: dataset.version().to_owned(),
+            name: identity.to_owned(),
+            version: ARCHIVE_VERSION.to_owned(),
             fetched_at: now,
-            has_tide: dataset.has_tide(),
+            has_tide: Dataset::Hindsight.has_tide(),
         });
         meta.datasets.len() - 1
     });
@@ -325,13 +329,14 @@ fn record(meta: &mut EnvMeta, dataset: Dataset, now: i64) -> Option<u16> {
 
 /// Writes what was found at one sample, in project units, and relates it
 /// to the sample's motion.
-fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, now: i64) {
+/// `identity` names the archive the values came from (`ArchiveRef::identity`).
+fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, identity: &str, now: i64) {
     let (tws, twd, wind_ds) = match env.wind {
         Some(w) => {
             let speed = w.u.hypot(w.v);
             // Wind is named for where it comes from: opposite its vector.
             let from = (speed > 1e-9).then(|| compass(-w.u, -w.v));
-            (Some(speed * KN_PER_MS), from, record(meta, w.dataset, now))
+            (Some(speed * KN_PER_MS), from, record(meta, identity, now))
         }
         None => (None, None, None),
     };
@@ -343,7 +348,7 @@ fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, now: i64) {
             sample.hs_m = w.hs;
             sample.wave_period_s = w.period_s;
             sample.wave_from = w.from;
-            sample.wave_dataset = record(meta, w.dataset, now);
+            sample.wave_dataset = record(meta, identity, now);
         }
         None => {
             sample.hs_m = None;
@@ -358,7 +363,7 @@ fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, now: i64) {
             sample.current_speed = Some(speed * KN_PER_MS);
             // A current is named for where it goes.
             sample.current_toward = Some(compass(c.u, c.v));
-            sample.current_dataset = record(meta, c.dataset, now);
+            sample.current_dataset = record(meta, identity, now);
         }
         None => {
             sample.current_speed = None;
@@ -472,7 +477,8 @@ fn gather(state: &AppState, task: &Task, now: i64) -> Result<Option<Prepared>> {
             };
             let seconds = task.interval.seconds();
             let meta = &track.env_meta;
-            let source_changed = different_source(meta, task.data_source);
+            let identity = task.data_source.archive().identity;
+            let source_changed = different_source(meta, &identity);
             let restart = task.restart
                 || source_changed
                 || meta.interval_s.is_some_and(|s| s != seconds)
@@ -492,11 +498,7 @@ fn gather(state: &AppState, task: &Task, now: i64) -> Result<Option<Prepared>> {
             track.env_meta.interval_s = Some(seconds);
             track.env_meta.stokes_drift = Some(stokes);
             // Keep source identity even when every requested cell is missing.
-            record(
-                &mut track.env_meta,
-                task.data_source.whirlwind_source().dataset(),
-                now,
-            );
+            record(&mut track.env_meta, &identity, now);
             let todo: Vec<(usize, Point)> = track
                 .samples
                 .iter()
@@ -549,6 +551,7 @@ fn run(
         stokes_drift: stokes,
         parts: pe_env::Parts::ALL,
     };
+    let identity = task.data_source.archive().identity;
     let total = todo.len().max(1);
     let mut done = 0;
     let mut outcome = Outcome::Done;
@@ -591,7 +594,7 @@ fn run(
         let written = with_track(state, target, |track| {
             for ((k, _), env) in batch.iter().zip(&found) {
                 if let Some(sample) = track.samples.get_mut(*k) {
-                    ingest(sample, &mut track.env_meta, env, now);
+                    ingest(sample, &mut track.env_meta, env, &identity, now);
                 }
             }
             track.env_meta.status = status_of(&track.samples, false);
@@ -718,9 +721,8 @@ fn provider_for_source(state: &AppState, data_source: DataSource) -> Result<Arc<
     }
     let timeout = std::time::Duration::from_secs(key.timeout_s);
     let memory = pe_env::BlockCache::new(key.memory_bytes);
-    let source = key.data_source.whirlwind_source();
     let reanalysis = Arc::new(
-        Reanalysis::whirlwind(source, source.credentials(), timeout, memory)
+        Reanalysis::open(key.data_source.archive(), timeout, memory)
             .map_err(|e| AppError::Internal(e.to_string()))?
             .with_whirlwind_cache(crate::weather_cache::open(state, &key.weather_cache)?),
     );
@@ -800,18 +802,17 @@ struct Gathered {
     points: Vec<Point>,
 }
 
-/// Whether a track's weather came from anywhere but `source`: then a fetch
-/// starts it over, so a track never mixes archives.
-fn different_source(meta: &EnvMeta, source: DataSource) -> bool {
-    let wanted = source.whirlwind_source().dataset();
-    meta.datasets.is_empty() || meta.datasets.iter().any(|d| d.name != wanted.id())
+/// Whether a track's weather came from any archive but `identity`: then a
+/// fetch starts it over, so a track never mixes archives.
+fn different_source(meta: &EnvMeta, identity: &str) -> bool {
+    meta.datasets.is_empty() || meta.datasets.iter().any(|d| d.name != identity)
 }
 
 /// The positions of the named tracks still to fetch (all of them when
 /// `restart`), each track's label, and the open project's id.
 fn positions(state: &AppState, sources: &[u64], restart: bool) -> Result<Gathered> {
     state.with_session(|session| {
-        let data_source = session.settings.data_source;
+        let identity = session.settings.data_source.archive().identity;
         let open = session.require_open()?;
         open.ensure_editable()?;
         let mut labels = Vec::new();
@@ -825,7 +826,7 @@ fn positions(state: &AppState, sources: &[u64], restart: bool) -> Result<Gathere
                 field: "Track",
                 value: source.label.clone(),
             })?;
-            let source_changed = different_source(&track.env_meta, data_source);
+            let source_changed = different_source(&track.env_meta, &identity);
             let interval_changed = track
                 .env_meta
                 .interval_s
@@ -1058,40 +1059,43 @@ mod tests {
             cog: None,
             sog: None,
         };
+        const IDENTITY: &str = "s3://whirlwind-hindsight/hindsight-routing";
         let mut sample = Sample::at(pe_core::SampleId(1), 0, &fix);
         let mut meta = EnvMeta::default();
         let env = EnvPoint {
             wind: Some(pe_env::Vector {
                 u: -3.0,
                 v: -4.0,
-                dataset: Dataset::WhirlwindHindsight,
+                dataset: Dataset::Hindsight,
             }),
             waves: None,
             current: Some(pe_env::Vector {
                 u: 1.0,
                 v: 0.0,
-                dataset: Dataset::WhirlwindR2,
+                dataset: Dataset::Hindsight,
             }),
         };
-        ingest(&mut sample, &mut meta, &env, 42);
+        ingest(&mut sample, &mut meta, &env, IDENTITY, 42);
         // Kept at the stored precision (D27): 9.72 kn, 36.9°, 1.94 kn.
         assert_eq!(sample.tws, Some(9.72));
         assert_eq!(sample.twd_from, Some(36.9));
         assert_eq!(sample.current_toward, Some(90.0));
         assert_eq!(sample.current_speed, Some(1.94));
         assert_eq!(sample.wind_dataset, Some(0));
-        assert_eq!(sample.current_dataset, Some(1));
+        // One archive, one record, whatever part a value is.
+        assert_eq!(sample.current_dataset, Some(0));
         assert!(sample.env_fetched);
         assert_eq!(
-            meta.datasets[1].has_tide,
+            meta.datasets[0].has_tide,
             Some(true),
-            "the Whirlwind current includes the tide"
+            "the Hindsight current includes the tide"
         );
-        assert_eq!(meta.datasets[0].name, "whirlwind-hindsight");
+        assert_eq!(meta.datasets[0].name, IDENTITY);
+        assert_eq!(meta.datasets[0].version, "hindsight-v3");
         assert_eq!(meta.datasets[0].fetched_at, 42);
-        // The same dataset again is the same record.
-        ingest(&mut sample, &mut meta, &env, 99);
-        assert_eq!(meta.datasets.len(), 2);
+        // The same archive again is the same record.
+        ingest(&mut sample, &mut meta, &env, IDENTITY, 99);
+        assert_eq!(meta.datasets.len(), 1);
         assert_eq!(meta.datasets[0].fetched_at, 42);
     }
 }

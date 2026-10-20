@@ -132,12 +132,45 @@ pub enum DataSource {
 }
 
 impl DataSource {
-    pub fn whirlwind_source(self) -> pe_env::whirlwind::Source {
-        use pe_env::whirlwind::Source;
-        match self {
-            Self::Whirlwind => Source::S3,
-            Self::WhirlwindR2 => Source::R2,
-            Self::WhirlwindTigris => Source::Tigris,
+    /// The archive this choice reads. Temporary until Hindsight Sync
+    /// supplies locations (Task 4). The R2 and Tigris credentials are
+    /// embedded at the user's explicit request; they are never sent through
+    /// IPC, URLs, projects or logs.
+    pub fn archive(self) -> pe_env::whirlwind::ArchiveRef {
+        use pe_env::whirlwind::{ArchiveLocation, ArchiveRef, Credentials};
+        const BUCKET: &str = "whirlwind-hindsight";
+        const PREFIX: &str = "hindsight-routing";
+        let (scheme, endpoint, region, credentials) = match self {
+            Self::Whirlwind => ("s3", None, "us-east-1", None),
+            Self::WhirlwindR2 => (
+                "r2",
+                Some("https://3d5456ad10ebc32c8a3c259aa84e6c64.r2.cloudflarestorage.com"),
+                "auto",
+                Some(Credentials::new(
+                    "18bf3daf0129f869e08697abf38a6d0e",
+                    "a4159f3410e7047c23930847dcd6fe678cc5ff5dbeb9b44e0d5e881c03384bac",
+                )),
+            ),
+            Self::WhirlwindTigris => (
+                "tigris",
+                Some("https://fly.storage.tigris.dev"),
+                "auto",
+                Some(Credentials::new(
+                    "tid_dDVavduKOeciqUWKMFVJuSeNrNtSyxBlSweeILUAKJxFHQdOqH",
+                    "tsec_RM-E+RA20+u74rIXEKqUYzbmpO5eHb4lwBWyOcYo+QN-cIQQgHkk0AqGbXqJB0H+NL7iP+",
+                )),
+            ),
+        };
+        ArchiveRef {
+            identity: format!("{scheme}://{BUCKET}/{PREFIX}"),
+            location: ArchiveLocation::S3 {
+                bucket: BUCKET.to_owned(),
+                prefix: PREFIX.to_owned(),
+                endpoint_url: endpoint.map(str::to_owned),
+                region: region.to_owned(),
+                force_path_style: endpoint.is_some(),
+                credentials,
+            },
         }
     }
 }

@@ -282,16 +282,17 @@ pub(crate) fn direction_of((stamps, values): &Placed) -> Vec<Option<f64>> {
 }
 
 impl Reanalysis {
-    /// The Whirlwind archive, using its own bounded async pool.
-    pub fn whirlwind(
-        source: crate::whirlwind::Source,
-        credentials: Option<crate::whirlwind::Credentials>,
+    /// A reader of `archive`, using its own bounded async pool.
+    ///
+    /// # Errors
+    /// A location the reader cannot read, or its workers not starting.
+    pub fn open(
+        archive: crate::whirlwind::ArchiveRef,
         timeout: Duration,
         memory: Arc<BlockCache>,
     ) -> Result<Self> {
         let whirlwind = Whirlwind::new(
-            source,
-            credentials,
+            archive,
             timeout,
             Arc::clone(&memory),
             crate::whirlwind::CONCURRENCY,
@@ -302,6 +303,11 @@ impl Reanalysis {
     /// A provider over an already built reader sharing `memory`.
     pub(crate) fn from_reader(whirlwind: Whirlwind, memory: Arc<BlockCache>) -> Self {
         Self { whirlwind, memory }
+    }
+
+    /// The archive read.
+    pub fn archive(&self) -> &crate::whirlwind::ArchiveRef {
+        self.whirlwind.reference()
     }
 
     /// Persist validated Whirlwind chunks across routes and sessions.

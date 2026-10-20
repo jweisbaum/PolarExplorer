@@ -1,67 +1,33 @@
-//! The archives PolarExplorer reads (spec.md 7.5), and the cell arithmetic
-//! the sampler shares with the Whirlwind reader.
+//! The archive kind PolarExplorer reads (spec.md 7.5), and the cell
+//! arithmetic the sampler shares with the Whirlwind reader.
 //!
-//! Every archive is the same Whirlwind Hindsight v3 store, published at one
-//! of three endpoints; each is its own dataset so a sample records where its
-//! values came from, and so cached chunks are never shared between them.
+//! Which archive a value came from is its `ArchiveRef::identity`; the dataset
+//! only says what kind of store it is.
 
 use std::collections::BTreeMap;
 
 use crate::grid::Stencil;
 
-/// A dataset: one Zarr store.
+/// A kind of reanalysis store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Dataset {
-    /// Whirlwind Hindsight v3 wind, waves and tidal surface current.
-    WhirlwindHindsight,
-    /// The same combined-parameter archive on Cloudflare R2.
-    WhirlwindR2,
-    /// The same combined-parameter archive on Tigris.
-    WhirlwindTigris,
+    /// A Hindsight Sync archive: wind, waves and tidal surface current.
+    Hindsight,
 }
 
 impl Dataset {
-    /// Every dataset.
-    pub const ALL: [Self; 3] = [
-        Self::WhirlwindHindsight,
-        Self::WhirlwindR2,
-        Self::WhirlwindTigris,
-    ];
-
-    /// The name recorded on each sample (`DatasetRecord::name`), and the
-    /// chunk cache namespace.
+    /// A short name for the kind.
     pub fn id(self) -> &'static str {
         match self {
-            Self::WhirlwindHindsight => "whirlwind-hindsight",
-            Self::WhirlwindR2 => "whirlwind-hindsight-r2",
-            Self::WhirlwindTigris => "whirlwind-hindsight-tigris",
+            Self::Hindsight => "hindsight",
         }
     }
 
-    /// Where it is published.
-    pub fn url(self) -> &'static str {
-        match self {
-            Self::WhirlwindHindsight => crate::whirlwind::URL,
-            Self::WhirlwindR2 => crate::whirlwind::Source::R2.url(),
-            Self::WhirlwindTigris => crate::whirlwind::Source::Tigris.url(),
-        }
-    }
-
-    /// The version recorded on each sample.
-    pub fn version(self) -> &'static str {
-        "hindsight-v3"
-    }
-
-    /// Whether this dataset's current includes tides. The Whirlwind
-    /// current is tidal; the flag stays per dataset so an archive without
-    /// tides can be marked, and filtered, should one be added.
+    /// Whether this dataset's current includes tides. The Hindsight current
+    /// is tidal; the flag stays per dataset so an archive without tides can
+    /// be marked, and filtered, should one be added.
     pub fn has_tide(self) -> Option<bool> {
         Some(true)
-    }
-
-    /// The dataset whose [`Self::id`] this is.
-    pub fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|d| d.id() == id)
     }
 }
 
@@ -102,13 +68,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dataset_ids_are_distinct_and_urls_are_https() {
-        let ids: std::collections::BTreeSet<_> = Dataset::ALL.iter().map(|d| d.id()).collect();
-        assert_eq!(ids.len(), Dataset::ALL.len());
-        for d in Dataset::ALL {
-            assert!(d.url().starts_with("https://"), "{d:?}");
-            assert!(!d.version().is_empty());
-            assert_eq!(Dataset::from_id(d.id()), Some(d));
-        }
+    fn the_hindsight_dataset_is_named_and_tidal() {
+        assert_eq!(Dataset::Hindsight.id(), "hindsight");
+        assert_eq!(Dataset::Hindsight.has_tide(), Some(true));
     }
 }
