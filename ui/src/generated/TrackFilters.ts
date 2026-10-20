@@ -134,7 +134,7 @@ wave_from: number | null,
  */
 wave_to: number | null,
 /**
- * Leave out samples whose current has no tide (spec.md 7.5.1).
+ * Leave out samples whose current has no tide (spec.md 7.5).
  */
 exclude_no_tide: boolean,
 /**

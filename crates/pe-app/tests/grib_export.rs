@@ -225,6 +225,41 @@ fn the_preview_counts_the_chunks_an_export_reads() {
     assert_eq!(after.cached_bytes, before.wind_bytes);
 }
 
+/// A plan over the budget (217 rows × 297 columns × 4 hours, 257,796
+/// positions) is thinned for the preview, yet counts exactly the chunks
+/// the full plan needs.
+#[test]
+fn a_thinned_preview_counts_every_chunk_of_the_full_plan() {
+    let server = testing::serve(testing::fixture(), 200);
+    let p = provider(&server);
+    let plan = Plan::of(
+        &[(T0, 0.0, -120.0), (T0 + 3 * 3600, 50.0, -50.0)],
+        true,
+        true,
+        Interval::Hourly,
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        (plan.grid.nj, plan.grid.ni, plan.times.len()),
+        (217, 297, 4)
+    );
+    let full: Vec<pe_env::Point> = plan
+        .times
+        .iter()
+        .flat_map(|&t| {
+            plan.grid
+                .points()
+                .map(move |(lon, lat)| pe_env::Point { t, lat, lon })
+        })
+        .collect();
+    assert!(full.len() > 200_000);
+    let expected = p.estimate(&full).unwrap().hourly_bytes;
+    assert!(expected > 0);
+    let preview = grib::preview_of(1, "Wide", &plan, &p).unwrap();
+    assert_eq!(preview.wind_bytes, expected);
+}
+
 /// Wind alone is the first two messages of every hour, with no waves or
 /// current read, and the same values as among the rest.
 #[test]
