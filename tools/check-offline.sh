@@ -34,7 +34,9 @@ CONF=crates/pe-app/tauri.conf.json
 # compares it as a string and dereferences nothing.
 # `.invalid` is reserved by RFC 2606 and never resolves, which is what makes it
 # the right host for a test that must not reach anything.
-ALLOW='schema\.tauri\.app|//localhost:|\.localhost|//127\.0\.0\.1|www\.w3\.org/2000/svg|\.invalid'
+# Hindsight Sync's product page: opened by the person's browser on request
+# (Settings link), never fetched by the application.
+ALLOW='hindsight-sync\.whirlwindai\.com|schema\.tauri\.app|//localhost:|\.localhost|//127\.0\.0\.1|www\.w3\.org/2000/svg|\.invalid'
 # Pure comment lines. A URL in a comment fetches nothing, and the generated
 # ts-rs bindings carry a provenance URL in their header.
 COMMENT=':[0-9]+:[[:space:]]*(//|\*|/\*)'

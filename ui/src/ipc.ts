@@ -450,6 +450,8 @@ export function boatApi(boatContext?: number) {
   setWeatherMemory: (megabytes: number) => call<AppSettings>("set_weather_memory", { megabytes }),
   /** Sets the reanalysis fetcher's concurrency and timeout. */
   setWeatherCache: (directory: string, maxSizeGb: number) => call<AppSettings>("set_weather_cache", { directory, maxSizeGb }),
+  /** Opens Hindsight Sync's product page in the system browser. */
+  openHindsightSyncSite: () => call<void>("open_hindsight_sync_site"),
   weatherCacheStatus: () => call<WeatherCacheStatus>("weather_cache_status"),
   clearWeatherCache: () => call<WeatherCacheStatus>("clear_weather_cache"),
   setNetwork: (network: NetworkSettings) => call<AppSettings>("set_network", { network }),

@@ -223,6 +223,7 @@ pub fn run() -> anyhow::Result<()> {
             reanalysis::reanalysis_probe,
             reanalysis::set_reanalysis_port,
             reanalysis::set_reanalysis_archive,
+            reanalysis::open_hindsight_sync_site,
             weather_cache::set_weather_cache,
             weather_cache::weather_cache_status,
             weather_cache::clear_weather_cache,

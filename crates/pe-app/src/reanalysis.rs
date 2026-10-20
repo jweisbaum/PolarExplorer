@@ -514,9 +514,79 @@ pub fn set_reanalysis_archive(
     archive_set(&state, id)
 }
 
+/// Hindsight Sync's product page. Opened in the person's browser when they
+/// ask; never fetched by this application (invariant 4).
+pub const SITE: &str = "https://hindsight-sync.whirlwindai.com";
+
+/// The platform's opener for a URL. Separate from the spawn so a test can read
+/// the program and arguments without running anything.
+fn launch_command(url: &str) -> std::process::Command {
+    #[cfg(target_os = "macos")]
+    {
+        let mut command = std::process::Command::new("open");
+        command.arg(url);
+        command
+    }
+    // `start` takes the first quoted argument for a window title, hence "".
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/C", "start", "", url]);
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(url);
+        command
+    }
+}
+
+/// Opens Hindsight Sync's site in the browser. Takes no argument, so nothing
+/// else can be opened through it.
+#[tauri::command]
+pub fn open_hindsight_sync_site() -> Result<()> {
+    let mut child = launch_command(SITE)
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .doing("open", SITE)?;
+    // Reap the opener off-thread; its exit status does not matter.
+    let _ = std::thread::Builder::new()
+        .name("open-site".to_owned())
+        .spawn(move || {
+            let _ = child.wait();
+        });
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_site_link_opens_exactly_the_product_page() {
+        assert_eq!(SITE, "https://hindsight-sync.whirlwindai.com");
+        let command = launch_command(SITE);
+        let program = command.get_program().to_string_lossy().into_owned();
+        let args: Vec<String> = command
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        if cfg!(target_os = "macos") {
+            assert_eq!((program.as_str(), args), ("open", vec![SITE.to_owned()]));
+        } else if cfg!(windows) {
+            assert_eq!(program, "cmd");
+            assert_eq!(args, ["/C", "start", "", SITE]);
+        } else {
+            assert_eq!(
+                (program.as_str(), args),
+                ("xdg-open", vec![SITE.to_owned()])
+            );
+        }
+    }
 
     fn temp(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

@@ -91,6 +91,8 @@ fn cancel_boat_import(state: tauri::State<'_, AppState>, args: Value) -> Result<
 
 /// Commands the escape hatch will not run.
 pub const EXCLUDED: &[&str] = &[
+    // Opens the person's browser.
+    "open_hindsight_sync_site",
     // The service itself, which a client reached through it could turn off
     // under its own feet, and the frontend's two answers to a screenshot
     // request. Registering the service with a client is asked for by a
