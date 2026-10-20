@@ -122,3 +122,6 @@ m/s, km/h, m, ft, nm, km, GB, s, °), key names (Shift, Esc, Enter, Tab).
 | start / finish | スタート／フィニッシュ | |
 | Racing / Finished / Retired / Did not start / Did not finish | レース中／フィニッシュ／リタイア／未スタート（DNS）／未フィニッシュ（DNF） | ⚑ |
 | motoring | 機走 | |
+| Hindsight Sync | Hindsight Sync | 製品名。翻訳しない。 |
+| reanalysis archive | 再解析アーカイブ | |
+| Scan (button) | スキャン | |

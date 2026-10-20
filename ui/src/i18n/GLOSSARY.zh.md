@@ -114,3 +114,6 @@ PolarExplorer 界面和帮助参考中文版所用的固定译法，与 `GLOSSAR
 | Racing / Finished / Retired / Did not start / Did not finish | 比赛中 / 已完赛 / 退赛 / 未起航 / 未完赛 | ⚑ 请对照中国帆船竞赛规则中 RET、DNS、DNF 的译法。 |
 | knots / nautical miles | 节 / 海里 | 符号 kn、nm。 |
 | local solar time | 地方太阳时 | 一天中的时段：夜间、上午、下午、傍晚。 |
+| Hindsight Sync | Hindsight Sync | 产品名，不翻译。 |
+| reanalysis archive | 再分析存档 | |
+| Scan (button) | 扫描 | |

@@ -154,3 +154,6 @@ machine-drafted, needs a native sailor.
 | Esc (key) | Échap | Esc | |
 | add | ajouter | hinzufügen | Not "addieren" (Stokes drift). |
 | undo (as a step) | une annulation | ein Widerrufen-Schritt | "One undo" → "s'annule en une fois" / "ein Widerrufen-Schritt". |
+| Hindsight Sync | Hindsight Sync | Hindsight Sync | Product name; never translated. |
+| reanalysis archive | archive de réanalyse | Reanalyse-Archiv | The archive chosen in Settings → Reanalysis, listed by Hindsight Sync. |
+| Scan (button) | Rechercher | Suchen | Looks for Hindsight Sync; not "Scannen". |
