@@ -106,21 +106,13 @@ fn read(body: &Value, storage: Storage, into: &mut Listing) {
         let id = text(entry, "id").unwrap_or_default();
         let name = text(entry, "name").unwrap_or_default();
         let location_json = entry.get("location").cloned().unwrap_or(Value::Null);
-        if storage == Storage::Cloud
-            && location_json.get("credentials").is_none_or(Value::is_null)
-            && location_json
-                .get("credential_error")
-                .is_some_and(|e| !e.is_null())
+        if storage == Storage::Cloud && location_json.get("credentials").is_none_or(Value::is_null)
         {
-            let reason = match location_json.get("credential_error") {
-                Some(Value::String(s)) => s.clone(),
-                Some(Value::Object(o)) => o
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or(NO_CREDENTIALS)
-                    .to_owned(),
-                _ => NO_CREDENTIALS.to_owned(),
-            };
+            let reason = location_json
+                .get("credential_error")
+                .and_then(Value::as_str)
+                .unwrap_or(NO_CREDENTIALS)
+                .to_owned();
             into.unavailable.push(Unavailable {
                 id,
                 name: Some(name),
@@ -278,7 +270,8 @@ mod tests {
             "archives": [
                 cloud("aws", s3(Value::Null, "us-east-1", false, keys.clone())),
                 cloud("r2", s3(json!(format!("{}://acct.r2.cloudflarestorage.com", "https")), "auto", true, keys)),
-                cloud("nokey", no_key)],
+                cloud("nokey", no_key),
+                cloud("anon", s3(Value::Null, "us-east-1", false, Value::Null))],
             "errors": [{"id": "broken", "storage": "cloud", "error": "bad metadata"}]});
         let mut local = cloud("copy", json!({"protocol": "file", "path": "/data/copy"}));
         local["storage"] = json!("local");
@@ -306,12 +299,14 @@ mod tests {
             Some("2020-01-01T00:00:00Z")
         );
         assert_eq!(listing.archives[2].stop, None);
-        assert_eq!(listing.unavailable.len(), 2);
+        assert_eq!(listing.unavailable.len(), 3);
         assert_eq!(listing.unavailable[0].id, "nokey");
         assert_eq!(listing.unavailable[0].reason, "no AWS key");
-        assert_eq!(listing.unavailable[1].id, "broken");
-        assert_eq!(listing.unavailable[1].name, None);
-        assert_eq!(listing.unavailable[1].reason, "bad metadata");
+        assert_eq!(listing.unavailable[1].id, "anon");
+        assert_eq!(listing.unavailable[1].reason, NO_CREDENTIALS);
+        assert_eq!(listing.unavailable[2].id, "broken");
+        assert_eq!(listing.unavailable[2].name, None);
+        assert_eq!(listing.unavailable[2].reason, "bad metadata");
         let heads = seen.lock().unwrap();
         assert_eq!(heads.len(), 2);
         for head in heads.iter() {
