@@ -257,7 +257,7 @@ const topics: HelpTopic[] = [
     paragraphs: [
       "Het zoekveld in de titelbalk vindt elk bedieningselement op zijn naam of op woorden waaronder het bekend is, in de taal op het scherm, met of zonder accenten. Resultaten verschijnen terwijl u typt. Kies er een en PolarExplorer opent wat het verbergt — een paneel, een onderdeel, een weergave, een menu of Instellingen — en omlijnt het even in oranje.",
       "Helppagina’s staan in de resultaten onder de bedieningselementen. Deze naslag opent met F1, de knop ? of het menu Help, en heeft een eigen zoekfunctie.",
-      "Bronvermelding van gegevens: de ORC-catalogus komt uit jieter/orc-data (MIT); ERA5-wind en -golven van ECMWF / Copernicus Climate Change Service, via WeatherBench2 en ARCO-ERA5; stroom uit E.U. Copernicus Marine Service Information; en de ingebouwde basiskaart van Natural Earth (publiek domein). Over toont de versie van de catalogus. De documentatiemap van de applicatie bevat de gebruikershandleiding en de volledige vermeldingen van de gegevensbronnen.",
+      "Bronvermelding van gegevens: de ORC-catalogus komt uit jieter/orc-data (MIT); ERA5-wind en -golven van ECMWF / Copernicus Climate Change Service, via ARCO-ERA5; stroom uit E.U. Copernicus Marine Service Information; en de ingebouwde basiskaart van Natural Earth (publiek domein). Over toont de versie van de catalogus. De documentatiemap van de applicatie bevat de gebruikershandleiding en de volledige vermeldingen van de gegevensbronnen.",
     ],
     parameters: [
       ["Zoeken (Cmd+F / Ctrl+F)", "Gaat van overal naar het zoekveld."],

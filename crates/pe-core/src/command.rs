@@ -236,8 +236,8 @@ pub enum Command {
         /// New choice.
         after: bool,
     },
-    /// Chooses whether the global merged current includes Stokes drift
-    /// (spec.md 7.5.1, Q3). Applies to the next environment fetch.
+    /// Chooses whether the current includes Stokes drift
+    /// (spec.md 7.5, Q3). Applies to the next environment fetch.
     SetStokesDrift {
         /// Previous choice.
         before: bool,

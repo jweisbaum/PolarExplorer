@@ -257,7 +257,7 @@ const topics: HelpTopic[] = [
     paragraphs: [
       "La casella di ricerca nella barra del titolo trova qualsiasi comando per nome o per le parole con cui è noto, nella lingua dell’interfaccia, con o senza accenti. I risultati compaiono durante la digitazione. Sceglierne uno: PolarExplorer apre ciò che lo nasconde — un pannello, una sezione, una vista, un menu o le Impostazioni — e lo contorna in arancione per un istante.",
       "Le pagine dell’aiuto sono elencate sotto i comandi nei risultati. Questa guida si apre con F1, il pulsante ? o il menu Aiuto, e ha una propria ricerca.",
-      "Fonti dei dati: il catalogo ORC proviene da jieter/orc-data (MIT); il vento e le onde ERA5 da ECMWF / Copernicus Climate Change Service, tramite WeatherBench2 e ARCO-ERA5; le correnti da E.U. Copernicus Marine Service Information; e la cartografia di base integrata da Natural Earth (pubblico dominio). Informazioni mostra la versione del catalogo. La cartella della documentazione dell’applicazione contiene la guida per l’utente e le note complete sulle fonti dei dati.",
+      "Fonti dei dati: il catalogo ORC proviene da jieter/orc-data (MIT); il vento e le onde ERA5 da ECMWF / Copernicus Climate Change Service, tramite ARCO-ERA5; le correnti da E.U. Copernicus Marine Service Information; e la cartografia di base integrata da Natural Earth (pubblico dominio). Informazioni mostra la versione del catalogo. La cartella della documentazione dell’applicazione contiene la guida per l’utente e le note complete sulle fonti dei dati.",
     ],
     parameters: [
       ["Cerca (⌘+F / Ctrl+F)", "Porta alla casella di ricerca da qualsiasi punto."],

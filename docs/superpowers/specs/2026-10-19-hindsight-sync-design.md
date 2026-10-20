@@ -369,3 +369,31 @@ climatology that must never appear since the endpoints exclude it).
   nothing else moves.
 - The decisions log entry in plan.md (next D number) and the milestone
   (next M number) recording this change and the removal of Open Data.
+
+## Amendments during implementation
+
+Recorded in plan.md as D35 (milestone M28, complete 2026-10-20).
+
+- **The location file.** The remembered location and credentials live in
+  `reanalysis-archive.json` beside `settings.json`, written atomically and
+  owner-only (0600) from the first byte (`pe_core::io::write_atomic_private`),
+  rather than in `settings.json` as "Settings model" says. `settings.json`
+  keeps the port, `connected_once` and the archive's display details, so the
+  IPC `Settings` type never carries a secret. Clearing the choice removes the file.
+- **Credentials stay optional in the transport.** `ArchiveLocation::S3`
+  keeps `credentials: Option<Credentials>`; the never-anonymous rule is
+  enforced by the chooser, which lists a cloud archive with null
+  credentials as unavailable (its `credential_error` as the reason) and
+  refuses to choose it.
+- **Off the async runtime.** `reanalysis_scan`, `reanalysis_probe` and
+  `set_reanalysis_port` probe on a blocking thread (`spawn_blocking`):
+  Hindsight Sync's client is `reqwest::blocking`, which panics when made or
+  dropped on a tokio worker.
+- **A webdriver-only seam.** `PE_DRIVER_HINDSIGHT_PORT`, compiled only with
+  `pe-app`'s `webdriver` feature, makes a driven run ask only that port (or
+  none) for Hindsight Sync, never the person's own instance or settings
+  file; `tools/webdriver/ux/16-reanalysis.test.mjs` uses it with a fake.
+- **The muted line and the refresh.** The line under the dropdown shows the
+  archive's mode after its range, as this design says; the location file is
+  refreshed by any probe that lists the chosen id (credentials rotate in
+  Hindsight Sync), and left as it was by one that does not answer.

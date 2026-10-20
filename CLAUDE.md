@@ -39,15 +39,18 @@ stop and raise it rather than working around it.
 3. **Fetched environment data is project data, rendered views are not.**
    Wind, wave and current values interpolated at each track position are
    saved in the project with the dataset name and version they came from —
-   only those values, kilobytes per track. Open Data downloads live in
-   memory for the session (D27). At the user's request on 2026-10-07,
-   Whirlwind also keeps validated compressed Zarr inner chunks in a bounded
-   disk cache, in the selected cache directory. It is disposable: clearing
-   it never removes project weather, and only owned cache files may be deleted.
+   only those values, kilobytes per track. What a fetch reads is kept in
+   memory for the session (D27); for a cloud archive, validated compressed
+   Zarr inner chunks are also kept in a bounded disk cache in the selected
+   cache directory (asked 2026-10-07), and a folder archive has none. The
+   cache is disposable: clearing it never removes project weather, and only
+   owned cache files may be deleted.
 4. **Nothing is fetched that the user did not ask for, and nothing reaches
    in.** No CDN fonts, no map tiles, no telemetry, no remote schema fetches.
    The webview's CSP stays `'self'`-only. Only two crates may use the network:
-   `pe-env` (reanalysis archives) and `pe-trackers` (YellowBrick, Geovoile,
+   `pe-env` (Hindsight Sync's loopback API on `127.0.0.1` and the
+   reanalysis archive location it hands out, an S3-compatible endpoint or a
+   folder, nothing else; D35) and `pe-trackers` (YellowBrick, Geovoile,
    Blue Water Tracks, and the certificate catalogues' scraping: ORR on
    `www.regattaman.com`, ORC on `data.orc.org`), each for its allow-listed
    hosts only. A catalogue scrape runs when the person starts it, or at
@@ -76,9 +79,10 @@ stop and raise it rather than working around it.
    source URLs, remote references in the built bundle and the CSP — so for
    anything inbound the enforcement is that the dependency is not compiled in.
    Its seams (`PE_AUTOMATION_ROOT`, `PE_DRIVER_YELLOWBRICK`,
-   `PE_DRIVER_HINDSIGHT_PORT`: a driven run asks only that port for Hindsight
-   Sync, or none) are compiled only with the feature; the frontend's (`ui/src/automation.ts`) only in
-   development builds. Never ship the WebDriver feature.
+   `PE_DRIVER_HINDSIGHT_PORT`: a driven run asks only that port for
+   Hindsight Sync, or none) are compiled only with the feature; the
+   frontend's (`ui/src/automation.ts`) only in development builds. Never
+   ship the WebDriver feature.
    **And one inbound exception (D29):** the MCP service, `pe-app`'s `mcp`
    module (spec §3.7), listens on `127.0.0.1` only while the person has
    switched it on in Settings and only for the token that switch issued. It
@@ -122,9 +126,10 @@ crates/
   pe-trackers/  Network: YellowBrick, Geovoile (hwx decoder), Blue Water
                 Tracks clients and decoders; the ORR and ORC certificate
                 scrapers
-  pe-env/       Network: zarr readers for WeatherBench2 wind, ARCO-ERA5
-                waves, and ocean currents; pure-Rust blosc/LZ4 with block
-                reads by HTTP Range; in-memory block LRU; space-time sampling
+  pe-env/       Network: the Hindsight Sync client (loopback API); the
+                sharded-Zarr reader for the archives it lists (signed S3
+                byte ranges or a folder), memory and disk chunk caches;
+                space-time sampling
   pe-grib/      GRIB2 writer (fixed-layout message template, as in
                 VectorEffects' ve-grib), regional grids
   pe-app/       Tauri shell: IPC commands, state, jobs, autosave, settings;
@@ -184,7 +189,6 @@ cargo run -p orc-catalogue-builder -- ../orc-data/site/data \
     crates/pe-orc/data/catalogue.bin
 
 # Tests that use the network on purpose (never in the default suite)
-PE_TEST_LIVE=1 cargo test -p pe-env --test live -- --ignored --nocapture
 PE_TEST_LIVE=1 cargo test -p pe-trackers --test live -- --ignored --nocapture
 
 npm run build               # tauri build for the host target
@@ -259,10 +263,13 @@ redirects); any address taken from a response is checked against it before
 it is requested. Decoders get fixture tests from a recorded response
 in `crates/pe-trackers/tests/fixtures/`. No live request in the default suite.
 
-**Adding a reanalysis variable.** Add it to `pe-env`'s variable table with
-its dataset, units, direction sense and fill behaviour (land is NaN for waves
-and currents). Add a fixture chunk test and record the dataset version on
-each sample.
+**Adding a reanalysis variable.** The archive is Hindsight Sync's: a
+variable must already be on its `param` axis (layout 3 stores eleven). In
+`pe-env`'s reader, add its name to the names located in the `param` axis
+(never by position: layouts 2 and 3 differ), with its units, direction sense
+and fill behaviour (land is NaN for waves and currents); an archive that does
+not list it is refused in words. Add a fixture-archive test
+(`whirlwind::testing`) and keep the dataset record on each sample.
 
 **Adding an MCP tool.** In `crates/pe-app/src/mcp/tools/<group>.rs`, inside
 the group's `#[tool_router]` block: a parameter struct deriving `Deserialize`
@@ -324,22 +331,17 @@ and, in CI, ecCodes.
   `tests/mcp.rs`'s `http()` does.
 - Use `rustls` with the `ring` provider and `reqwest` blocking with
   `default-features = false` and the `rustls-no-provider` feature (reqwest's
-  plain `rustls` feature pulls in `aws-lc-rs`, a C library). No OpenSSL, no
-  `zarrs_http`. This keeps the Windows ARM64 and cross-compiled builds
-  working.
-- `zarrs` builds `libz-sys` as a build-time dependency of its build script
-  only; it runs on the build host and is not linked into the app. That is
-  the one accepted C build dependency. Anything linked into the app stays
-  pure Rust.
-- Blosc is decoded by our own pure-Rust decoder over `lz4_flex`; never pull
-  `blosc-src` or any other C library.
+  plain `rustls` feature pulls in `aws-lc-rs`, a C library). No OpenSSL. This keeps the Windows ARM64 and
+  cross-compiled builds working.
 - Geovoile hwx seeds differ per site. Parse them from the viewer HTML; never
   hard-code one set. They may be spread over several `data:image/png`
   sources (Route du Rhum 2018), and some sites answer an empty versions
   file (a version is only a cache-buster; 0 serves).
-- The ARCO-ERA5 time axis is preallocated past today. Coverage comes from
-  the root `.zattrs` (`valid_time_start`, `valid_time_stop`,
-  `valid_time_stop_era5t`), and a 404 chunk means missing, not an error.
+- A Hindsight Sync archive's `time` axis is preallocated past what is
+  filled (to 2051). The coverage shown is what Hindsight Sync lists
+  (`start_datetime`, `stop_datetime`); a missing shard (an S3 404, an
+  absent file) or inner chunk means missing data, not an error, while a 403
+  is a refusal that asks for Scan.
 - ORC's service (`data.orc.org`, `DownRMS`) serves only the current VPP
   year: any other year, and any country code it does not know, answers no
   certificates and no error. Every answer carries the country list, opens

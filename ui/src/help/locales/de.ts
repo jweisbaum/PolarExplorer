@@ -257,7 +257,7 @@ const topics: HelpTopic[] = [
     paragraphs: [
       "Das Suchfeld in der Titelleiste findet jedes Bedienelement über seinen Namen oder über Wörter, unter denen man es kennt, in der angezeigten Sprache, mit oder ohne Akzente und Umlaute. Die Ergebnisse erscheinen schon beim Tippen. Wählen Sie eines, und PolarExplorer öffnet, was es verdeckt — eine Seitenleiste, einen Abschnitt, eine Ansicht, ein Menü oder die Einstellungen — und umrandet es kurz orange.",
       "Hilfeseiten stehen in den Ergebnissen unter den Bedienelementen. Diese Hilfe öffnet sich mit F1, der Schaltfläche ? oder dem Hilfemenü und hat eine eigene Suche.",
-      "Datenquellen: Der ORC-Katalog stammt aus jieter/orc-data (MIT); ERA5-Wind und -Wellen von ECMWF / Copernicus Climate Change Service, über WeatherBench2 und ARCO-ERA5; Strömungen aus E.U. Copernicus Marine Service Information; die eingebettete Kartengrundlage von Natural Earth (gemeinfrei). Über zeigt die Katalogversion. Im Ordner documentation der Anwendung liegen das Handbuch und die vollständigen Quellenangaben.",
+      "Datenquellen: Der ORC-Katalog stammt aus jieter/orc-data (MIT); ERA5-Wind und -Wellen von ECMWF / Copernicus Climate Change Service, über ARCO-ERA5; Strömungen aus E.U. Copernicus Marine Service Information; die eingebettete Kartengrundlage von Natural Earth (gemeinfrei). Über zeigt die Katalogversion. Im Ordner documentation der Anwendung liegen das Handbuch und die vollständigen Quellenangaben.",
     ],
     parameters: [
       ["Suche (⌘+F / Strg+F)", "Springt von überall in das Suchfeld."],

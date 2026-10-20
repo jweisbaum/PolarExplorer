@@ -972,8 +972,8 @@ pub struct EnvMeta {
     /// at another interval starts over rather than mixing the two.
     #[serde(default)]
     pub interval_s: Option<i64>,
-    /// Whether the last fetch added Stokes drift to the global merged
-    /// current (spec.md 7.5.1); `None` before any fetch. Like the interval,
+    /// Whether the last fetch was asked for Stokes drift in the current
+    /// (spec.md 7.5); `None` before any fetch. Like the interval,
     /// a Refetch with the other choice starts over, so a track never mixes
     /// currents with and without it.
     #[serde(default)]
@@ -983,16 +983,16 @@ pub struct EnvMeta {
 /// One dataset a track's environment was taken from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatasetRecord {
-    /// Dataset name, e.g. `"weatherbench2-era5"`.
+    /// Dataset name: the archive's identity, e.g. its `s3://…` URI (spec.md 7.5).
     pub name: String,
     /// Dataset version as recorded by the archive.
     pub version: String,
     /// When it was fetched, UTC epoch seconds.
     pub fetched_at: i64,
     /// Whether this dataset's current includes tides. `None` for datasets
-    /// that are not currents; every current tier has tide today, GlobCurrent
-    /// included (`Some(true)`, FES2022, spec.md 7.5.1). `Some(false)` is
-    /// kept for a future tier without one, which the "leave out currents
+    /// that are not currents; a reanalysis archive's current includes tide
+    /// (`Some(true)`, spec.md 7.5). `Some(false)` is kept for a future
+    /// source without one, which the "leave out currents
     /// without tide" filter can still remove.
     #[serde(default)]
     pub has_tide: Option<bool>,

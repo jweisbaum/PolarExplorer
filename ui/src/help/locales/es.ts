@@ -257,7 +257,7 @@ const topics: HelpTopic[] = [
     paragraphs: [
       "El cuadro de búsqueda de la barra de título encuentra cualquier control por su nombre o por palabras con las que se le conoce, en el idioma de la pantalla, con o sin acentos. Los resultados aparecen mientras escribe. Elija uno y PolarExplorer abre lo que lo oculta —un panel, una sección, una vista, un menú o los Ajustes— y lo contornea en naranja durante un momento.",
       "Las páginas de ayuda se listan bajo los controles en los resultados. Esta referencia se abre con F1, el botón ? o el menú Ayuda, y tiene su propia búsqueda.",
-      "Créditos de los datos: el catálogo ORC procede de jieter/orc-data (MIT); el viento y las olas de ERA5, del ECMWF / Copernicus Climate Change Service, a través de WeatherBench2 y ARCO-ERA5; las corrientes, de E.U. Copernicus Marine Service Information; y el mapa base integrado, de Natural Earth (dominio público). Acerca de muestra la versión del catálogo. La carpeta de documentación de la aplicación incluye la guía del usuario y los avisos completos de las fuentes de datos.",
+      "Créditos de los datos: el catálogo ORC procede de jieter/orc-data (MIT); el viento y las olas de ERA5, del ECMWF / Copernicus Climate Change Service, a través de ARCO-ERA5; las corrientes, de E.U. Copernicus Marine Service Information; y el mapa base integrado, de Natural Earth (dominio público). Acerca de muestra la versión del catálogo. La carpeta de documentación de la aplicación incluye la guía del usuario y los avisos completos de las fuentes de datos.",
     ],
     parameters: [
       ["Buscar (⌘+F / Ctrl+F)", "Lleva al cuadro de búsqueda desde cualquier lugar."],

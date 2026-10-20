@@ -35,7 +35,7 @@ export default {
       await d.type('[data-feature="help:search"]', "Copernicus");
       await d.waitFor(".help-dialog article", { text: "Natural Earth" });
       const credits = await d.text(".help-dialog article");
-      for (const source of ["jieter/orc-data (MIT)", "ECMWF", "WeatherBench2", "ARCO-ERA5", "Copernicus Marine"]) {
+      for (const source of ["jieter/orc-data (MIT)", "ECMWF", "ARCO-ERA5", "Copernicus Marine"]) {
         assert.ok(credits.includes(source), `${language} credits name ${source}`);
       }
       await t.shot(`${language}-data-credits`);

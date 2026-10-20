@@ -279,7 +279,7 @@ export const TOPICS: HelpTopic[] = [
     paragraphs: [
       "The search box in the title bar finds any control by its name or by words it is known by, in the language on screen, with or without accents. Results appear as you type. Choose one and PolarExplorer opens whatever hides it — a panel, a section, a stage, a menu or Settings — and outlines it in orange for a moment.",
       "Help pages are listed below the controls in the results. This reference opens with F1, the ? button or the Help menu, and has its own search.",
-      "Data credits: the ORC catalogue comes from jieter/orc-data (MIT); ERA5 wind and waves from ECMWF / Copernicus Climate Change Service, via WeatherBench2 and ARCO-ERA5; currents from E.U. Copernicus Marine Service Information; and the embedded basemap from Natural Earth (public domain). About shows the catalogue’s version. The application’s documentation folder includes the user guide and full data source notices.",
+      "Data credits: the ORC catalogue comes from jieter/orc-data (MIT); ERA5 wind and waves from ECMWF / Copernicus Climate Change Service, via ARCO-ERA5; currents from E.U. Copernicus Marine Service Information; and the embedded basemap from Natural Earth (public domain). About shows the catalogue’s version. The application’s documentation folder includes the user guide and full data source notices.",
     ],
     parameters: [
       ["Search (Cmd+F / Ctrl+F)", "Moves to the search box from anywhere."],

@@ -83,7 +83,10 @@ These are repeated from `CLAUDE.md`, which is authoritative:
    only with `pe-app`'s `webdriver` feature, which no shipped build enables
    (D25). **One inbound exception (D29):** the MCP service of §3.7 listens
    on `127.0.0.1` while — and only while — the person has switched it on in
-   Settings, and answers only to the token that switch issued.
+   Settings, and answers only to the token that switch issued. For
+   reanalysis, `pe-env` reads Hindsight Sync's loopback API on `127.0.0.1`
+   and the archive location it hands out (an S3-compatible endpoint or a
+   folder), nothing else (§3.4, §7.5).
 5. Export is deterministic and byte-reproducible.
 6. Interaction stays fast; imports and fetches may be slow.
 7. Every string is translatable and every control is findable.
@@ -345,7 +348,8 @@ or a failed write leaves the previous setting in place.
   included, in `reanalysis-archive.json` beside it, written atomically and
   owner-only; that file never crosses IPC or reaches a project. Clearing the
   choice removes it. A remembered archive is read whether Hindsight Sync is
-  running or not. An earlier build's `data_source` key is ignored.
+  running or not. The key an earlier build kept for its source picker is
+  ignored.
   The choice is global and captured when a fetch is queued: a later choice
   does not change a queued request. Existing project values stay unchanged
   until a fetch is requested; fetching a track whose values came from
@@ -360,7 +364,7 @@ or a failed write leaves the previous setting in place.
   window opens, then removed in the background — only that folder, and only
   when it holds nothing but the dataset folders the cache wrote; its
   settings are no longer read or written.
-- **Whirlwind cache**: cache directory (empty for the platform cache folder),
+- **Reanalysis cache**: cache directory (empty for the platform cache folder),
   maximum size in decimal GB (default 10, range 1–4096), and **Clear cache**.
   A dedicated `whirlwind-hindsight-v1` child holds only validated compressed
   inner chunks; metadata and shard indexes are read anew each provider session.
@@ -373,8 +377,8 @@ or a failed write leaves the previous setting in place.
   invalidates in-flight writes and memory chunk reuse. Weather saved in projects
   is unchanged. Changing directory applies to later fetches; older cache files
   remain in their original directory.
-- **Network**: timeout (default 60 s, 5–600 s). Whirlwind downloads up to
-  64 chunks at once, which is not a setting.
+- **Network**: timeout (default 60 s, 5–600 s). Reanalysis downloads up
+  to 64 chunks at once, which is not a setting.
 - **Map projection** (§9.1), remembered here rather than in the project.
 - **Polar plot dot band** (§9.2): how far from the plot's wind speed a
   sample may be and still be drawn, ±0.25 to ±5 kn (default ±1 kn). A display
@@ -853,8 +857,9 @@ The ORC catalogue is **embedded in the app** (D3):
   so rebuilding one commit is byte-identical); About shows them (the native About panel), and the
   ORC polars section's footer shows the certificate count and commit date.
   About and the searchable help also credit jieter/orc-data (MIT), ECMWF /
-  Copernicus ERA5, WeatherBench2, ARCO-ERA5, Copernicus Marine and Natural Earth
-  in all three interface languages. Every installed bundle includes the user
+  Copernicus ERA5, ARCO-ERA5, Copernicus Marine and Natural Earth in every
+  interface language (the archives Hindsight Sync builds derive from ERA5
+  through ARCO-ERA5 and from Copernicus Marine's GlobCurrent). Every installed bundle includes the user
   guide, detailed data notices and ORC MIT notice in its documentation resources.
 - Rebuilding the embedded catalogue is a developer task and a new release.
   Between releases, a scrape of ORC's own service adds the current
@@ -1501,11 +1506,9 @@ contains `u10`, `v10`,
 the `param` coordinate names. There are no separate wave-array requests. Values
 are float16 (layout 2) or float32 (layout 3), among seven or eleven parameters,
 located by name, stored in Zstandard-compressed inner chunks inside rectilinear
-shards. Since 2026-10-11 the published inner chunks are 72 hours × all
-parameters × 20 × 20 cells (5° × 5°; 40 × 40 cells, 10° × 10°, before), in
-the same four latitude and five longitude shard bands. The reader takes the
-inner chunk shape from the metadata, so a sample costs a quarter of the
-bytes it did. Only inner chunks intersecting a requested sample's
+shards. Each archive has its own chunking (Hindsight Sync lists it as degrees
+× hours); the reader takes the inner chunk shape and the shard bands from the
+metadata, never assuming them. Only inner chunks intersecting a requested sample's
 spatial and temporal interpolation stencil are downloaded. It reads each
 required shard's checksummed index using a suffix Range request, then each
 required inner chunk using its exact byte range. It never downloads a complete
@@ -1513,8 +1516,8 @@ shard or scans the bucket. Duplicate chunk requests are coalesced across
 positions and selected tracks, and the bounded session memory cache reuses
 indexes, compressed chunks and decoded chunks across routes, including
 when a later request needs different parameters
-from the same chunk. Whirlwind additionally keeps validated compressed chunks
-in the bounded disk cache in Settings (§3.4), including across restarts.
+from the same chunk. A cloud archive's validated compressed chunks are also
+kept in the bounded disk cache in Settings (§3.4), including across restarts.
 A local archive is read from its folder with the same byte ranges and no disk
 cache.
 S3 reads use an async runtime with up to 64 requests in flight across tracks
@@ -1537,8 +1540,8 @@ the archive's identity: a cloud archive's `uri` exactly as Hindsight Sync
 gives it (`s3://`, `r2://`, `tigris://…`), a local copy's `source_uri` when it
 has one (so a copy and its source count as one archive and no home folder
 lands in a shared project) and its own `uri` otherwise; the version is
-`hindsight-layout-<layout_version>`; its current is the HistorySyncer
-GlobCurrent tidal current (`has_tide`).
+`hindsight-layout-<layout_version>`; the archive's current includes tide
+(`has_tide = Some(true)`).
 A track whose recorded archive differs (including one fetched before this
 naming) is fetched again from the start. Memory and disk cache entries are
 keyed by the same identity.
@@ -1783,9 +1786,9 @@ The environment fetch in detail (M9):
   sample's wind, waves and current (raw, corrected and which datasets) and
   the track's dataset records, so a restart that is cancelled leaves a
   track partly fetched at the new settings, never a mix of two fetches.
-- Within a batch, the wind's and waves' chunks share one pool, and the
-  currents (Copernicus Marine) are read beside them (Google Cloud), each
-  host with at most the concurrency setting in flight.
+- Wind, waves and current are parameters of one array, so one inner chunk
+  read serves all three; a cloud archive's host has at most 64 requests
+  in flight (§7.5).
 - The status bar shows the running track, its progress and how many wait,
   with Cancel fetch (all); a track's row has Cancel fetch for it. A
   failure is reported on the status line and leaves "partial" (or "failed"
@@ -1796,8 +1799,8 @@ The environment fetch in detail (M9):
 - Reads: a transient failure (a 5xx or 429 answer, a timeout, a dropped
   connection) is retried three times, pausing 0.5, 1 and 2 s; anything else
   fails at once. A retry pause ends at once on Cancel. A body over 64 MB is
-  refused. A redirect is followed only to the same host or, over HTTPS, to
-  another archive host (invariant 4). A block that arrives but fails to
+  refused. Signed archive reads follow no redirect; any other request
+  follows one only to the same host (invariant 4). A block that arrives but fails to
   decode fails the read and is not kept; a failed read is not retried as
   one. Opened archives
   are kept for the session, so only the first track pays their metadata
@@ -2534,12 +2537,8 @@ project; the second boat of the race downloaded 9.6 MB. Fetch weather starts
 immediately without a size-estimate modal (requested 2026-10-07).
 Wind, waves and currents are always sampled hourly
 (requested 2026-10-07); there is no coarser interval or size-based fallback.
-The optional MCP estimate counts, per ERA5 hour the samples need, five heads and the blocks
-holding their stencil rows (one hour's measured block sizes), leaves out
-blocks already in memory, and adds one typical current block per variable
-per box and block of hours crossed in the first tier whose box holds the
-position. Whirlwind instead counts the exact compressed inner chunks absent
-from its memory and disk caches. Existing projects retain the recorded
+The optional MCP estimate counts the exact compressed inner chunks absent
+from the reader's memory and disk caches. Existing projects retain the recorded
 interval of older fetched weather; a new fetch uses hourly sampling and
 starts over if the old interval differs. GRIB weather reads also use hourly
 sampling.

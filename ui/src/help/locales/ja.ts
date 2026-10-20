@@ -257,7 +257,7 @@ const topics: HelpTopic[] = [
     paragraphs: [
       "タイトルバーの検索フィールドでは、画面に表示中の言語で、名前またはそのコントロールを表す言葉から、アクセントの有無を問わずあらゆるコントロールを探せます。結果は入力と同時に表示されます。1 つを選ぶと、PolarExplorer はそれを隠しているもの（パネル、セクション、ビュー、メニュー、設定）を開き、しばらくのあいだオレンジ色の枠で囲みます。",
       "結果には、コントロールの下にヘルプページが表示されます。このヘルプは F1、? ボタン、またはヘルプメニューで開き、独自の検索機能があります。",
-      "データのクレジット：ORC カタログは jieter/orc-data（MIT）から、ERA5 の風と波は WeatherBench2 と ARCO-ERA5 を通じて ECMWF／Copernicus Climate Change Service から、海流は E.U. Copernicus Marine Service Information から、内蔵のベースマップは Natural Earth（パブリックドメイン）から取得しています。「PolarExplorer について」にカタログのバージョンが表示されます。アプリケーションのドキュメントフォルダには、ユーザガイドとデータソースの完全な表示が含まれています。",
+      "データのクレジット：ORC カタログは jieter/orc-data（MIT）から、ERA5 の風と波は ARCO-ERA5 を通じて ECMWF／Copernicus Climate Change Service から、海流は E.U. Copernicus Marine Service Information から、内蔵のベースマップは Natural Earth（パブリックドメイン）から取得しています。「PolarExplorer について」にカタログのバージョンが表示されます。アプリケーションのドキュメントフォルダには、ユーザガイドとデータソースの完全な表示が含まれています。",
     ],
     parameters: [
       ["検索（⌘+F／Ctrl+F）", "どこからでも検索フィールドに移動します。"],
