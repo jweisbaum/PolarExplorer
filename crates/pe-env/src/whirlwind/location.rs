@@ -144,6 +144,10 @@ impl ArchiveLocation {
 /// An archive and the name its values are recorded under: the provenance
 /// written on each sample, and the namespace of every cached chunk, so two
 /// archives never share either.
+///
+/// Serialised, it carries the location's credentials in clear: it is
+/// written only to the application's owner-only location file, never sent
+/// over IPC or saved in a project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArchiveRef {
     pub identity: String,

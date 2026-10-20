@@ -42,6 +42,9 @@ pub struct AppServices {
     /// fetch and kept so its opened archives serve every track.
     pub env_provider:
         std::sync::Mutex<Option<(crate::env::ProviderKey, std::sync::Arc<pe_env::Reanalysis>)>>,
+    /// What Hindsight Sync listed at the last probe that found it, kept for
+    /// the session so an archive can be chosen from it (spec.md 3.4).
+    pub reanalysis_listing: std::sync::Mutex<Option<pe_env::hindsight::Listing>>,
     /// The reanalysis GRIB export, at most one at a time (spec.md 7.8).
     pub grib_jobs: crate::grib::GribJobs,
     /// Tracker events downloaded this session, and the running download
@@ -74,6 +77,7 @@ impl AppState {
                 exit_allowed: std::sync::atomic::AtomicBool::new(false),
                 env_jobs: crate::env::EnvJobs::default(),
                 env_provider: std::sync::Mutex::new(None),
+                reanalysis_listing: std::sync::Mutex::new(None),
                 grib_jobs: crate::grib::GribJobs::default(),
                 trackers: crate::trackers::TrackerSession::default(),
                 orr: crate::orr::OrrCatalogue::default(),

@@ -48,8 +48,20 @@ export default {
     await mkdir(join(root, OLD_CHUNK, ".."), { recursive: true });
     await writeFile(join(root, OLD_CHUNK), Buffer.alloc(3_300_000));
     await mkdir(join(root, "config"), { recursive: true });
+    // A remembered reanalysis archive, so the fetch gets as far as the
+    // blocked download; its address answers nothing.
+    const archive = {
+      id: "ux", name: "UX archive", storage: "cloud", uri: "s3://whirlwind-hindsight/hindsight-routing",
+      source_uri: null, mode: "global", start: "2000-01-01T00:00:00Z", stop: null, layout_version: 3,
+      chunk_degrees: 5, chunk_hours: 72, products: ["wind10m"], place: "127.0.0.1",
+    };
     await writeFile(join(root, "config", "settings.json"),
-      JSON.stringify({ data_source: "whirlwind", chunk_cache: { location: "", size_limit_gb: 20 } }));
+      JSON.stringify({ chunk_cache: { location: "", size_limit_gb: 20 }, reanalysis: { port: 8765, connected_once: true, archive } }));
+    await writeFile(join(root, "config", "reanalysis-archive.json"), JSON.stringify({
+      id: "ux",
+      location: { protocol: "s3", bucket: "whirlwind-hindsight", prefix: "hindsight-routing",
+        endpoint_url: "http://127.0.0.1:9", region: "us-east-1", force_path_style: true, credentials: null },
+    }));
     await writeFile(join(root, "race.geojson"), race());
     return {
       env: { PE_AUTOMATION_ROOT: root },

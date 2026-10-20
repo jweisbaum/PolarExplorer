@@ -164,16 +164,6 @@ export default function SettingsDialog({ settings, onSettings, onClose }: {
 
         <section data-section="settings:weather">
           <h3>{t("Downloaded weather")}</h3>
-          <label className="settings-field">
-            {t("Data sources")}
-            <select data-feature="settings:data-source" value={settings.data_source}
-              title={t("Choose the archive for historical wind, waves and currents.")}
-              onChange={(e) => save(api.setDataSource(e.target.value as AppSettings["data_source"]))}>
-              <option value="whirlwind">{t("Whirlwind (Fast) S3")}</option>
-              <option value="whirlwind_r2">{t("Whirlwind (Fast) R2")}</option>
-              <option value="whirlwind_tigris">{t("Whirlwind (Fast) Tigris")}</option>
-            </select>
-          </label>
           <p className="muted">
             {t("A fetch downloads only the parts of the archives that hold a track's positions, and the project keeps only the wind, waves and current at each position: kilobytes per track.")}
           </p>

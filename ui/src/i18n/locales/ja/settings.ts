@@ -12,11 +12,6 @@ const catalogue: Record<string, string> = {
   "Cache cleared": "キャッシュを消去しました",
   "Whirlwind keeps downloaded chunks on disk for reuse across routes and app restarts. The least recently used chunks are removed when the cache is full.": "Whirlwind はダウンロードしたチャンクをディスクに保存し、別の航跡やアプリの再起動後にも再利用します。キャッシュが満杯になると、最も長く使われていないチャンクから削除されます。",
   "Whirlwind downloads up to 64 chunks at once.": "Whirlwind は最大 64 個のデータチャンクを同時にダウンロードします。",
-  "Data sources": "データソース",
-  "Whirlwind (Fast) S3": "Whirlwind（高速） S3",
-  "Whirlwind (Fast) R2": "Whirlwind（高速） R2",
-  "Whirlwind (Fast) Tigris": "Whirlwind（高速） Tigris",
-  "Choose the archive for historical wind, waves and currents.": "過去の風・波・海流データのアーカイブを選択します。",
 
   "Settings": "設定",
   "Close": "閉じる",

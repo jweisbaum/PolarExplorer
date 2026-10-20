@@ -452,7 +452,6 @@ export function boatApi(boatContext?: number) {
   setWeatherCache: (directory: string, maxSizeGb: number) => call<AppSettings>("set_weather_cache", { directory, maxSizeGb }),
   weatherCacheStatus: () => call<WeatherCacheStatus>("weather_cache_status"),
   clearWeatherCache: () => call<WeatherCacheStatus>("clear_weather_cache"),
-  setDataSource: (source: AppSettings["data_source"]) => call<AppSettings>("set_data_source", { source }),
   setNetwork: (network: NetworkSettings) => call<AppSettings>("set_network", { network }),
   /** Sets the map projection. */
   setProjection: (projection: MapProjection) => call<AppSettings>("set_projection", { projection }),

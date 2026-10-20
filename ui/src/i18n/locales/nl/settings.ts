@@ -12,11 +12,6 @@ const catalogue: Record<string, string> = {
   "Cache cleared": "Cache gewist",
   "Whirlwind keeps downloaded chunks on disk for reuse across routes and app restarts. The least recently used chunks are removed when the cache is full.": "Whirlwind bewaart gedownloade blokken op schijf om ze tussen tracks en na het herstarten van de app opnieuw te gebruiken. Als de cache vol is, worden de langst niet gebruikte blokken verwijderd.",
   "Whirlwind downloads up to 64 chunks at once.": "Whirlwind downloadt maximaal 64 blokken tegelijk.",
-  "Data sources": "Gegevensbronnen",
-  "Whirlwind (Fast) S3": "Whirlwind (snel) S3",
-  "Whirlwind (Fast) R2": "Whirlwind (snel) R2",
-  "Whirlwind (Fast) Tigris": "Whirlwind (snel) Tigris",
-  "Choose the archive for historical wind, waves and currents.": "Kies het archief voor historische wind, golven en stromingen.",
 
   "Settings": "Instellingen",
   "Close": "Sluiten",

@@ -39,7 +39,7 @@ use ts_rs::TS;
 use crate::commands::AppState;
 use crate::error::{AppError, Result};
 use crate::projects::ProjectSummary;
-use crate::settings::DataSource;
+use crate::reanalysis::{self, CapturedArchive};
 
 /// Knots per metre per second (1 kn = 1852 m/h).
 pub const KN_PER_MS: f64 = 3600.0 / 1852.0;
@@ -102,7 +102,9 @@ pub trait JobSink: Send + Sync {
 /// One track to fetch.
 #[derive(Debug, Clone)]
 struct Task {
-    data_source: DataSource,
+    /// The archive chosen when the fetch was queued: a later choice does
+    /// not change a queued request.
+    archive: Arc<CapturedArchive>,
     project: u64,
     source: u64,
     label: String,
@@ -232,7 +234,7 @@ impl EnvJobs {
                 let mut kept = VecDeque::new();
                 while let Some(next) = queue.waiting.pop_front() {
                     if tasks.len() < 128
-                        && next.data_source == task.data_source
+                        && *next.archive == *task.archive
                         && next.interval == task.interval
                     {
                         tasks.push(next);
@@ -304,21 +306,34 @@ impl EnvJobs {
 
 // -------------------------------------------------------------- ingest
 
-/// The version recorded with each archive, until Hindsight Sync supplies
-/// its layout version (Task 4).
-const ARCHIVE_VERSION: &str = "hindsight-v3";
+/// What a fetch's values are recorded under: the archive's identity and
+/// `hindsight-layout-<n>` ([`CapturedArchive::identity`], [`CapturedArchive::version`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Provenance {
+    identity: String,
+    version: String,
+}
 
-/// The index of the archive `identity` in a track's dataset list, adding it (with the
+impl Provenance {
+    fn of(archive: &CapturedArchive) -> Self {
+        Self {
+            identity: archive.identity().to_owned(),
+            version: archive.version(),
+        }
+    }
+}
+
+/// The index of the archive in a track's dataset list, adding it (with the
 /// fetch time) the first time a sample refers to it.
-fn record(meta: &mut EnvMeta, identity: &str, now: i64) -> Option<u16> {
+fn record(meta: &mut EnvMeta, archive: &Provenance, now: i64) -> Option<u16> {
     let found = meta
         .datasets
         .iter()
-        .position(|d| d.name == identity && d.version == ARCHIVE_VERSION);
+        .position(|d| d.name == archive.identity && d.version == archive.version);
     let index = found.unwrap_or_else(|| {
         meta.datasets.push(DatasetRecord {
-            name: identity.to_owned(),
-            version: ARCHIVE_VERSION.to_owned(),
+            name: archive.identity.clone(),
+            version: archive.version.clone(),
             fetched_at: now,
             has_tide: Dataset::Hindsight.has_tide(),
         });
@@ -329,14 +344,14 @@ fn record(meta: &mut EnvMeta, identity: &str, now: i64) -> Option<u16> {
 
 /// Writes what was found at one sample, in project units, and relates it
 /// to the sample's motion.
-/// `identity` names the archive the values came from (`ArchiveRef::identity`).
-fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, identity: &str, now: i64) {
+/// `archive` names the archive the values came from.
+fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, archive: &Provenance, now: i64) {
     let (tws, twd, wind_ds) = match env.wind {
         Some(w) => {
             let speed = w.u.hypot(w.v);
             // Wind is named for where it comes from: opposite its vector.
             let from = (speed > 1e-9).then(|| compass(-w.u, -w.v));
-            (Some(speed * KN_PER_MS), from, record(meta, identity, now))
+            (Some(speed * KN_PER_MS), from, record(meta, archive, now))
         }
         None => (None, None, None),
     };
@@ -348,7 +363,7 @@ fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, identity: &st
             sample.hs_m = w.hs;
             sample.wave_period_s = w.period_s;
             sample.wave_from = w.from;
-            sample.wave_dataset = record(meta, identity, now);
+            sample.wave_dataset = record(meta, archive, now);
         }
         None => {
             sample.hs_m = None;
@@ -363,7 +378,7 @@ fn ingest(sample: &mut Sample, meta: &mut EnvMeta, env: &EnvPoint, identity: &st
             sample.current_speed = Some(speed * KN_PER_MS);
             // A current is named for where it goes.
             sample.current_toward = Some(compass(c.u, c.v));
-            sample.current_dataset = record(meta, identity, now);
+            sample.current_dataset = record(meta, archive, now);
         }
         None => {
             sample.current_speed = None;
@@ -477,8 +492,8 @@ fn gather(state: &AppState, task: &Task, now: i64) -> Result<Option<Prepared>> {
             };
             let seconds = task.interval.seconds();
             let meta = &track.env_meta;
-            let identity = task.data_source.archive().identity;
-            let source_changed = different_source(meta, &identity);
+            let provenance = Provenance::of(&task.archive);
+            let source_changed = different_source(meta, &provenance.identity);
             let restart = task.restart
                 || source_changed
                 || meta.interval_s.is_some_and(|s| s != seconds)
@@ -498,7 +513,7 @@ fn gather(state: &AppState, task: &Task, now: i64) -> Result<Option<Prepared>> {
             track.env_meta.interval_s = Some(seconds);
             track.env_meta.stokes_drift = Some(stokes);
             // Keep source identity even when every requested cell is missing.
-            record(&mut track.env_meta, &identity, now);
+            record(&mut track.env_meta, &provenance, now);
             let todo: Vec<(usize, Point)> = track
                 .samples
                 .iter()
@@ -551,7 +566,7 @@ fn run(
         stokes_drift: stokes,
         parts: pe_env::Parts::ALL,
     };
-    let identity = task.data_source.archive().identity;
+    let provenance = Provenance::of(&task.archive);
     let total = todo.len().max(1);
     let mut done = 0;
     let mut outcome = Outcome::Done;
@@ -563,7 +578,7 @@ fn run(
         outcome = if cancel.load(Ordering::SeqCst) || matches!(error, EnvError::Cancelled) {
             Outcome::Cancelled
         } else {
-            Outcome::Failed(error.to_string())
+            failed(&error)
         };
     }
     for batch in batches_with_limit(&todo, BATCH_SPAN_S, BATCH_SAMPLES) {
@@ -586,7 +601,7 @@ fn run(
                 break;
             }
             Err(err) => {
-                outcome = Outcome::Failed(err.to_string());
+                outcome = failed(&err);
                 break;
             }
         };
@@ -594,7 +609,7 @@ fn run(
         let written = with_track(state, target, |track| {
             for ((k, _), env) in batch.iter().zip(&found) {
                 if let Some(sample) = track.samples.get_mut(*k) {
-                    ingest(sample, &mut track.env_meta, env, &identity, now);
+                    ingest(sample, &mut track.env_meta, env, &provenance, now);
                 }
             }
             track.env_meta.status = status_of(&track.samples, false);
@@ -617,6 +632,24 @@ fn run(
     }
     jobs.warn(&task.label, warnings);
     Ok(outcome)
+}
+
+/// The hint a refused read adds: credentials rotate in Hindsight Sync, and
+/// a probe refreshes the remembered copy.
+const CREDENTIALS_HINT: &str = "Press Scan in Settings to refresh the archive's credentials.";
+
+/// How a failed read ends a task: its message, with [`CREDENTIALS_HINT`]
+/// when the archive refused the credentials.
+fn failed(error: &EnvError) -> Outcome {
+    let message = error.to_string();
+    if ["403", "Forbidden", "AccessDenied"]
+        .iter()
+        .any(|sign| message.contains(sign))
+    {
+        Outcome::Failed(format!("{message} {CREDENTIALS_HINT}"))
+    } else {
+        Outcome::Failed(message)
+    }
 }
 
 /// Consecutive runs of `todo` (in time order, as samples are) covering at
@@ -685,25 +718,25 @@ fn run_tasks(
 /// What the provider was built from; a settings change builds a new one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderKey {
-    data_source: DataSource,
+    archive: CapturedArchive,
     weather_cache: crate::weather_cache::WeatherCacheSettings,
     memory_bytes: u64,
     timeout_s: u64,
     concurrency: u32,
 }
 
-/// The reanalysis provider for the current settings, kept while they do not
-/// change so the opened archives are reused across tracks and jobs.
+/// The reanalysis provider for the chosen archive and the current settings,
+/// kept while they do not change so the opened archive is reused across
+/// tracks and jobs. Refused, naming the setting, when no archive is chosen.
 pub fn provider(state: &AppState) -> Result<Arc<Reanalysis>> {
-    let source = state.with_session(|s| Ok(s.settings.data_source))?;
-    provider_for_source(state, source)
+    provider_for(state, &reanalysis::captured(state)?)
 }
 
-fn provider_for_source(state: &AppState, data_source: DataSource) -> Result<Arc<Reanalysis>> {
+fn provider_for(state: &AppState, archive: &CapturedArchive) -> Result<Arc<Reanalysis>> {
     let key = state.with_session(|session| {
         let s = &session.settings;
         Ok(ProviderKey {
-            data_source,
+            archive: archive.clone(),
             weather_cache: s.weather_cache.clone(),
             memory_bytes: s.weather_memory_bytes(),
             timeout_s: u64::from(s.network.timeout_s),
@@ -721,11 +754,16 @@ fn provider_for_source(state: &AppState, data_source: DataSource) -> Result<Arc<
     }
     let timeout = std::time::Duration::from_secs(key.timeout_s);
     let memory = pe_env::BlockCache::new(key.memory_bytes);
-    let reanalysis = Arc::new(
-        Reanalysis::open(key.data_source.archive(), timeout, memory)
-            .map_err(|e| AppError::Internal(e.to_string()))?
-            .with_whirlwind_cache(crate::weather_cache::open(state, &key.weather_cache)?),
-    );
+    let opened = Reanalysis::open(key.archive.archive_ref(), timeout, memory)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    // A folder on this computer is read in place: copying its chunks into
+    // a disk cache would only double them.
+    let reanalysis = Arc::new(match key.archive.location {
+        pe_env::whirlwind::ArchiveLocation::File { .. } => opened,
+        pe_env::whirlwind::ArchiveLocation::S3 { .. } => {
+            opened.with_whirlwind_cache(crate::weather_cache::open(state, &key.weather_cache)?)
+        }
+    });
     *slot = Some((key, Arc::clone(&reanalysis)));
     Ok(reanalysis)
 }
@@ -765,7 +803,7 @@ pub fn start(app: tauri::AppHandle) {
                     Some(next) => next,
                     None => continue,
                 };
-                match provider_for_source(&state, tasks[0].data_source) {
+                match provider_for(&state, &tasks[0].archive) {
                     Ok(provider) => {
                         run_tasks(&state, &tasks, provider.as_ref(), &sink, &cancel, now());
                     }
@@ -810,9 +848,8 @@ fn different_source(meta: &EnvMeta, identity: &str) -> bool {
 
 /// The positions of the named tracks still to fetch (all of them when
 /// `restart`), each track's label, and the open project's id.
-fn positions(state: &AppState, sources: &[u64], restart: bool) -> Result<Gathered> {
+fn positions(state: &AppState, sources: &[u64], restart: bool, identity: &str) -> Result<Gathered> {
     state.with_session(|session| {
-        let identity = session.settings.data_source.archive().identity;
         let open = session.require_open()?;
         open.ensure_editable()?;
         let mut labels = Vec::new();
@@ -826,7 +863,7 @@ fn positions(state: &AppState, sources: &[u64], restart: bool) -> Result<Gathere
                 field: "Track",
                 value: source.label.clone(),
             })?;
-            let source_changed = different_source(&track.env_meta, &identity);
+            let source_changed = different_source(&track.env_meta, identity);
             let interval_changed = track
                 .env_meta
                 .interval_s
@@ -875,8 +912,9 @@ pub const STORED_BYTES_PER_SAMPLE: u64 = 8;
 /// [`env_estimate`] without a Tauri handle, through the session's
 /// provider (what it already holds is not counted).
 pub fn estimate_for(state: &AppState, sources: &[u64], restart: bool) -> Result<EnvEstimate> {
-    let points = positions(state, sources, restart)?.points;
-    let e = provider(state)?
+    let archive = reanalysis::captured(state)?;
+    let points = positions(state, sources, restart, archive.identity())?.points;
+    let e = provider_for(state, &archive)?
         .estimate(&points)
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(EnvEstimate {
@@ -914,15 +952,15 @@ pub fn queue_fetch(
     restart: bool,
 ) -> Result<EnvJobsStatus> {
     let interval = interval(interval_name)?;
-    let data_source = state.with_session(|s| Ok(s.settings.data_source))?;
+    let archive = Arc::new(reanalysis::captured(state)?);
     let Gathered {
         project, labels, ..
-    } = positions(state, sources, restart)?;
+    } = positions(state, sources, restart, archive.identity())?;
     state.env_jobs.enqueue(
         labels
             .into_iter()
             .map(|(source, label)| Task {
-                data_source,
+                archive: Arc::clone(&archive),
                 project,
                 source,
                 label,
@@ -1060,6 +1098,10 @@ mod tests {
             sog: None,
         };
         const IDENTITY: &str = "s3://whirlwind-hindsight/hindsight-routing";
+        let archive = Provenance {
+            identity: IDENTITY.to_owned(),
+            version: "hindsight-layout-3".to_owned(),
+        };
         let mut sample = Sample::at(pe_core::SampleId(1), 0, &fix);
         let mut meta = EnvMeta::default();
         let env = EnvPoint {
@@ -1075,7 +1117,7 @@ mod tests {
                 dataset: Dataset::Hindsight,
             }),
         };
-        ingest(&mut sample, &mut meta, &env, IDENTITY, 42);
+        ingest(&mut sample, &mut meta, &env, &archive, 42);
         // Kept at the stored precision (D27): 9.72 kn, 36.9°, 1.94 kn.
         assert_eq!(sample.tws, Some(9.72));
         assert_eq!(sample.twd_from, Some(36.9));
@@ -1091,10 +1133,10 @@ mod tests {
             "the Hindsight current includes the tide"
         );
         assert_eq!(meta.datasets[0].name, IDENTITY);
-        assert_eq!(meta.datasets[0].version, "hindsight-v3");
+        assert_eq!(meta.datasets[0].version, "hindsight-layout-3");
         assert_eq!(meta.datasets[0].fetched_at, 42);
         // The same archive again is the same record.
-        ingest(&mut sample, &mut meta, &env, IDENTITY, 99);
+        ingest(&mut sample, &mut meta, &env, &archive, 99);
         assert_eq!(meta.datasets.len(), 1);
         assert_eq!(meta.datasets[0].fetched_at, 42);
     }

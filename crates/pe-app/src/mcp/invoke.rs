@@ -115,7 +115,8 @@ pub const EXCLUDED: &[&str] = &[
     "set_autosave_mode",
     "set_weather_memory",
     "set_network",
-    "set_data_source",
+    "set_reanalysis_port",
+    "set_reanalysis_archive",
     "set_weather_cache",
     "weather_cache_status",
     "clear_weather_cache",
@@ -243,6 +244,9 @@ pub const TABLE: &[(&str, Handler)] = &[
     command!(async env_estimate, crate::env::env_estimate, { boat_context: Option<u64>, source_ids: Vec<u64>, restart: bool }),
     command!(env_jobs, crate::env::env_jobs, { boat_context: Option<u64> }),
     command!(set_use_corrected, crate::env::set_use_corrected, { boat_context: Option<u64>, on: bool }),
+    // Hindsight Sync's listing: names, places and reasons, never a location.
+    command!(reanalysis_scan, crate::reanalysis::reanalysis_scan, {}),
+    command!(reanalysis_probe, crate::reanalysis::reanalysis_probe, {}),
     // The polar views' edits.
     command!(set_excluded, crate::polar3d::set_excluded, { boat_context: Option<u64>, nodes: Vec<crate::polar3d::PolarNodeRef>, samples: Vec<u64>, excluded: bool }),
     command!(polar_edit_surface, crate::polar_edit::polar_edit_surface, { boat_context: Option<u64>, source_id: u64 }),
@@ -372,6 +376,14 @@ pub const COMMAND_EFFECTS: &[(&str, whirlwind_mcp::policy::Effect)] = &[
     ("cancel_tracker_event", whirlwind_mcp::policy::Effect::Edit),
     ("env_jobs", whirlwind_mcp::policy::Effect::Read),
     ("set_use_corrected", whirlwind_mcp::policy::Effect::Edit),
+    (
+        "reanalysis_scan",
+        whirlwind_mcp::policy::Effect::ReadNetwork,
+    ),
+    (
+        "reanalysis_probe",
+        whirlwind_mcp::policy::Effect::ReadNetwork,
+    ),
     ("set_excluded", whirlwind_mcp::policy::Effect::Edit),
     ("polar_edit_surface", whirlwind_mcp::policy::Effect::Read),
     ("edit_polar", whirlwind_mcp::policy::Effect::Edit),

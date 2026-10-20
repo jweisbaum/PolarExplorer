@@ -12,11 +12,6 @@ const catalogue: Record<string, string> = {
   "Cache cleared": "缓存已清空",
   "Whirlwind keeps downloaded chunks on disk for reuse across routes and app restarts. The least recently used chunks are removed when the cache is full.": "Whirlwind 将下载的数据块保存在磁盘上，供不同航迹和应用重启后重复使用。缓存已满时，将删除最久未使用的数据块。",
   "Whirlwind downloads up to 64 chunks at once.": "Whirlwind 最多同时下载 64 个数据块。",
-  "Data sources": "数据来源",
-  "Whirlwind (Fast) S3": "Whirlwind（快） S3",
-  "Whirlwind (Fast) R2": "Whirlwind（快） R2",
-  "Whirlwind (Fast) Tigris": "Whirlwind（快） Tigris",
-  "Choose the archive for historical wind, waves and currents.": "选择历史风、海浪和洋流数据档案。",
 
   "Settings": "设置",
   "Close": "关闭",

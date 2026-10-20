@@ -12,11 +12,6 @@ const catalogue: Record<string, string> = {
   "Cache cleared": "مُسحت الذاكرة المؤقتة",
   "Whirlwind keeps downloaded chunks on disk for reuse across routes and app restarts. The least recently used chunks are removed when the cache is full.": "يحتفظ Whirlwind بالأجزاء المنزّلة على القرص لإعادة استخدامها بين المسارات وبعد إعادة تشغيل التطبيق. عند امتلاء الذاكرة المؤقتة، تُحذف الأجزاء التي لم تُستخدم منذ أطول مدة.",
   "Whirlwind downloads up to 64 chunks at once.": "ينزّل Whirlwind ما يصل إلى 64 كتلة بيانات في وقت واحد.",
-  "Data sources": "مصادر البيانات",
-  "Whirlwind (Fast) S3": "Whirlwind (سريع) S3",
-  "Whirlwind (Fast) R2": "Whirlwind (سريع) R2",
-  "Whirlwind (Fast) Tigris": "Whirlwind (سريع) Tigris",
-  "Choose the archive for historical wind, waves and currents.": "اختر أرشيف بيانات الرياح والأمواج والتيارات التاريخية.",
 
   "Settings": "الإعدادات",
   "Close": "إغلاق",

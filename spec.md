@@ -318,26 +318,38 @@ or a failed write leaves the previous setting in place.
 - **Units**: boat and wind speed (kn default, m/s, km/h), wave height (m,
   ft), distance (nm, km).
 - **Autosave**: recovery (default), save, off.
-- **Data sources**: **Whirlwind (Fast) S3** (default) reads
-  `s3://whirlwind-hindsight/hindsight-routing`, in `us-east-1`, for wind,
-  waves and current. **Whirlwind (Fast) R2** reads Cloudflare R2 at the
-  configured account endpoint; **Whirlwind (Fast) Tigris** reads Tigris at
-  `fly.storage.tigris.dev`. Both use `whirlwind-hindsight/hindsight-routing`
-  and SigV4 region `auto`. Since 2026-10-11 the archive is published on S3
-  only: R2 and Tigris remain selectable but hold no weather (the user removed
-  their copies when the layout changed), so a fetch from them reports
-  missing metadata, or missing weather where metadata alone was left behind.
-  The choice is global and captured when a fetch is queued. Existing
-  project values stay unchanged until a fetch is requested; resuming a track
-  from a different source replaces its weather, so a track never mixes sources.
-  S3 reads are anonymous, including metadata and byte ranges: no AWS
-  credential file or environment variables are read, and no authorization or
-  signing headers are sent. At the user's explicit request on
-  2026-10-07, the supplied R2 and Tigris S3 credentials are built into the Rust
-  backend, redacted from Debug and excluded from settings, IPC, projects and
-  URLs. The R2 management API token is not needed or bundled. Signed requests
-  never follow redirects. Each storage source has its own provenance and
-  endpoint-scoped memory/disk cache keys.
+- **Reanalysis**: the archive weather is fetched from, chosen among those
+  Hindsight Sync lists. Hindsight Sync is a separate application on this
+  computer whose read-only API answers on `127.0.0.1`; PolarExplorer asks
+  `GET /v1/archives/cloud/reanalysis` and `/v1/archives/local/reanalysis`
+  with no `Origin` header, and Hindsight Sync counts as detected when the
+  cloud listing answers HTTP 200 with `api_version: 1` within 2 seconds.
+  **Port** (default 8765, 1–65535) is saved on change and that port is
+  probed. A probe also runs once at startup (the frontend is told through
+  `reanalysis://changed` when it answers) and whenever Settings opens.
+  **Scan** tries the saved port, then 8765, then the port in Hindsight
+  Sync's own settings file (`<config dir>/com.historysyncer.desktop/settings.json`,
+  `archive_api.port`, absent meaning 8765) when that file is readable; the
+  first that answers is saved. A probe that answers sets
+  `connected_once` (never cleared), replaces the list of archives kept in
+  memory for the session, and, when it lists the chosen archive, refreshes
+  the remembered details and location (credentials rotate in Hindsight
+  Sync). A probe that does not answer changes nothing.
+  **Reanalysis archive** lists the archives cloud first, then this
+  computer's; one Hindsight Sync lists in `errors`, or a cloud archive whose
+  credentials are null, cannot be chosen, and its reason is given. Choosing
+  stores the archive's display details in `settings.json` under
+  `reanalysis` (`port`, `connected_once`, `archive`: id, name, storage, uri,
+  source uri, mode, start, stop, layout version, chunk degrees and hours,
+  products, and the host or folder shown) and its location, credentials
+  included, in `reanalysis-archive.json` beside it, written atomically and
+  owner-only; that file never crosses IPC or reaches a project. Clearing the
+  choice removes it. A remembered archive is read whether Hindsight Sync is
+  running or not. An earlier build's `data_source` key is ignored.
+  The choice is global and captured when a fetch is queued: a later choice
+  does not change a queued request. Existing project values stay unchanged
+  until a fetch is requested; fetching a track whose values came from
+  another archive replaces its weather, so a track never mixes archives.
 - **Downloaded weather**: "Keep downloaded weather in memory for this
   session (MB)" (default 256, 16–4096). The blocks a fetch downloads (§7.5)
   are kept in memory, least recently used first to go, so other boats of the
@@ -1476,9 +1488,14 @@ reanalysis request. Repeated clicks are disabled while the start request is
 pending; a failed start reports its error and keeps the selected tracks for
 retry. Progress and cancellation remain in the status bar and track list.
 
+Weather is read from the chosen archive (§3.4), Hindsight Sync running or
+not. With none chosen, a fetch (and a GRIB export, §7.8) is refused with
+*Choose a reanalysis archive in Settings before fetching weather.*; with
+its remembered location missing, with *The remembered archive's location is
+missing. Press Scan in Settings.* (error kind `no-reanalysis-archive`).
 The route reader uses the archive's Zarr v3
-metadata, coordinate axes and parameter names. All three Whirlwind sources
-expect the combined layout published on S3 under `hindsight-routing`: `data`
+metadata, coordinate axes and parameter names. The chosen archive is
+expected in the combined layout: `data`
 contains `u10`, `v10`,
 `ucur`, `vcur`, `wave_direction`, `wave_height` and `wave_period`, mapped by
 the `param` coordinate names. There are no separate wave-array requests. Values
@@ -1501,7 +1518,7 @@ S3 reads use an async runtime with up to 64 requests in flight across tracks
 and parameters. Each shard's chunks can download as soon as its index arrives,
 without waiting for unrelated indexes. Decoding uses at most eight CPU workers;
 disk-cache reads, checksums and writes run concurrently under the cache limit.
-Up to 128 queued tracks using the same source share time-ordered batches of up
+Up to 128 queued tracks using the same archive share time-ordered batches of up
 to 72 hours per track and 10,000 total samples, planning and decoding each required chunk
 once per batch. Different Stokes choices are sampled separately. Progress and
 cancellation remain per track, and project updates are coalesced per batch.
@@ -1510,10 +1527,15 @@ all tracks interrupts pending HTTP reads and retry waits. Completed batches
 stay saved and resume skips their samples. A failed shared read is retried in
 per-track subsets to isolate the failure. Missing objects and
 inner chunks are missing data, while authentication errors and corrupt data
-fail the fetch. The optional MCP estimate counts actual compressed byte lengths from the
-needed indexes, counting each combined chunk once. Whirlwind provenance is
-the archive's identity, `s3://`, `r2://` or `tigris://whirlwind-hindsight/hindsight-routing`,
-version `hindsight-v3`; its current is the HistorySyncer GlobCurrent tidal current.
+fail the fetch; a refusal (403, `Forbidden`, `AccessDenied`) adds *Press
+Scan in Settings to refresh the archive's credentials.* to the message. The optional MCP estimate counts actual compressed byte lengths from the
+needed indexes, counting each combined chunk once. Provenance is
+the archive's identity: a cloud archive's `uri` exactly as Hindsight Sync
+gives it (`s3://`, `r2://`, `tigris://…`), a local copy's `source_uri` when it
+has one (so a copy and its source count as one archive and no home folder
+lands in a shared project) and its own `uri` otherwise; the version is
+`hindsight-layout-<layout_version>`; its current is the HistorySyncer
+GlobCurrent tidal current (`has_tide`).
 A track whose recorded archive differs (including one fetched before this
 naming) is fetched again from the start. Memory and disk cache entries are
 keyed by the same identity.

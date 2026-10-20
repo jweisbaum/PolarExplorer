@@ -63,16 +63,16 @@ impl Work {
                 );
             }
             Err(EnvError::Cancelled) => return self.finish(state, Outcome::Cancelled),
-            Err(err) => return self.finish(state, Outcome::Failed(err.to_string())),
+            Err(err) => return self.finish(state, failed(&err)),
         };
-        let identity = self.task.data_source.archive().identity;
+        let provenance = Provenance::of(&self.task.archive);
         if with_track(state, self.target, |track| {
             for (&index, env) in indices.iter().zip(&found) {
                 ingest(
                     &mut track.samples[index],
                     &mut track.env_meta,
                     env,
-                    &identity,
+                    &provenance,
                     now,
                 );
             }
@@ -189,7 +189,7 @@ pub(super) fn run(
                     {
                         Outcome::Cancelled
                     } else {
-                        Outcome::Failed(err.to_string())
+                        failed(&err)
                     };
                     item.finish(state, outcome)?;
                 }
@@ -207,7 +207,7 @@ pub(super) fn run(
                     let outcome = if state.env_jobs.cancelled(&item.task) {
                         Outcome::Cancelled
                     } else {
-                        Outcome::Failed(err.to_string())
+                        failed(&err)
                     };
                     item.finish(state, outcome)?;
                 }
@@ -253,10 +253,12 @@ pub(super) fn run(
                     {
                         Outcome::Cancelled
                     } else {
-                        Outcome::Failed(match &other {
-                            Err(err) => err.to_string(),
-                            _ => "The weather archive returned an incomplete batch".to_owned(),
-                        })
+                        match &other {
+                            Err(err) => failed(err),
+                            _ => Outcome::Failed(
+                                "The weather archive returned an incomplete batch".to_owned(),
+                            ),
+                        }
                     };
                     work[*i].finish(state, outcome)?;
                 }

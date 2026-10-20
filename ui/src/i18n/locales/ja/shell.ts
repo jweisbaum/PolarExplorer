@@ -110,6 +110,7 @@ const catalogue: Record<string, string> = {
   "That value is not accepted.": "その値は受け付けられません。",
   "The operation could not be completed.": "操作を完了できませんでした。",
   "Something went wrong inside PolarExplorer.": "PolarExplorer の内部で問題が発生しました。",
+  "No reanalysis archive can be read. Choose one in Settings, or press Scan there.": "読み取れる再解析アーカイブがありません。設定で選ぶか、設定でスキャンを押してください。",
   "Something went wrong.": "問題が発生しました。",
   "Undone: {action}": "取り消しました：{action}",
   "Redone: {action}": "やり直しました：{action}",

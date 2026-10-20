@@ -53,6 +53,7 @@ fn a_fastnet_boat_costs_megabytes_to_fetch_and_kilobytes_to_keep() {
     }
     let root = TempRoot::new("weather-download");
     let app = root.state();
+    common::choose_live_archive(&app);
     projects::create(&app, "Weather".to_owned(), None, false).unwrap();
     let view = trackers::download_listed(
         &app,

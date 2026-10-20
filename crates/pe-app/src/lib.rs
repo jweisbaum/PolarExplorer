@@ -34,6 +34,7 @@ pub mod polar_plot;
 pub mod priority;
 pub mod projects;
 pub mod quit;
+pub mod reanalysis;
 pub mod session;
 pub mod settings;
 pub mod trackers;
@@ -78,6 +79,8 @@ pub fn run() -> anyhow::Result<()> {
             // The catalogues' startup schedule, only if the person chose it
             // (spec.md 5.4).
             catalogues::on_startup(app.handle().clone());
+            // One probe of Hindsight Sync's port on loopback (spec.md 3.4).
+            reanalysis::on_startup(app.handle().clone());
             // The MCP service, only if the person left it on (spec.md 3.7).
             // With the setting off this starts nothing: no socket, no task.
             let mcp_settings = app
@@ -216,7 +219,10 @@ pub fn run() -> anyhow::Result<()> {
             settings::set_autosave_mode,
             settings::set_weather_memory,
             settings::set_network,
-            settings::set_data_source,
+            reanalysis::reanalysis_scan,
+            reanalysis::reanalysis_probe,
+            reanalysis::set_reanalysis_port,
+            reanalysis::set_reanalysis_archive,
             weather_cache::set_weather_cache,
             weather_cache::weather_cache_status,
             weather_cache::clear_weather_cache,

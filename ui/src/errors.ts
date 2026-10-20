@@ -34,6 +34,7 @@ function lineFor(kind: string): string | null {
     case "orc-duplicate": return t("The project already holds this certificate.");
     case "doing": return t("The operation could not be completed.");
     case "internal": return t("Something went wrong inside PolarExplorer.");
+    case "no-reanalysis-archive": return t("No reanalysis archive can be read. Choose one in Settings, or press Scan there.");
     case "tracker-address": return t("This is not an event address this tracker serves.");
     case "tracker-unavailable": return t("The tracker is not answering right now. Try again in a moment.");
     case "tracker-no-event": return t("The tracker has no public event at this address.");

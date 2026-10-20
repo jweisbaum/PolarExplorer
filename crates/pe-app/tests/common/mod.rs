@@ -2,6 +2,7 @@
 #![allow(
     dead_code,
     clippy::expect_used,
+    clippy::unwrap_used,
     reason = "each test binary uses a different part"
 )]
 
@@ -137,4 +138,109 @@ pub fn add_blend_sources(app: &AppState) {
         Ok(())
     })
     .expect("the blend fixture's sources");
+}
+
+// ------------------------------------------- the remembered archive
+
+/// The archive the fetch tests read: the identity the fixture archive has
+/// always been recorded under.
+pub const ARCHIVE_URI: &str = "s3://whirlwind-hindsight/hindsight-routing";
+
+/// An archive as Hindsight Sync would list it, at `location`.
+pub fn listed_archive(
+    id: &str,
+    uri: &str,
+    location: pe_env::whirlwind::ArchiveLocation,
+) -> pe_env::hindsight::ListedArchive {
+    let storage = match location {
+        pe_env::whirlwind::ArchiveLocation::File { .. } => pe_env::hindsight::Storage::Local,
+        pe_env::whirlwind::ArchiveLocation::S3 { .. } => pe_env::hindsight::Storage::Cloud,
+    };
+    pe_env::hindsight::ListedArchive {
+        id: id.to_owned(),
+        name: id.to_owned(),
+        storage,
+        uri: uri.to_owned(),
+        source_uri: None,
+        mode: "global".to_owned(),
+        start: "2000-01-01T00:00:00Z".to_owned(),
+        stop: None,
+        layout_version: 3,
+        chunk_degrees: 5,
+        chunk_hours: 72,
+        products: vec!["wind10m".to_owned()],
+        location,
+    }
+}
+
+/// Chooses the fixture archive, as Settings would, without Hindsight Sync:
+/// at `endpoint` (a `pe_env::whirlwind::testing::Server`'s), or at an
+/// address nothing answers when the test's provider reads nothing.
+pub fn remember_archive(state: &AppState, endpoint: Option<&str>) {
+    let location = pe_env::whirlwind::testing::location(endpoint.unwrap_or("http://127.0.0.1:9"));
+    pe_app::reanalysis::remember(state, &listed_archive("fixture", ARCHIVE_URI, location))
+        .expect("remember the archive");
+}
+
+/// For the live tests: finds Hindsight Sync on this computer and chooses
+/// the first archive it lists (cloud first), as a person would in Settings.
+pub fn choose_live_archive(state: &AppState) {
+    let found = pe_app::reanalysis::scan_now(state).expect("scan");
+    assert!(found.detected, "the live tests read through Hindsight Sync");
+    let first = found.archives.first().expect("an archive to read");
+    pe_app::reanalysis::archive_set(state, Some(first.id.clone())).expect("choose it");
+}
+
+// ------------------------------------------- a stub on loopback
+
+pub type Routes = std::sync::Arc<std::sync::Mutex<Vec<(&'static str, u16, String)>>>;
+
+/// A loopback server answering each request with the first route whose
+/// path ends the request's, or 404; the routes can change while it runs.
+/// Records every request line.
+pub struct Stub {
+    pub port: u16,
+    pub routes: Routes,
+    pub seen: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+pub fn stub(routes: Vec<(&'static str, u16, String)>) -> Stub {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let routes: Routes = std::sync::Arc::new(std::sync::Mutex::new(routes));
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (served, log) = (std::sync::Arc::clone(&routes), std::sync::Arc::clone(&seen));
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut socket) = stream else { break };
+            let (routes, log) = (std::sync::Arc::clone(&served), std::sync::Arc::clone(&log));
+            std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let mut request = Vec::new();
+                let mut buf = [0u8; 4096];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match socket.read(&mut buf) {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => request.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let head = String::from_utf8_lossy(&request).to_string();
+                let path = head.split_whitespace().nth(1).unwrap_or("").to_owned();
+                log.lock().unwrap().push(path.clone());
+                let (status, body) = routes
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|(p, ..)| path.ends_with(p))
+                    .map(|(_, c, b)| (*c, b.clone()))
+                    .unwrap_or((404, String::new()));
+                let _ = write!(
+                    socket,
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            });
+        }
+    });
+    Stub { port, routes, seen }
 }

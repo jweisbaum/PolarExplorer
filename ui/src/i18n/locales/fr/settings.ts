@@ -12,11 +12,6 @@ const catalogue: Record<string, string> = {
   "Cache cleared": "Cache vidé",
   "Whirlwind keeps downloaded chunks on disk for reuse across routes and app restarts. The least recently used chunks are removed when the cache is full.": "Whirlwind conserve les blocs téléchargés sur le disque pour les réutiliser entre les traces et après le redémarrage de l’application. Quand le cache est plein, les blocs utilisés le moins récemment sont supprimés.",
   "Whirlwind downloads up to 64 chunks at once.": "Whirlwind télécharge jusqu’à 64 blocs à la fois.",
-  "Data sources": "Sources de données",
-  "Whirlwind (Fast) S3": "Whirlwind (rapide) S3",
-  "Whirlwind (Fast) R2": "Whirlwind (rapide) R2",
-  "Whirlwind (Fast) Tigris": "Whirlwind (rapide) Tigris",
-  "Choose the archive for historical wind, waves and currents.": "Choisir l’archive pour les vents, vagues et courants historiques.",
 
   "Settings": "Réglages",
   "Close": "Fermer",

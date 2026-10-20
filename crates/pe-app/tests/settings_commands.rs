@@ -36,14 +36,12 @@ fn every_setting_is_saved_and_read_back_after_a_restart() {
         },
     )
     .unwrap();
-    settings::data_source_set(&app, settings::DataSource::WhirlwindTigris).unwrap();
     let last = settings::projection_set(&app, MapProjection::Orthographic).unwrap();
 
     let restarted = root.state();
     let read = settings::current(&restarted).unwrap();
     assert_eq!(read, last);
     assert_eq!(read.language, "fr");
-    assert_eq!(read.data_source, settings::DataSource::WhirlwindTigris);
     assert_eq!(read.theme, "paper");
     assert_eq!(read.units, units);
     assert_eq!(read.weather_memory_mb, 1024);
@@ -51,26 +49,23 @@ fn every_setting_is_saved_and_read_back_after_a_restart() {
     assert_eq!(read.projection, MapProjection::Orthographic);
 }
 
+/// Hindsight Sync's port, saved like any other setting; a port where it
+/// does not answer is still saved.
 #[test]
-fn every_weather_source_survives_a_restart_without_credentials_in_settings() {
-    use settings::DataSource;
-    let root = TempRoot::new("weather-sources");
-    for source in [
-        DataSource::WhirlwindR2,
-        DataSource::WhirlwindTigris,
-        DataSource::Whirlwind,
-    ] {
-        let app = root.state();
-        settings::data_source_set(&app, source).unwrap();
-        let read = settings::current(&root.state()).unwrap();
-        assert_eq!(read.data_source, source);
-        let json = serde_json::to_string(&read).unwrap();
-        assert!(
-            !json.contains("access_key")
-                && !json.contains("secret_access")
-                && !json.contains("session_token")
-        );
-    }
+fn every_setting_survives_a_restart() {
+    let root = TempRoot::new("reanalysis-port");
+    let app = root.state();
+    let saved = pe_app::reanalysis::port_set(&app, 9001).unwrap();
+    assert_eq!(saved.reanalysis.port, 9001);
+    let read = settings::current(&root.state()).unwrap();
+    assert_eq!(read, saved);
+    assert_eq!(read.reanalysis.port, 9001);
+    let zero = pe_app::reanalysis::port_set(&app, 0).unwrap_err();
+    assert!(matches!(zero, AppError::BadOption { field: "Port", .. }));
+    assert_eq!(
+        settings::current(&root.state()).unwrap().reanalysis.port,
+        9001
+    );
 }
 
 #[test]

@@ -35,18 +35,11 @@ const NOW: i64 = 1_760_000_000;
 /// A newline in the fake key fails header validation before any HTTP request.
 #[test]
 fn whirlwind_estimate_ipc_returns_errors_and_can_retry_without_hanging() {
-    use pe_app::settings::DataSource;
     use std::time::Duration;
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     let root = TempRoot::new("whirlwind-estimate-ipc");
     let (state, id) = imported(&root);
-    state
-        .with_session(|s| {
-            s.settings.data_source = DataSource::Whirlwind;
-            Ok(())
-        })
-        .unwrap();
     let fake =
         serde_json::json!({"access_key_id":"TEST\nINVALID", "secret_access_key":"test-secret"});
     std::fs::write(
@@ -57,7 +50,7 @@ fn whirlwind_estimate_ipc_returns_errors_and_can_retry_without_hanging() {
     // The public S3 provider must initialise even with an invalid legacy file.
     // Inject invalid signing credentials explicitly to fail before HTTP.
     env::provider(&state).unwrap();
-    let mut archive = DataSource::Whirlwind.archive();
+    let mut archive = pe_app::reanalysis::captured(&state).unwrap().archive_ref();
     if let pe_env::whirlwind::ArchiveLocation::S3 { credentials, .. } = &mut archive.location {
         *credentials = Some(serde_json::from_value(fake).unwrap());
     }
@@ -158,6 +151,7 @@ fn imported(root: &TempRoot) -> (AppState, u64) {
 /// A project with the track at `path` imported; returns its source id.
 fn imported_from(root: &TempRoot, path: String) -> (AppState, u64) {
     let app = root.state();
+    common::remember_archive(&app, None);
     projects::create(&app, "Env".to_owned(), None, false).unwrap();
     let result = tracks::import(
         &app,
@@ -815,8 +809,8 @@ fn boat_jobs_with_equal_source_ids_are_independent() {
 }
 
 #[test]
-fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
-    use pe_app::settings::{self, DataSource};
+fn changing_the_archive_replaces_existing_values_and_keeps_queued_choice() {
+    use pe_app::reanalysis;
     struct Whirlwind(Dataset);
     impl Provider for Whirlwind {
         fn sample(
@@ -838,20 +832,38 @@ fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
                 .collect())
         }
     }
+    // Hindsight Sync lists two archives with different identities.
+    let archive = |id: &str, uri: &str| {
+        serde_json::json!({"id": id, "name": id, "storage": "cloud", "uri": uri,
+            "mode": "global", "start_datetime": "2000-01-01T00:00:00Z",
+            "chunk_degrees": 5, "chunk_hours": 72, "products": ["wind10m"],
+            "layout_version": 3, "location": {"protocol": "s3", "bucket": "b",
+            "prefix": "p", "endpoint_url": "http://127.0.0.1:9", "region": "auto",
+            "force_path_style": true, "credentials": {"access_key_id": "k",
+            "secret_access_key": "s", "session_token": null}}})
+    };
+    let listing = serde_json::json!({"api_version": 1, "errors": [], "archives": [
+        archive("a", "r2://a/routing"), archive("b", "tigris://b/routing")]});
+    let hindsight = common::stub(vec![("/cloud/reanalysis", 200, listing.to_string())]);
     let root = TempRoot::new("source-switch");
     let (app, id) = imported(&root);
+    reanalysis::port_set(&app, hindsight.port).unwrap();
+    let choose = |id: &str| {
+        reanalysis::archive_set(&app, Some(id.to_owned())).unwrap();
+    };
     let sink = Sink::default();
+    choose("a");
     env::queue_fetch(&app, &[id], "hourly", false).unwrap();
     assert_eq!(
         drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
         vec![Outcome::Done]
     );
-    // Existing values are from S3, so switching to R2 must replace even a
+    // Existing values are from `a`, so choosing `b` must replace even a
     // ready track without requiring an explicit restart.
-    settings::data_source_set(&app, DataSource::WhirlwindR2).unwrap();
+    choose("b");
     env::queue_fetch(&app, &[id], "hourly", false).unwrap();
-    // A preference change after queueing must not change that queued request.
-    settings::data_source_set(&app, DataSource::Whirlwind).unwrap();
+    // A choice made after queueing must not change that queued request.
+    choose("a");
     assert_eq!(
         drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
         vec![Outcome::Done]
@@ -862,25 +874,12 @@ fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
             .env_meta
             .datasets
             .iter()
-            .all(|d| d.name == "r2://whirlwind-hindsight/hindsight-routing")
+            .all(|d| d.name == "tigris://b/routing")
     );
     assert!(fetched.samples.iter().all(|s| s.env_fetched));
-    for (source, identity) in [
-        (
-            DataSource::WhirlwindR2,
-            "r2://whirlwind-hindsight/hindsight-routing",
-        ),
-        (
-            DataSource::WhirlwindTigris,
-            "tigris://whirlwind-hindsight/hindsight-routing",
-        ),
-        (
-            DataSource::Whirlwind,
-            "s3://whirlwind-hindsight/hindsight-routing",
-        ),
-    ] {
-        settings::data_source_set(&app, source).unwrap();
-        // A ready route must be fetched again when its storage source changes.
+    for (chosen, identity) in [("a", "r2://a/routing"), ("b", "tigris://b/routing")] {
+        choose(chosen);
+        // A ready track must be fetched again when its archive changes.
         assert!(
             !env::queue_fetch(&app, &[id], "hourly", false)
                 .unwrap()
@@ -937,11 +936,7 @@ fn imported_fleet_dates(
 ) -> (AppState, Vec<u64>) {
     let app = root.state();
     projects::create(&app, "Fleet weather".into(), None, false).unwrap();
-    app.with_session(|s| {
-        s.settings.data_source = pe_app::settings::DataSource::WhirlwindR2;
-        Ok(())
-    })
-    .unwrap();
+    common::remember_archive(&app, None);
     let features: Vec<_> = (0..boats).flat_map(|boat| (0..samples).map(move |k| {
         serde_json::json!({"type":"Feature", "geometry":{"type":"Point","coordinates":[-5.0, 50.0 + boat as f64 * 0.001]},
             "properties":{"time":NOON + k as i64 * 600 + date_spacing * boat as i64, "boat":format!("Fleet {boat}")}})
@@ -1172,11 +1167,6 @@ fn fleet_batch_sample_cap_is_shared_across_all_tracks() {
 fn fleet_keeps_equal_source_ids_in_different_boat_tabs_separate() {
     let root = TempRoot::new("env-fleet-tabs");
     let (app, id) = imported(&root);
-    app.with_session(|s| {
-        s.settings.data_source = pe_app::settings::DataSource::WhirlwindR2;
-        Ok(())
-    })
-    .unwrap();
     let first = projects::summary(&app).unwrap().unwrap().id;
     let second = pe_app::boats::add(&app, "Sister ship".into()).unwrap().id;
     let child = app.scoped(Some(second));

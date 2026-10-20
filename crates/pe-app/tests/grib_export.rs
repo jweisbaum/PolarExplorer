@@ -443,6 +443,7 @@ fn live_a_fastnet_boat_exports_to_grib() {
     }
     let root = TempRoot::new("grib-live");
     let app = root.state();
+    common::choose_live_archive(&app);
     pe_app::projects::create(&app, "Grib".to_owned(), None, false).unwrap();
     let view = pe_app::trackers::download_listed(
         &app,
