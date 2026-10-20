@@ -511,3 +511,40 @@ fn a_forbidden_read_fails_the_fetch_with_the_scan_hint() {
     // The bucket was really asked.
     assert!(!bucket.seen.lock().unwrap().is_empty());
 }
+
+/// A choice whose settings cannot be saved leaves the earlier location in
+/// place, owner-only.
+#[test]
+fn a_failed_choice_puts_the_earlier_location_back_owner_only() {
+    let root = TempRoot::new("reanalysis-rollback");
+    let server = stub(listing("first-secret"));
+    let app = probed(&root, &server);
+    reanalysis::archive_set(&app, Some("r2".to_owned())).unwrap();
+    let before = location_text(&app);
+    // settings.json becomes a folder: the next save cannot replace it.
+    let settings_file = app.paths.settings_file();
+    std::fs::remove_file(&settings_file).unwrap();
+    std::fs::create_dir(&settings_file).unwrap();
+    assert!(reanalysis::archive_set(&app, Some("copy".to_owned())).is_err());
+    assert_eq!(location_text(&app), before, "the earlier location is back");
+    assert_eq!(
+        settings::current(&app)
+            .unwrap()
+            .reanalysis
+            .archive
+            .unwrap()
+            .id,
+        "r2"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(reanalysis::location_path(&app.paths))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+    let temp = reanalysis::location_path(&app.paths).with_file_name("reanalysis-archive.json.tmp");
+    assert!(!temp.exists(), "no temporary left holding a secret");
+}

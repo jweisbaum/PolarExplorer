@@ -269,6 +269,39 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// [`write_atomic`] for a file that holds a secret: on Unix the temporary is
+/// created owner-only (0600) before a byte is written, so the secret is never
+/// readable by anyone else, not in the temporary and not after the rename
+/// (which keeps the temporary's mode). A temporary left by an earlier crash is
+/// removed first, since opening it would keep its old mode.
+pub fn write_atomic_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    let temp = temp_path_for(path);
+    match std::fs::remove_file(&temp) {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => return Err(err.into()),
+        _ => {}
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let written = options.open(&temp).and_then(|mut file| {
+        file.write_all(bytes)?;
+        file.sync_all()
+    });
+    if let Err(err) = written {
+        let _ = std::fs::remove_file(&temp);
+        return Err(err.into());
+    }
+    if let Err(err) = std::fs::rename(&temp, path) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(err.into());
+    }
+    Ok(())
+}
+
 fn temp_path_for(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".tmp");
@@ -462,6 +495,26 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// A secret is owner-only from its first byte: a stale world-readable
+    /// temporary and a world-readable earlier file both end up 0600.
+    #[cfg(unix)]
+    #[test]
+    fn a_private_write_is_owner_only_whatever_was_there() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new("private");
+        let file = dir.path("secret.json");
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        std::fs::write(&file, b"old").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let stale = temp_path_for(&file);
+        std::fs::write(&stale, b"left by a crash").unwrap();
+        std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_atomic_private(&file, b"new").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"new");
+        assert_eq!(mode(&file), 0o600);
+        assert!(!stale.exists());
     }
 
     fn entry_names(bytes: &[u8]) -> Vec<String> {

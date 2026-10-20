@@ -217,21 +217,17 @@ pub fn location_path(paths: &AppPaths) -> PathBuf {
     paths.config_dir.join(LOCATION_FILE)
 }
 
-/// Writes the location file atomically, owner-only: it holds a secret.
+/// Writes the location file atomically and owner-only from its first byte:
+/// it holds a secret.
 fn write_location(file: &Path, contents: &LocationFile) -> Result<()> {
     let json = serde_json::to_string_pretty(contents)
         .doing("write the reanalysis archive's location to", file.display())?;
-    pe_core::io::write_atomic(file, json.as_bytes())
-        .doing("write the reanalysis archive's location to", file.display())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).doing(
-            "protect the reanalysis archive's location at",
-            file.display(),
-        )?;
-    }
-    Ok(())
+    write_location_bytes(file, json.as_bytes())
+}
+
+fn write_location_bytes(file: &Path, bytes: &[u8]) -> Result<()> {
+    pe_core::io::write_atomic_private(file, bytes)
+        .doing("write the reanalysis archive's location to", file.display())
 }
 
 fn read_location(file: &Path) -> Option<LocationFile> {
@@ -305,7 +301,7 @@ pub fn remember(state: &AppState, listed: &ListedArchive) -> Result<Settings> {
     });
     if saved.is_err() {
         let _ = match before {
-            Some(bytes) => pe_core::io::write_atomic(&file, &bytes).map_err(|_| ()),
+            Some(bytes) => write_location_bytes(&file, &bytes).map_err(|_| ()),
             None => std::fs::remove_file(&file).map_err(|_| ()),
         };
     }
