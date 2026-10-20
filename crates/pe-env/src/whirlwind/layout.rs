@@ -78,12 +78,17 @@ pub(super) fn coordinate(
     decode(bytes, n * width)
 }
 
+/// How many names the `param` axis lists. Layout 3 lists more than are needed,
+/// so the caller must hold it equal to the data array's parameter dimension.
+pub(super) fn axis_len(meta: &Value) -> Result<usize> {
+    match sizes(&meta["shape"])?.as_slice() {
+        [n] if (1..=256).contains(n) => Ok(*n),
+        _ => Err(bad("unsupported Whirlwind parameter encoding")),
+    }
+}
+
 pub(super) fn parameters(meta: &Value, bytes: &[u8], expected: &[&str]) -> Result<Vec<usize>> {
-    // The axis may list more parameters than are needed (layout 3 has eleven).
-    let count = match sizes(&meta["shape"])?.as_slice() {
-        [n] if (1..=256).contains(n) => *n,
-        _ => return Err(bad("unsupported Whirlwind parameter encoding")),
-    };
+    let count = axis_len(meta)?;
     let width = meta["data_type"]["configuration"]["length_bytes"]
         .as_u64()
         .unwrap_or(0) as usize;

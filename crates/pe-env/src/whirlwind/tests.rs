@@ -725,26 +725,53 @@ const ELEVEN: [&str; 11] = [
     "wind_constancy",
 ];
 
-fn sample_with(objects: BTreeMap<String, Vec<u8>>, archive: layout::Archive) -> Vec<EnvPoint> {
+fn sample_opened(objects: BTreeMap<String, Vec<u8>>) -> (Vec<EnvPoint>, Arc<layout::Archive>) {
     let server = serve(objects, 206);
-    let reference = ArchiveRef {
-        identity: format!("s3://{}/{}", testing::BUCKET, testing::PREFIX),
-        location: testing::location(server.endpoint()),
-    };
-    let w = testing::whirlwind_with(reference, 4, BlockCache::new(16 << 20), archive);
+    let w = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
     let cancel = Arc::new(AtomicBool::new(false));
-    w.sample(&[point()], &options(), &cancel).unwrap()
+    let out = w.sample(&[point()], &options(), &cancel).unwrap();
+    let archive = w.archive(&cancel).unwrap();
+    (out, archive)
 }
 
 #[test]
 fn a_layout_3_archive_samples_the_same_values_as_layout_2() {
-    let two = sample_with(fixture(), archive());
-    let three = sample_with(
-        fixture_with(Dtype::F32, &ELEVEN),
-        testing::archive_with(Dtype::F32, &ELEVEN),
+    // Both archives are opened from their served metadata, not preset.
+    let (two, two_layout) = sample_opened(fixture());
+    let three_objects = fixture_with(Dtype::F32, &ELEVEN);
+    let root: serde_json::Value = serde_json::from_slice(&three_objects["zarr.json"]).unwrap();
+    assert_eq!(root["attributes"]["historysyncer_layout_version"], 3);
+    let (three, three_layout) = sample_opened(three_objects);
+    assert_eq!(
+        (two_layout.data.bytes_per_value, two_layout.data.shape[1]),
+        (2, 7)
     );
+    assert_eq!(
+        (
+            three_layout.data.bytes_per_value,
+            three_layout.data.shape[1]
+        ),
+        (4, 11)
+    );
+    assert_eq!(three_layout.data.parameters, vec![1, 3, 4, 5, 6, 7, 8]);
     assert!(two[0].wind.is_some() && two[0].waves.is_some() && two[0].current.is_some());
     assert_eq!(two, three);
+}
+
+#[test]
+fn a_parameter_axis_that_disagrees_with_the_data_is_refused_naming_both_numbers() {
+    let mut objects = fixture_with(Dtype::F32, &ELEVEN);
+    let mut data: serde_json::Value = serde_json::from_slice(&objects["data/zarr.json"]).unwrap();
+    data["shape"][1] = serde_json::json!(12);
+    objects.insert("data/zarr.json".into(), serde_json::to_vec(&data).unwrap());
+    let server = serve(objects, 206);
+    let w = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let err = w.archive(&cancel).unwrap_err().to_string();
+    assert!(
+        err.contains("11 parameter names") && err.contains("12 parameters"),
+        "{err}"
+    );
 }
 
 fn parameter_axis(names: &[&str]) -> (serde_json::Value, Vec<u8>) {

@@ -93,7 +93,7 @@ pub fn fixture() -> BTreeMap<String, Vec<u8>> {
 /// [`fixture`]'s truth values in the parameters of `names` that [`fixture`]
 /// has (a parameter it does not use holds a filler 1.5), as `dtype`.
 pub fn fixture_with(dtype: Dtype, names: &[&str]) -> BTreeMap<String, Vec<u8>> {
-    let mut objects = BTreeMap::new();
+    let mut objects = metadata(dtype, names);
     for t in 0..2 {
         for y in 0..2 {
             for x in 0..2 {
@@ -153,6 +153,86 @@ pub fn fixture_with(dtype: Dtype, names: &[&str]) -> BTreeMap<String, Vec<u8>> {
             }
         }
     }
+    objects
+}
+
+fn zstd_array(shape: usize, data_type: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "zarr_format":3,"node_type":"array","shape":[shape],"data_type":data_type,
+        "chunk_key_encoding":{"name":"default","configuration":{"separator":"/"}},
+        "chunk_grid":{"name":"regular","configuration":{"chunk_shape":[shape]}},
+        "codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"zstd"}]
+    })
+}
+
+/// The metadata objects of an archive written as Hindsight Sync does: its
+/// root version attribute (2 for float16, 3 for float32), the `data` array
+/// of [`archive_with`]'s shape, and the `param`, `latitude`, `longitude` and
+/// `time` axes.
+fn metadata(dtype: Dtype, names: &[&str]) -> BTreeMap<String, Vec<u8>> {
+    let np = names.len();
+    let json = |v: serde_json::Value| serde_json::to_vec(&v).unwrap();
+    let mut objects = BTreeMap::new();
+    let version = if dtype == Dtype::F16 { 2 } else { 3 };
+    objects.insert(
+        "zarr.json".to_owned(),
+        json(serde_json::json!({"zarr_format":3,"node_type":"group",
+            "attributes":{"historysyncer_layout_version":version}})),
+    );
+    let mut data = zstd_array(
+        4,
+        serde_json::json!(if dtype == Dtype::F16 {
+            "float16"
+        } else {
+            "float32"
+        }),
+    );
+    data["shape"] = serde_json::json!([4, np, 4, 8]);
+    data["fill_value"] = serde_json::json!("NaN");
+    data["dimension_names"] = serde_json::json!(["time", "param", "latitude", "longitude"]);
+    data["chunk_grid"] = serde_json::json!({"name":"rectilinear","configuration":{
+        "kind":"inline","chunk_shapes":[2, np, [2, 2], [4, 4]]}});
+    data["codecs"] = serde_json::json!([{"name":"sharding_indexed","configuration":{
+        "chunk_shape":[2, np, 2, 2],"index_location":"end",
+        "codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"zstd","configuration":{"level":5}}],
+        "index_codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"crc32c"}]}}]);
+    objects.insert("data/zarr.json".to_owned(), json(data));
+    objects.insert(
+        "param/zarr.json".to_owned(),
+        json(zstd_array(
+            np,
+            serde_json::json!({"name":"fixed_length_utf32","configuration":{"length_bytes":56}}),
+        )),
+    );
+    let mut raw = vec![0u8; np * 56];
+    for (slot, name) in names.iter().enumerate() {
+        for (i, ch) in name.chars().enumerate() {
+            raw[slot * 56 + i * 4..slot * 56 + i * 4 + 4]
+                .copy_from_slice(&(ch as u32).to_le_bytes());
+        }
+    }
+    objects.insert("param/c/0".to_owned(), zstd_raw(&raw));
+    let floats = |v: &[f32]| zstd_raw(&v.iter().flat_map(|f| f.to_le_bytes()).collect::<Vec<_>>());
+    objects.insert(
+        "latitude/zarr.json".to_owned(),
+        json(zstd_array(4, "float32".into())),
+    );
+    objects.insert("latitude/c/0".to_owned(), floats(&[60., 30., 0., -30.]));
+    objects.insert(
+        "longitude/zarr.json".to_owned(),
+        json(zstd_array(8, "float32".into())),
+    );
+    objects.insert(
+        "longitude/c/0".to_owned(),
+        floats(&[-180., -135., -90., -45., 0., 45., 90., 135.]),
+    );
+    let mut time = zstd_array(4, "int64".into());
+    time["attributes"] = serde_json::json!({"units":"hours since 2000-01-01T00:00:00Z"});
+    objects.insert("time/zarr.json".to_owned(), json(time));
+    objects.insert(
+        "time/c/0".to_owned(),
+        zstd_raw(&(0..4i64).flat_map(i64::to_le_bytes).collect::<Vec<_>>()),
+    );
     objects
 }
 
@@ -350,6 +430,20 @@ pub(super) fn whirlwind_with(
     let w = Whirlwind::new(reference, Duration::from_secs(5), memory, concurrency).unwrap();
     *w.archive.lock().unwrap() = Some(Arc::new(archive));
     w
+}
+
+/// A reader whose layout is not preset: it opens the archive from the
+/// metadata the stub at `endpoint` serves.
+pub(super) fn whirlwind_opening(
+    endpoint: &str,
+    concurrency: usize,
+    memory: Arc<BlockCache>,
+) -> Whirlwind {
+    let reference = ArchiveRef {
+        identity: format!("s3://{BUCKET}/{PREFIX}"),
+        location: location(endpoint),
+    };
+    Whirlwind::new(reference, Duration::from_secs(5), memory, concurrency).unwrap()
 }
 
 /// A reader of the fixture archive over S3 at `endpoint` (a [`Server`]'s),

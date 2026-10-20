@@ -160,10 +160,18 @@ impl Whirlwind {
             serde_json::from_slice(&objects[name])
                 .map_err(|_| bad(format!("invalid Whirlwind metadata: {name}")))
         };
+        let (data_meta, param_meta) = (json("data/zarr.json")?, json("param/zarr.json")?);
+        // A disagreeing axis would put every value at the wrong offset.
+        let (names, dimension) = (layout::axis_len(&param_meta)?, &data_meta["shape"][1]);
+        if dimension.as_u64() != Some(names as u64) {
+            return Err(bad(format!(
+                "Whirlwind lists {names} parameter names but its data has {dimension} parameters"
+            )));
+        }
         let data = Array::parse(
-            &json("data/zarr.json")?,
+            &data_meta,
             layout::parameters(
-                &json("param/zarr.json")?,
+                &param_meta,
                 &objects["param/c/0"],
                 &[
                     "u10",
