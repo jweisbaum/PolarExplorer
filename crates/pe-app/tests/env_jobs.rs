@@ -1247,7 +1247,10 @@ fn a_shared_archive_error_fails_the_fleet_without_repeating_it_for_each_boat() {
             _: &Arc<AtomicBool>,
         ) -> pe_env::Result<Vec<EnvPoint>> {
             self.0.fetch_add(1, Ordering::SeqCst);
-            Err(EnvError::Open("Whirlwind S3 answered 403".into()))
+            Err(EnvError::Auth {
+                status: 403,
+                key: "data/c/0/0/0/0".into(),
+            })
         }
     }
     let provider = Forbidden(AtomicUsize::new(0));

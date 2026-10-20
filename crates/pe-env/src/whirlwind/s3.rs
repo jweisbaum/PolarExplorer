@@ -233,6 +233,18 @@ impl S3 {
                 if status == reqwest::StatusCode::NOT_FOUND {
                     return Ok((status, None, None, None));
                 }
+                if status == reqwest::StatusCode::BAD_REQUEST {
+                    // AWS answers an expired or unknown key with a 400 whose
+                    // error code is the only sign it is the credentials.
+                    let mut body = Vec::new();
+                    while let Some(chunk) = response.chunk().await? {
+                        body.extend_from_slice(&chunk);
+                        if body.len() > ERROR_BODY_LIMIT {
+                            break;
+                        }
+                    }
+                    return Ok((status, Some(Bytes::from(body)), None, None));
+                }
                 if !status.is_success() {
                     return Ok((status, None, None, None));
                 }
@@ -282,11 +294,17 @@ impl S3 {
                     }
                     return Ok(Some(Object { bytes, etag }));
                 }
-                Ok((status, _, _, _)) => {
+                Ok((status, body, _, _)) => {
+                    if refused_for_credentials(status.as_u16(), body.as_deref()) {
+                        return Err(EnvError::Auth {
+                            status: status.as_u16(),
+                            key: key.to_owned(),
+                        });
+                    }
                     if !status.is_server_error() && status.as_u16() != 429 && status.as_u16() != 408
                     {
                         return Err(EnvError::Open(format!(
-                            "Whirlwind S3 answered {status} for {key}"
+                            "the archive answered {status} for {key}"
                         )));
                     }
                     true
@@ -308,8 +326,31 @@ impl S3 {
             }
         }
         Err(EnvError::Open(format!(
-            "Whirlwind S3 request failed for {key} after retries"
+            "the archive request failed for {key} after retries"
         )))
+    }
+}
+
+/// How much of a 400's body is read to find its error code.
+const ERROR_BODY_LIMIT: usize = 8 << 10;
+
+/// The S3 error codes of a 400 that mean the credentials, not the request.
+const CREDENTIAL_CODES: [&str; 3] = [
+    "<Code>ExpiredToken</Code>",
+    "<Code>InvalidAccessKeyId</Code>",
+    "<Code>SignatureDoesNotMatch</Code>",
+];
+
+/// Whether an answer refuses the read for want of valid credentials, which
+/// a Scan in Settings can refresh.
+fn refused_for_credentials(status: u16, body: Option<&[u8]>) -> bool {
+    match status {
+        401 | 403 => true,
+        400 => body.is_some_and(|body| {
+            let text = String::from_utf8_lossy(body);
+            CREDENTIAL_CODES.iter().any(|code| text.contains(code))
+        }),
+        _ => false,
     }
 }
 
@@ -365,6 +406,46 @@ mod tests {
             assert!(validate_range(Range::Bytes(10, 20), header, 20).is_err());
         }
         assert!(validate_range(Range::Suffix(20), Some("bytes 79-98/100"), 20).is_err());
+    }
+
+    /// AWS's documented error responses (S3 API reference, "Error
+    /// responses"): the codes that mean the key, not the request.
+    #[test]
+    fn only_a_credentials_answer_is_a_refusal_for_credentials() {
+        let aws = |code: &str| {
+            format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>{code}</Code><Message>m</Message></Error>"
+            )
+        };
+        assert!(refused_for_credentials(401, None));
+        assert!(refused_for_credentials(403, None));
+        assert!(refused_for_credentials(
+            403,
+            Some(aws("AccessDenied").as_bytes())
+        ));
+        for code in [
+            "ExpiredToken",
+            "InvalidAccessKeyId",
+            "SignatureDoesNotMatch",
+        ] {
+            assert!(
+                refused_for_credentials(400, Some(aws(code).as_bytes())),
+                "{code}"
+            );
+        }
+        for (status, body) in [
+            (400, Some(aws("InvalidArgument"))),
+            (400, Some(aws("InvalidRange"))),
+            (400, None),
+            (404, Some(aws("NoSuchKey"))),
+            (409, Some(aws("ExpiredToken"))),
+            (500, None),
+        ] {
+            assert!(
+                !refused_for_credentials(status, body.as_deref().map(str::as_bytes)),
+                "{status} {body:?}"
+            );
+        }
     }
 
     #[test]

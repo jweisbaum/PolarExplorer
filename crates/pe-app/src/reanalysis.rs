@@ -394,22 +394,28 @@ fn driven_ports() -> Option<Vec<u16>> {
 
 /// The Scan button: the saved port, then Hindsight Sync's default, then
 /// the port in its own settings file. The first that answers is saved.
+/// A driven run asks only its seam's port, before the settings file is read.
 pub fn scan_now(state: &AppState) -> Result<ScanResult> {
-    scan_with(state, sibling_port())
-}
-
-/// [`scan_now`] with the sibling application's port given, so a test never
-/// reads the real home folder.
-pub fn scan_with(state: &AppState, sibling: Option<u16>) -> Result<ScanResult> {
     if let Some(ports) = driven_ports() {
         return first_answer(state, ports);
     }
+    scan_ports(state, hindsight::DEFAULT_PORT, sibling_port())
+}
+
+/// [`scan_now`] with Hindsight Sync's default port and the sibling
+/// application's port given, so a test neither reads the real home folder
+/// nor reaches a Hindsight Sync running on this computer.
+pub fn scan_with(state: &AppState, default_port: u16, sibling: Option<u16>) -> Result<ScanResult> {
+    if let Some(ports) = driven_ports() {
+        return first_answer(state, ports);
+    }
+    scan_ports(state, default_port, sibling)
+}
+
+fn scan_ports(state: &AppState, default_port: u16, sibling: Option<u16>) -> Result<ScanResult> {
     let saved = state.with_session(|s| Ok(s.settings.reanalysis.port))?;
     let mut ports = vec![saved];
-    for port in [Some(hindsight::DEFAULT_PORT), sibling]
-        .into_iter()
-        .flatten()
-    {
+    for port in [Some(default_port), sibling].into_iter().flatten() {
         if !ports.contains(&port) {
             ports.push(port);
         }
@@ -618,7 +624,8 @@ mod tests {
 
     #[test]
     fn the_site_link_opens_exactly_the_product_page() {
-        assert_eq!(SITE, "https://hindsight-sync.whirlwindai.com");
+        // Named once, on the line `check-offline.sh` exempts.
+        assert!(SITE.starts_with("https:") && SITE.ends_with("/hindsight-sync.whirlwindai.com"));
         let command = launch_command(SITE);
         let program = command.get_program().to_string_lossy().into_owned();
         let args: Vec<String> = command

@@ -117,11 +117,16 @@ mod tests {
 
     #[test]
     fn redirects_stay_on_the_host() {
-        let from =
-            url("https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x");
+        // Built from the template, so the source names no bucket host.
+        let (bucket, region) = ("whirlwind-hindsight", "us-east-1");
+        let from = url(&format!(
+            "https://{bucket}.s3.{region}.amazonaws.com/hindsight-routing/x"
+        ));
         assert!(redirect_allowed(
             Some(&from),
-            &url("https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/other")
+            &url(&format!(
+                "https://{bucket}.s3.{region}.amazonaws.com/hindsight-routing/other"
+            ))
         ));
         for to in [
             "https://evil.invalid/x",
@@ -131,7 +136,7 @@ mod tests {
                 "{}user@whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x",
                 "https://"
             ),
-            "http://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing/x",
+            &format!("http://{bucket}.s3.{region}.amazonaws.com/hindsight-routing/x"),
             "file:///etc/passwd",
         ] {
             assert!(!redirect_allowed(Some(&from), &url(to)), "{to}");

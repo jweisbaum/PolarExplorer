@@ -200,7 +200,7 @@ pub(super) fn run(
         let found = provider.sample(&points, &options, cancel);
         let warnings = provider.take_warnings();
         match found {
-            Err(err @ (EnvError::Open(_) | EnvError::Cache(_))) => {
+            Err(err @ (EnvError::Open(_) | EnvError::Auth { .. } | EnvError::Cache(_))) => {
                 // Authentication, connection and local-cache failures are
                 // shared. Do not repeat a failing request for every boat.
                 for item in &mut work {

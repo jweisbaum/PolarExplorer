@@ -1533,8 +1533,10 @@ all tracks interrupts pending HTTP reads and retry waits. Completed batches
 stay saved and resume skips their samples. A failed shared read is retried in
 per-track subsets to isolate the failure. Missing objects and
 inner chunks are missing data, while authentication errors and corrupt data
-fail the fetch; a refusal (403, `Forbidden`, `AccessDenied`) adds *Press
-Scan in Settings to refresh the archive's credentials.* to the message. The optional MCP estimate counts actual compressed byte lengths from the
+fail the fetch; a refusal for the credentials (a 401 or 403, or a 400
+whose S3 error code is `ExpiredToken`, `InvalidAccessKeyId` or
+`SignatureDoesNotMatch`) adds *Press Scan in Settings to refresh the
+archive's credentials.* to the message, and no other failure does. The optional MCP estimate counts actual compressed byte lengths from the
 needed indexes, counting each combined chunk once. Provenance is
 the archive's identity: a cloud archive's `uri` exactly as Hindsight Sync
 gives it (`s3://`, `r2://`, `tigris://…`), a local copy's `source_uri` when it

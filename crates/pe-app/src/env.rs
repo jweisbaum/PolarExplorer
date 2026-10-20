@@ -642,10 +642,9 @@ const CREDENTIALS_HINT: &str = "Press Scan in Settings to refresh the archive's 
 /// when the archive refused the credentials.
 fn failed(error: &EnvError) -> Outcome {
     let message = error.to_string();
-    if ["403", "Forbidden", "AccessDenied"]
-        .iter()
-        .any(|sign| message.contains(sign))
-    {
+    // The archive's own word that the key is refused, never a guess from
+    // the message's text (which names keys and offsets).
+    if matches!(error, EnvError::Auth { .. }) {
         Outcome::Failed(format!("{message} {CREDENTIALS_HINT}"))
     } else {
         Outcome::Failed(message)
@@ -1065,6 +1064,32 @@ mod tests {
                 lon: 0.0,
             },
         )
+    }
+
+    #[test]
+    fn only_a_refusal_for_credentials_carries_the_scan_hint() {
+        let message = |error: EnvError| match failed(&error) {
+            Outcome::Failed(message) => message,
+            other => panic!("{other:?}"),
+        };
+        let refused = message(EnvError::Auth {
+            status: 401,
+            key: "data/c/0/0/0/0".to_owned(),
+        });
+        assert_eq!(
+            refused,
+            "the archive refused the read of data/c/0/0/0/0 (401) \
+             Press Scan in Settings to refresh the archive's credentials."
+        );
+        // Text that merely looks like a refusal is not one.
+        for error in [
+            EnvError::Open("the archive answered 409 Conflict for data/c/403/0/0/0".to_owned()),
+            EnvError::Layout("Forbidden layout in AccessDenied/zarr.json".to_owned()),
+            EnvError::OutOfRange("403".to_owned()),
+        ] {
+            let text = message(error);
+            assert!(!text.contains(CREDENTIALS_HINT), "{text}");
+        }
     }
 
     #[test]

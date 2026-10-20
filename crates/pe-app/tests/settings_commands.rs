@@ -55,16 +55,23 @@ fn every_setting_is_saved_and_read_back_after_a_restart() {
 fn every_setting_survives_a_restart() {
     let root = TempRoot::new("reanalysis-port");
     let app = root.state();
-    let saved = pe_app::reanalysis::port_set(&app, 9001).unwrap();
-    assert_eq!(saved.reanalysis.port, 9001);
+    // A port where nothing listens, so the probe that follows never reaches
+    // a Hindsight Sync running on this computer.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let saved = pe_app::reanalysis::port_set(&app, port).unwrap();
+    assert_eq!(saved.reanalysis.port, port);
     let read = settings::current(&root.state()).unwrap();
     assert_eq!(read, saved);
-    assert_eq!(read.reanalysis.port, 9001);
+    assert_eq!(read.reanalysis.port, port);
     let zero = pe_app::reanalysis::port_set(&app, 0).unwrap_err();
     assert!(matches!(zero, AppError::BadOption { field: "Port", .. }));
     assert_eq!(
         settings::current(&root.state()).unwrap().reanalysis.port,
-        9001
+        port
     );
 }
 

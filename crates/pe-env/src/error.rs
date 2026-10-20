@@ -9,6 +9,18 @@ pub enum EnvError {
     #[error("could not open the archive: {0}")]
     Open(String),
 
+    /// The archive refused the read for want of valid credentials: a 401 or
+    /// 403, or a 400 whose body names an expired or unknown key or a bad
+    /// signature. Its own variant so the application can say "Scan to
+    /// refresh the credentials" without reading the message.
+    #[error("the archive refused the read of {key} ({status})")]
+    Auth {
+        /// The HTTP status the archive answered.
+        status: u16,
+        /// The object key that was refused.
+        key: String,
+    },
+
     /// The store is not shaped the way this crate requires.
     #[error("unexpected archive layout: {0}")]
     Layout(String),

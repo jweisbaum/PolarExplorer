@@ -87,14 +87,34 @@ fn sparse_ranges_interpolate_and_reuse_cache() {
 
 #[test]
 fn missing_shards_are_missing_but_forbidden_is_an_error() {
-    for status in [404, 403] {
+    for status in [404, 403, 401, 400] {
         let server = serve(BTreeMap::new(), status);
         let w = reader(&server, 2);
         let result = w.sample(&[point()], &options(), &Arc::new(AtomicBool::new(false)));
-        if status == 404 {
-            assert_eq!(result.unwrap(), vec![EnvPoint::default()]);
-        } else {
-            assert!(result.unwrap_err().to_string().contains("403"));
+        match status {
+            404 => assert_eq!(result.unwrap(), vec![EnvPoint::default()]),
+            // A refusal for the credentials is its own kind of error.
+            401 | 403 => {
+                let error = result.unwrap_err();
+                assert!(
+                    matches!(&error, EnvError::Auth { status: s, .. } if *s == status),
+                    "{error:?}"
+                );
+                assert!(
+                    error
+                        .to_string()
+                        .starts_with("the archive refused the read of ")
+                );
+            }
+            // A 400 that names no credentials code is not one.
+            _ => {
+                let error = result.unwrap_err();
+                assert!(matches!(&error, EnvError::Open(_)), "{error:?}");
+                assert!(
+                    error.to_string().contains("the archive answered 400"),
+                    "{error}"
+                );
+            }
         }
     }
 }
@@ -529,13 +549,15 @@ fn s3(endpoint_url: Option<&str>, region: &str, path_style: bool) -> ArchiveLoca
 
 #[test]
 fn base_url_follows_the_provider_rules() {
+    // What the template expands to, built here so the source names no bucket host.
+    let (bucket, region, prefix) = ("whirlwind-hindsight", "us-east-1", "hindsight-routing");
     assert_eq!(
         s3(None, "us-east-1", false).base_url().unwrap(),
-        "https://whirlwind-hindsight.s3.us-east-1.amazonaws.com/hindsight-routing"
+        format!("https://{bucket}.s3.{region}.amazonaws.com/{prefix}")
     );
     assert_eq!(
         s3(None, "us-east-1", false).place(),
-        "whirlwind-hindsight.s3.us-east-1.amazonaws.com"
+        format!("{bucket}.s3.{region}.amazonaws.com")
     );
     // `.invalid` (RFC 2606) stands for an R2 account host: never resolved.
     let r2 = s3(

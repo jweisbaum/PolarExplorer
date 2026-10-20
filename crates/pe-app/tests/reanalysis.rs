@@ -341,25 +341,32 @@ fn scan_tries_the_saved_port_then_the_default_then_the_sibling() {
     let stranger = stub(vec![]);
     let app = probed(&root, &stranger);
     assert!(!settings::current(&app).unwrap().reanalysis.connected_once);
+    // In place of Hindsight Sync's default port, a stub that is not it
+    // either: the person's own Hindsight Sync is never asked.
+    let default = stub(vec![]);
     let server = stub(listing("first-secret"));
-    let found = reanalysis::scan_with(&app, Some(server.port)).unwrap();
-    if found.port == pe_env::hindsight::DEFAULT_PORT {
-        // A real Hindsight Sync on this computer answered on its default
-        // port, which comes before the sibling's: the order held.
-        assert!(found.detected);
-        return;
-    }
+    let found = reanalysis::scan_with(&app, default.port, Some(server.port)).unwrap();
     assert!(found.detected);
     assert_eq!(found.port, server.port);
     assert_eq!(found.archives.len(), 2);
+    for (name, asked) in [("saved", &stranger), ("default", &default)] {
+        assert!(
+            asked
+                .seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|p| p.ends_with("/cloud/reanalysis")),
+            "the {name} port was asked"
+        );
+    }
+    let order = |s: &Stub| s.order.lock().unwrap().clone();
+    let (saved_at, default_at, sibling_at) = (order(&stranger), order(&default), order(&server));
     assert!(
-        stranger
-            .seen
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|p| p.ends_with("/cloud/reanalysis")),
-        "the saved port was asked first"
+        saved_at.iter().max() < default_at.iter().min()
+            && default_at.iter().max() < sibling_at.iter().min(),
+        "the saved port, then the default, then the sibling: \
+         {saved_at:?} {default_at:?} {sibling_at:?}"
     );
     let saved = Settings::load(&app.paths.settings_file()).reanalysis;
     assert_eq!(saved.port, server.port, "the port that answered is saved");
@@ -369,7 +376,7 @@ fn scan_tries_the_saved_port_then_the_default_then_the_sibling() {
     // archives last heard still listed.
     let gone = closed_port();
     reanalysis::port_set(&app, gone).unwrap();
-    let none = reanalysis::scan_with(&app, None).unwrap();
+    let none = reanalysis::scan_with(&app, closed_port(), None).unwrap();
     assert!(!none.detected);
     assert_eq!(none.port, gone);
     assert_eq!(none.archives.len(), 2);
@@ -479,15 +486,12 @@ fn the_ipc_settings_json_never_holds_a_secret() {
     assert!(!scan.contains("first-secret") && !scan.contains("AKIDTESTKEY"));
 }
 
-#[test]
-fn a_forbidden_read_fails_the_fetch_with_the_scan_hint() {
-    let root = TempRoot::new("reanalysis-forbidden");
-    // The bucket refuses every read, as R2 does a revoked key.
-    let bucket = stub(vec![(
-        "",
-        403,
-        "<Error><Code>AccessDenied</Code></Error>".to_owned(),
-    )]);
+/// The message a fetch fails with when the chosen archive's bucket
+/// answers every read with `status` and `body`, after checking the bucket
+/// was really asked and no secret is in it.
+fn failed_fetch(name: &str, status: u16, body: &str) -> String {
+    let root = TempRoot::new(name);
+    let bucket = stub(vec![("", status, body.to_owned())]);
     let endpoint = format!("http://127.0.0.1:{}", bucket.port);
     let cloud_body = json!({"api_version": 1,
         "archives": [cloud("locked", s3(&endpoint, keys("revoked")))], "errors": []});
@@ -505,11 +509,56 @@ fn a_forbidden_read_fails_the_fetch_with_the_scan_hint() {
     let [Outcome::Failed(message)] = outcomes.as_slice() else {
         panic!("{outcomes:?}");
     };
-    assert!(message.contains("403"), "{message}");
-    assert!(message.ends_with(&format!(" {HINT}")), "{message}");
     assert!(!message.contains("revoked"), "no secret in a message");
-    // The bucket was really asked.
-    assert!(!bucket.seen.lock().unwrap().is_empty());
+    assert!(
+        !bucket.seen.lock().unwrap().is_empty(),
+        "the bucket was asked"
+    );
+    message.clone()
+}
+
+#[test]
+fn a_forbidden_read_fails_the_fetch_with_the_scan_hint() {
+    // The bucket refuses every read, as R2 does a revoked key.
+    let message = failed_fetch(
+        "reanalysis-forbidden",
+        403,
+        "<Error><Code>AccessDenied</Code></Error>",
+    );
+    assert!(message.contains("(403)"), "{message}");
+    assert!(message.ends_with(&format!(" {HINT}")), "{message}");
+}
+
+#[test]
+fn an_unauthorized_read_fails_the_fetch_with_the_scan_hint() {
+    // Some S3-compatible services answer a bad key with 401.
+    let message = failed_fetch("reanalysis-unauthorized", 401, "");
+    assert!(message.contains("(401)"), "{message}");
+    assert!(message.ends_with(&format!(" {HINT}")), "{message}");
+}
+
+#[test]
+fn an_expired_session_token_fails_the_fetch_with_the_scan_hint() {
+    // AWS answers an expired session token with 400 and its code.
+    let message = failed_fetch(
+        "reanalysis-expired",
+        400,
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>ExpiredToken</Code>\
+         <Message>The provided token has expired.</Message></Error>",
+    );
+    assert!(message.contains("(400)"), "{message}");
+    assert!(message.ends_with(&format!(" {HINT}")), "{message}");
+}
+
+#[test]
+fn a_bad_request_that_is_not_the_credentials_gets_no_scan_hint() {
+    let message = failed_fetch(
+        "reanalysis-bad-request",
+        400,
+        "<Error><Code>InvalidArgument</Code><Message>403 Forbidden AccessDenied</Message></Error>",
+    );
+    assert!(message.contains("the archive answered 400"), "{message}");
+    assert!(!message.contains(HINT), "{message}");
 }
 
 /// A choice whose settings cannot be saved leaves the earlier location in

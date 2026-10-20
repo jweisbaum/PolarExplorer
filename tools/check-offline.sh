@@ -34,9 +34,7 @@ CONF=crates/pe-app/tauri.conf.json
 # compares it as a string and dereferences nothing.
 # `.invalid` is reserved by RFC 2606 and never resolves, which is what makes it
 # the right host for a test that must not reach anything.
-# Hindsight Sync's product page: opened by the person's browser on request
-# (Settings link), never fetched by the application.
-ALLOW='hindsight-sync\.whirlwindai\.com|schema\.tauri\.app|//localhost:|\.localhost|//127\.0\.0\.1|www\.w3\.org/2000/svg|\.invalid'
+ALLOW='schema\.tauri\.app|//localhost:|\.localhost|//127\.0\.0\.1|www\.w3\.org/2000/svg|\.invalid'
 # Pure comment lines. A URL in a comment fetches nothing, and the generated
 # ts-rs bindings carry a provenance URL in their header.
 COMMENT=':[0-9]+:[[:space:]]*(//|\*|/\*)'
@@ -49,10 +47,13 @@ URL='https?://[^"'"'"'`[:space:])>]+'
 # in a subdomain, which is how Geovoile's per-race hosts are built.
 # pe-env names no archive: it reads Hindsight Sync on loopback and the
 # location Hindsight Sync hands it, so its hosts are 127.0.0.1 and Amazon
-# S3's virtual-hosted template. The last alternative is not a host it reads
-# but an expected value: the address `net.rs`'s and `whirlwind/tests.rs`'s
-# tests check the template expands to.
-ENV_HOSTS='^https?://(127\.0\.0\.1([/:?#]|$)|\{bucket\}\.s3\.\{region\}\.amazonaws\.com([/:?#]|$)|whirlwind-hindsight\.s3\.us-east-1\.amazonaws\.com/hindsight-routing)'
+# S3's virtual-hosted template, and nothing else. Its tests build the
+# address the template expands to from the same placeholders.
+ENV_HOSTS='^https?://(127\.0\.0\.1([/:?#]|$)|\{bucket\}\.s3\.\{region\}\.amazonaws\.com([/:?#]|$))'
+# Hindsight Sync's product page: opened by the browser on request, never
+# fetched. One line of one file may name it, the constant itself; anywhere
+# else, the host is a finding like any other.
+SITE_LINE='^crates/pe-app/src/reanalysis\.rs:[0-9]+:pub const SITE: &str = "https://hindsight-sync\.whirlwindai\.com";$'
 TRACKER_HOSTS='^https?://(((cf|app)\.)?yb\.tl|([A-Za-z0-9_{}-]+\.)*geovoile\.com|(api|race)\.bluewatertracks\.com|www\.regattaman\.com|data\.orc\.org)([/:?#]|$)'
 
 fail=0
@@ -84,7 +85,7 @@ hits=$(grep -rnE 'https?://' ui/src ui/index.html 2>/dev/null \
 hits=$(find crates -name '*.rs' -not -path 'crates/pe-env/*' -not -path 'crates/pe-trackers/*' \
   -not -path 'crates/pe-app/src/library/tests.rs' -not -path 'crates/pe-app/src/library/scrape/tests.rs' \
   -exec grep -nHE 'https?://' {} + 2>/dev/null \
-  | grep -vE "$COMMENT" | grep -vE "$ALLOW" || true)
+  | grep -vE "$COMMENT" | grep -vE "$SITE_LINE" | grep -vE "$ALLOW" || true)
 [ -n "$hits" ] && report "absolute URL in rust source" "$hits"
 
 # In those crates, only the hosts they exist to read.

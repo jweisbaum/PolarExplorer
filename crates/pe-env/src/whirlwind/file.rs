@@ -22,7 +22,7 @@ impl FileStore {
     pub fn new(root: &Path) -> Result<Self> {
         std::fs::read_dir(root).map_err(|e| {
             EnvError::Open(format!(
-                "the Whirlwind archive folder {} cannot be read: {e}",
+                "the archive folder {} cannot be read: {e}",
                 root.display()
             ))
         })?;
@@ -66,7 +66,7 @@ fn read(root: &Path, key: &str, range: Option<Range>) -> Result<Option<Object>> 
             // A folder deleted under the reader is an error, not missing data.
             if !root.is_dir() {
                 return Err(EnvError::Open(format!(
-                    "the Whirlwind archive folder {} is gone",
+                    "the archive folder {} is gone",
                     root.display()
                 )));
             }

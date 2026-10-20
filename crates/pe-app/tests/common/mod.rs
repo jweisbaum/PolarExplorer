@@ -197,23 +197,32 @@ pub type Routes = std::sync::Arc<std::sync::Mutex<Vec<(&'static str, u16, String
 
 /// A loopback server answering each request with the first route whose
 /// path ends the request's, or 404; the routes can change while it runs.
-/// Records every request line.
+/// Records every request line, and when it came in the process-wide
+/// order of requests to any stub, so a test can tell which stub was asked
+/// first.
 pub struct Stub {
     pub port: u16,
     pub routes: Routes,
     pub seen: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    pub order: std::sync::Arc<std::sync::Mutex<Vec<u64>>>,
 }
+
+/// Counts requests to every stub in this test process.
+static ARRIVALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub fn stub(routes: Vec<(&'static str, u16, String)>) -> Stub {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let routes: Routes = std::sync::Arc::new(std::sync::Mutex::new(routes));
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let (served, log) = (std::sync::Arc::clone(&routes), std::sync::Arc::clone(&seen));
+    let ordered = std::sync::Arc::clone(&order);
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut socket) = stream else { break };
             let (routes, log) = (std::sync::Arc::clone(&served), std::sync::Arc::clone(&log));
+            let ordered = std::sync::Arc::clone(&ordered);
             std::thread::spawn(move || {
                 use std::io::{Read, Write};
                 let mut request = Vec::new();
@@ -227,6 +236,10 @@ pub fn stub(routes: Vec<(&'static str, u16, String)>) -> Stub {
                 let head = String::from_utf8_lossy(&request).to_string();
                 let path = head.split_whitespace().nth(1).unwrap_or("").to_owned();
                 log.lock().unwrap().push(path.clone());
+                ordered
+                    .lock()
+                    .unwrap()
+                    .push(ARRIVALS.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
                 let (status, body) = routes
                     .lock()
                     .unwrap()
@@ -242,5 +255,10 @@ pub fn stub(routes: Vec<(&'static str, u16, String)>) -> Stub {
             });
         }
     });
-    Stub { port, routes, seen }
+    Stub {
+        port,
+        routes,
+        seen,
+        order,
+    }
 }
