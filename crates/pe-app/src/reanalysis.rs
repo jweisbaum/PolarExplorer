@@ -360,10 +360,36 @@ fn not_detected(state: &AppState) -> Result<ScanResult> {
 /// the port changes.
 pub fn probe_now(state: &AppState) -> Result<ScanResult> {
     let port = state.with_session(|s| Ok(s.settings.reanalysis.port))?;
-    match probe_port(state, port)? {
-        Some(found) => Ok(found),
-        None => not_detected(state),
+    first_answer(state, driven_ports().unwrap_or_else(|| vec![port]))
+}
+
+/// The first of `ports` where Hindsight Sync answers, or "not detected".
+fn first_answer(state: &AppState, ports: Vec<u16>) -> Result<ScanResult> {
+    for port in ports {
+        if let Some(found) = probe_port(state, port)? {
+            return Ok(found);
+        }
     }
+    not_detected(state)
+}
+
+/// A driven run (D25) must never reach the person's own Hindsight Sync: it
+/// asks only the port in `PE_DRIVER_HINDSIGHT_PORT` (a test's fake), or no
+/// port at all. Compiled only with the WebDriver feature, like
+/// `PE_AUTOMATION_ROOT` itself, so a shipped build has no such seam.
+#[cfg(feature = "webdriver")]
+fn driven_ports() -> Option<Vec<u16>> {
+    std::env::var_os("PE_AUTOMATION_ROOT")?;
+    let port = std::env::var("PE_DRIVER_HINDSIGHT_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .filter(|&p| p != 0);
+    Some(port.into_iter().collect())
+}
+
+#[cfg(not(feature = "webdriver"))]
+fn driven_ports() -> Option<Vec<u16>> {
+    None
 }
 
 /// The Scan button: the saved port, then Hindsight Sync's default, then
@@ -375,6 +401,9 @@ pub fn scan_now(state: &AppState) -> Result<ScanResult> {
 /// [`scan_now`] with the sibling application's port given, so a test never
 /// reads the real home folder.
 pub fn scan_with(state: &AppState, sibling: Option<u16>) -> Result<ScanResult> {
+    if let Some(ports) = driven_ports() {
+        return first_answer(state, ports);
+    }
     let saved = state.with_session(|s| Ok(s.settings.reanalysis.port))?;
     let mut ports = vec![saved];
     for port in [Some(hindsight::DEFAULT_PORT), sibling]
@@ -385,12 +414,7 @@ pub fn scan_with(state: &AppState, sibling: Option<u16>) -> Result<ScanResult> {
             ports.push(port);
         }
     }
-    for port in ports {
-        if let Some(found) = probe_port(state, port)? {
-            return Ok(found);
-        }
-    }
-    not_detected(state)
+    first_answer(state, ports)
 }
 
 /// Hindsight Sync's own settings file.
@@ -487,22 +511,48 @@ pub fn on_startup<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         });
 }
 
+/// Runs `work` on a blocking thread: Hindsight Sync's client is
+/// `reqwest::blocking`, which panics when made or dropped on a tokio worker,
+/// and a panicking command never answers.
+async fn off_the_runtime<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| AppError::Internal(format!("Hindsight Sync worker failed: {e}")))?
+}
+
+/// [`scan_now`] off the runtime: the Scan button's body.
+pub async fn scan(state: AppState) -> Result<ScanResult> {
+    off_the_runtime(move || scan_now(&state)).await
+}
+
+/// [`probe_now`] off the runtime: the body of the probe when Settings opens.
+pub async fn probe(state: AppState) -> Result<ScanResult> {
+    off_the_runtime(move || probe_now(&state)).await
+}
+
+/// [`port_set`] off the runtime, since it probes.
+pub async fn set_port(state: AppState, port: u16) -> Result<Settings> {
+    off_the_runtime(move || port_set(&state, port)).await
+}
+
 /// The Scan button.
-#[tauri::command(async)]
-pub fn reanalysis_scan(state: tauri::State<'_, AppState>) -> Result<ScanResult> {
-    scan_now(&state)
+#[tauri::command]
+pub async fn reanalysis_scan(state: tauri::State<'_, AppState>) -> Result<ScanResult> {
+    scan(state.inner().clone()).await
 }
 
 /// Probes the saved port: when Settings opens.
-#[tauri::command(async)]
-pub fn reanalysis_probe(state: tauri::State<'_, AppState>) -> Result<ScanResult> {
-    probe_now(&state)
+#[tauri::command]
+pub async fn reanalysis_probe(state: tauri::State<'_, AppState>) -> Result<ScanResult> {
+    probe(state.inner().clone()).await
 }
 
 /// Changes Hindsight Sync's port, then probes it.
-#[tauri::command(async)]
-pub fn set_reanalysis_port(state: tauri::State<'_, AppState>, port: u16) -> Result<Settings> {
-    port_set(&state, port)
+#[tauri::command]
+pub async fn set_reanalysis_port(state: tauri::State<'_, AppState>, port: u16) -> Result<Settings> {
+    set_port(state.inner().clone(), port).await
 }
 
 /// Chooses the archive fetches read, or clears the choice with null.

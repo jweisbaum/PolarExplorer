@@ -548,3 +548,32 @@ fn a_failed_choice_puts_the_earlier_location_back_owner_only() {
     let temp = reanalysis::location_path(&app.paths).with_file_name("reanalysis-archive.json.tmp");
     assert!(!temp.exists(), "no temporary left holding a secret");
 }
+
+/// The commands run on a tokio worker: Hindsight Sync's blocking client must
+/// be made and dropped off it, or the call panics and never answers.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_commands_answer_from_a_tokio_worker() {
+    let root = TempRoot::new("reanalysis-worker");
+    let server = stub(listing("first-secret"));
+    let app = root.state();
+    // Each body on a worker of a multi-thread runtime, as Tauri runs them.
+    let worker = app.clone();
+    let port = server.port;
+    let saved = tokio::spawn(async move { reanalysis::set_port(worker, port).await })
+        .await
+        .expect("setting the port answers rather than panicking")
+        .unwrap();
+    assert_eq!(saved.reanalysis.port, server.port);
+    let found = tokio::spawn(reanalysis::probe(app.clone()))
+        .await
+        .expect("the probe answers rather than panicking")
+        .unwrap();
+    assert!(found.detected);
+    assert_eq!(found.port, server.port);
+    let scanned = tokio::spawn(reanalysis::scan(app.clone()))
+        .await
+        .expect("the scan answers rather than panicking")
+        .unwrap();
+    assert!(scanned.detected);
+    assert_eq!(scanned.port, server.port);
+}

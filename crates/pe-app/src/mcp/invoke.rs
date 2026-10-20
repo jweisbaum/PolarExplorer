@@ -247,8 +247,8 @@ pub const TABLE: &[(&str, Handler)] = &[
     command!(env_jobs, crate::env::env_jobs, { boat_context: Option<u64> }),
     command!(set_use_corrected, crate::env::set_use_corrected, { boat_context: Option<u64>, on: bool }),
     // Hindsight Sync's listing: names, places and reasons, never a location.
-    command!(reanalysis_scan, crate::reanalysis::reanalysis_scan, {}),
-    command!(reanalysis_probe, crate::reanalysis::reanalysis_probe, {}),
+    command!(async reanalysis_scan, crate::reanalysis::reanalysis_scan, {}),
+    command!(async reanalysis_probe, crate::reanalysis::reanalysis_probe, {}),
     // The polar views' edits.
     command!(set_excluded, crate::polar3d::set_excluded, { boat_context: Option<u64>, nodes: Vec<crate::polar3d::PolarNodeRef>, samples: Vec<u64>, excluded: bool }),
     command!(polar_edit_surface, crate::polar_edit::polar_edit_surface, { boat_context: Option<u64>, source_id: u64 }),

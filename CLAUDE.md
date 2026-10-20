@@ -75,8 +75,9 @@ stop and raise it rather than working around it.
    it that way. `npm run check:offline` **cannot** see a listener — it reads
    source URLs, remote references in the built bundle and the CSP — so for
    anything inbound the enforcement is that the dependency is not compiled in.
-   Its seams (`PE_AUTOMATION_ROOT`, `PE_DRIVER_YELLOWBRICK`) are compiled only
-   with the feature; the frontend's (`ui/src/automation.ts`) only in
+   Its seams (`PE_AUTOMATION_ROOT`, `PE_DRIVER_YELLOWBRICK`,
+   `PE_DRIVER_HINDSIGHT_PORT`: a driven run asks only that port for Hindsight
+   Sync, or none) are compiled only with the feature; the frontend's (`ui/src/automation.ts`) only in
    development builds. Never ship the WebDriver feature.
    **And one inbound exception (D29):** the MCP service, `pe-app`'s `mcp`
    module (spec §3.7), listens on `127.0.0.1` only while the person has
