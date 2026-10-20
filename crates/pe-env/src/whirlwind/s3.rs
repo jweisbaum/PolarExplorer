@@ -201,9 +201,9 @@ impl S3 {
         });
         let limit = match range {
             Some(Range::Bytes(_, n) | Range::Suffix(n)) => n,
-            None => 8 << 20,
+            None => 16 << 20,
         };
-        if limit == 0 || limit > 8 << 20 {
+        if limit == 0 || limit > 16 << 20 {
             return Err(EnvError::Layout(
                 "Whirlwind object exceeds the read limit".into(),
             ));

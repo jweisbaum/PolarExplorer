@@ -33,14 +33,43 @@ pub(crate) fn zstd_raw(raw: &[u8]) -> Vec<u8> {
 /// The fixture archive's layout: 4 hours from 2000-01-01T00Z, latitudes
 /// 60N to 30S every 30°, longitudes every 45°, seven parameters.
 pub(super) fn archive() -> Archive {
-    let array = |np| Array {
+    archive_with(Dtype::F16, &NEEDED)
+}
+
+/// What the builder writes each parameter as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dtype {
+    /// Hindsight Sync layout 2.
+    F16,
+    /// Hindsight Sync layout 3.
+    F32,
+}
+
+const NEEDED: [&str; 7] = [
+    "u10",
+    "v10",
+    "ucur",
+    "vcur",
+    "wave_direction",
+    "wave_height",
+    "wave_period",
+];
+
+/// [`archive`] for an archive whose `param` axis lists `names`.
+pub(super) fn archive_with(dtype: Dtype, names: &[&str]) -> Archive {
+    let np = names.len();
+    let array = Array {
         shape: [4, np, 4, 8],
         inner: [2, np, 2, 2],
         bands: [vec![2, 2], vec![4, 4]],
-        parameters: (0..np).collect(),
+        parameters: NEEDED
+            .iter()
+            .map(|n| names.iter().position(|m| m == n).unwrap())
+            .collect(),
+        bytes_per_value: if dtype == Dtype::F16 { 2 } else { 4 },
     };
     Archive {
-        data: array(7),
+        data: array,
         grid: Grid {
             lat: Axis::from_values("lat", &[60., 30., 0., -30.]).unwrap(),
             lon: Axis::from_values("lon", &[-180., -135., -90., -45., 0., 45., 90., 135.]).unwrap(),
@@ -58,6 +87,12 @@ pub(super) fn archive() -> Archive {
 /// −0.25), wave direction 350° on even hours and 10° on odd ones, wave
 /// height 2 + hour and period 8 s.
 pub fn fixture() -> BTreeMap<String, Vec<u8>> {
+    fixture_with(Dtype::F16, &NEEDED)
+}
+
+/// [`fixture`]'s truth values in the parameters of `names` that [`fixture`]
+/// has (a parameter it does not use holds a filler 1.5), as `dtype`.
+pub fn fixture_with(dtype: Dtype, names: &[&str]) -> BTreeMap<String, Vec<u8>> {
     let mut objects = BTreeMap::new();
     for t in 0..2 {
         for y in 0..2 {
@@ -67,28 +102,32 @@ pub fn fixture() -> BTreeMap<String, Vec<u8>> {
                 for inner in 0..2 {
                     let mut raw = Vec::new();
                     for step in 0..2 {
-                        for param in 0..7 {
+                        for name in names {
                             for row in 0..2 {
                                 for _col in 0..2 {
                                     let hour = (t * 2 + step) as f32;
-                                    let value = match param {
-                                        0 => 2. * hour + (y * 2 + row) as f32,
-                                        1 => 4.,
-                                        2 => 0.5,
-                                        3 => -0.25,
-                                        4 => {
+                                    let value = match *name {
+                                        "u10" => 2. * hour + (y * 2 + row) as f32,
+                                        "v10" => 4.,
+                                        "ucur" => 0.5,
+                                        "vcur" => -0.25,
+                                        "wave_direction" => {
                                             if step == 0 {
                                                 350.
                                             } else {
                                                 10.
                                             }
                                         }
-                                        5 => 2. + hour,
-                                        _ => 8.,
+                                        "wave_height" => 2. + hour,
+                                        "wave_period" => 8.,
+                                        _ => 1.5,
                                     };
-                                    raw.extend_from_slice(
-                                        &half::f16::from_f32(value).to_bits().to_le_bytes(),
-                                    );
+                                    match dtype {
+                                        Dtype::F16 => raw.extend_from_slice(
+                                            &half::f16::from_f32(value).to_bits().to_le_bytes(),
+                                        ),
+                                        Dtype::F32 => raw.extend_from_slice(&value.to_le_bytes()),
+                                    }
                                 }
                             }
                         }
@@ -298,8 +337,18 @@ pub(crate) fn whirlwind_for(
     concurrency: usize,
     memory: Arc<BlockCache>,
 ) -> Whirlwind {
+    whirlwind_with(reference, concurrency, memory, archive())
+}
+
+/// [`whirlwind_for`] with the layout `archive` instead of [`archive`]'s.
+pub(super) fn whirlwind_with(
+    reference: ArchiveRef,
+    concurrency: usize,
+    memory: Arc<BlockCache>,
+    archive: Archive,
+) -> Whirlwind {
     let w = Whirlwind::new(reference, Duration::from_secs(5), memory, concurrency).unwrap();
-    *w.archive.lock().unwrap() = Some(Arc::new(archive()));
+    *w.archive.lock().unwrap() = Some(Arc::new(archive));
     w
 }
 

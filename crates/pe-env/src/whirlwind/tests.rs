@@ -1,5 +1,6 @@
 use super::testing::{
-    self, Server, archive, fixture, serve, serve_delayed, serve_revision, zstd_raw,
+    self, Dtype, Server, archive, fixture, fixture_with, serve, serve_delayed, serve_revision,
+    zstd_raw,
 };
 use super::*;
 use crate::Dataset;
@@ -708,4 +709,120 @@ fn s3_bare(bucket: &str, prefix: &str) -> ArchiveLocation {
         force_path_style: false,
         credentials: None,
     }
+}
+
+const ELEVEN: [&str; 11] = [
+    "mslp",
+    "u10",
+    "z500",
+    "v10",
+    "ucur",
+    "vcur",
+    "wave_direction",
+    "wave_height",
+    "wave_period",
+    "wind_speed",
+    "wind_constancy",
+];
+
+fn sample_with(objects: BTreeMap<String, Vec<u8>>, archive: layout::Archive) -> Vec<EnvPoint> {
+    let server = serve(objects, 206);
+    let reference = ArchiveRef {
+        identity: format!("s3://{}/{}", testing::BUCKET, testing::PREFIX),
+        location: testing::location(server.endpoint()),
+    };
+    let w = testing::whirlwind_with(reference, 4, BlockCache::new(16 << 20), archive);
+    let cancel = Arc::new(AtomicBool::new(false));
+    w.sample(&[point()], &options(), &cancel).unwrap()
+}
+
+#[test]
+fn a_layout_3_archive_samples_the_same_values_as_layout_2() {
+    let two = sample_with(fixture(), archive());
+    let three = sample_with(
+        fixture_with(Dtype::F32, &ELEVEN),
+        testing::archive_with(Dtype::F32, &ELEVEN),
+    );
+    assert!(two[0].wind.is_some() && two[0].waves.is_some() && two[0].current.is_some());
+    assert_eq!(two, three);
+}
+
+fn parameter_axis(names: &[&str]) -> (serde_json::Value, Vec<u8>) {
+    let metadata = serde_json::json!({
+        "zarr_format":3,"node_type":"array","shape":[names.len()],
+        "data_type":{"name":"fixed_length_utf32","configuration":{"length_bytes":56}},
+        "chunk_key_encoding":{"name":"default","configuration":{"separator":"/"}},
+        "chunk_grid":{"name":"regular","configuration":{"chunk_shape":[names.len()]}},
+        "codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"zstd"}]
+    });
+    let mut raw = vec![0u8; names.len() * 56];
+    for (slot, name) in names.iter().enumerate() {
+        for (i, ch) in name.chars().enumerate() {
+            raw[slot * 56 + i * 4..slot * 56 + i * 4 + 4]
+                .copy_from_slice(&(ch as u32).to_le_bytes());
+        }
+    }
+    (metadata, zstd_raw(&raw))
+}
+
+#[test]
+fn an_archive_missing_a_needed_parameter_is_refused_by_name() {
+    let needed = [
+        "u10",
+        "v10",
+        "ucur",
+        "vcur",
+        "wave_direction",
+        "wave_height",
+        "wave_period",
+    ];
+    let names: Vec<&str> = ELEVEN
+        .iter()
+        .copied()
+        .filter(|n| *n != "wave_period")
+        .collect();
+    let (metadata, bytes) = parameter_axis(&names);
+    let err = layout::parameters(&metadata, &bytes, &needed).unwrap_err();
+    assert!(
+        err.to_string().contains("lacks parameter wave_period"),
+        "{err}"
+    );
+    let (metadata, bytes) = parameter_axis(&ELEVEN);
+    assert_eq!(
+        layout::parameters(&metadata, &bytes, &needed).unwrap(),
+        vec![1, 3, 4, 5, 6, 7, 8]
+    );
+}
+
+fn sharded(data_type: &str, inner: [usize; 4]) -> serde_json::Value {
+    serde_json::json!({
+        "zarr_format":3,"node_type":"array","shape":[inner[0],11,inner[2],inner[3]],
+        "data_type":data_type,"fill_value":"NaN","dimension_names":["time","param","latitude","longitude"],
+        "chunk_key_encoding":{"name":"default","configuration":{"separator":"/"}},
+        "chunk_grid":{"name":"rectilinear","configuration":{"kind":"inline","chunk_shapes":[inner[0],11,[inner[2]],[inner[3]]]}},
+        "codecs":[{"name":"sharding_indexed","configuration":{
+            "chunk_shape":inner,"index_location":"end",
+            "codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"zstd","configuration":{"level":5}}],
+            "index_codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"crc32c"}]
+        }}]
+    })
+}
+
+#[test]
+fn the_inner_chunk_bound_counts_values_not_bytes() {
+    let parameters = vec![1, 3, 4, 5, 6, 7, 8];
+    let ok = Array::parse(&sharded("float32", [72, 11, 40, 80]), parameters.clone()).unwrap();
+    assert_eq!(ok.decoded_len(), 72 * 11 * 40 * 80 * 4);
+    assert!(Array::parse(&sharded("float32", [96, 11, 80, 80]), parameters).is_err());
+}
+
+#[test]
+fn a_float64_archive_is_refused() {
+    assert!(
+        Array::parse(
+            &sharded("float64", [2, 11, 2, 2]),
+            vec![1, 3, 4, 5, 6, 7, 8]
+        )
+        .is_err()
+    );
 }

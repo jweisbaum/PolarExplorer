@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 const DIRECTORY: &str = "whirlwind-hindsight-v1";
 const MAGIC: &[u8; 8] = b"PEWWC001";
 const OVERHEAD: u64 = 40;
-const MAX_ENTRY: u64 = (8 << 20) + OVERHEAD;
+const MAX_ENTRY: u64 = (16 << 20) + OVERHEAD;
 
 type Registry = Mutex<BTreeMap<PathBuf, Weak<DiskCache>>>;
 static REGISTRY: OnceLock<Registry> = OnceLock::new();

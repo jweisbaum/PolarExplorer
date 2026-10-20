@@ -79,6 +79,11 @@ pub(super) fn coordinate(
 }
 
 pub(super) fn parameters(meta: &Value, bytes: &[u8], expected: &[&str]) -> Result<Vec<usize>> {
+    // The axis may list more parameters than are needed (layout 3 has eleven).
+    let count = match sizes(&meta["shape"])?.as_slice() {
+        [n] if (1..=256).contains(n) => *n,
+        _ => return Err(bad("unsupported Whirlwind parameter encoding")),
+    };
     let width = meta["data_type"]["configuration"]["length_bytes"]
         .as_u64()
         .unwrap_or(0) as usize;
@@ -87,14 +92,13 @@ pub(super) fn parameters(meta: &Value, bytes: &[u8], expected: &[&str]) -> Resul
         || width == 0
         || width > 256
         || !width.is_multiple_of(4)
-        || sizes(&meta["shape"])? != [expected.len()]
         || !codecs(&meta["codecs"])
         || meta["chunk_grid"]["name"] != "regular"
-        || sizes(&meta["chunk_grid"]["configuration"]["chunk_shape"])? != [expected.len()]
+        || sizes(&meta["chunk_grid"]["configuration"]["chunk_shape"])? != [count]
     {
         return Err(bad("unsupported Whirlwind parameter encoding"));
     }
-    let raw = decode(bytes, expected.len() * width)?;
+    let raw = decode(bytes, count * width)?;
     let names = raw
         .chunks_exact(width)
         .map(|part| {
@@ -122,6 +126,8 @@ pub(super) struct Array {
     pub inner: [usize; 4],
     pub bands: [Vec<usize>; 2],
     pub parameters: Vec<usize>,
+    /// Two for layout 2's float16, four for layout 3's float32.
+    pub bytes_per_value: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -149,8 +155,12 @@ impl Array {
             .map_err(|_| bad("invalid inner chunk shape"))?;
         let grid = &meta["chunk_grid"]["configuration"]["chunk_shapes"];
         let bands = [sizes(&grid[2])?, sizes(&grid[3])?];
+        let bytes_per_value = match meta["data_type"].as_str() {
+            Some("float16") => 2,
+            Some("float32") => 4,
+            _ => return Err(bad("unsupported Whirlwind sharded array layout")),
+        };
         if !v3(meta)
-            || meta["data_type"] != "float16"
             || meta["fill_value"] != "NaN"
             || meta["dimension_names"]
                 != serde_json::json!(["time", "param", "latitude", "longitude"])
@@ -165,12 +175,12 @@ impl Array {
             || grid[0].as_u64() != Some(inner[0] as u64)
             || grid[1].as_u64() != Some(shape[1] as u64)
             || inner[1] != shape[1]
-            || shape[1] != parameters.len()
             || parameters.len() != 7
+            || parameters.iter().any(|&p| p >= shape[1])
             || inner
                 .iter()
-                .try_fold(2usize, |n, v| n.checked_mul(*v))
-                .is_none_or(|n| n > 8 << 20)
+                .try_fold(1usize, |n, v| n.checked_mul(*v))
+                .is_none_or(|n| n > 4 << 20)
             || bands.iter().enumerate().any(|(i, b)| {
                 b.iter().sum::<usize>() != shape[i + 2] || b.iter().any(|n| n % inner[i + 2] != 0)
             })
@@ -182,6 +192,7 @@ impl Array {
             inner,
             bands,
             parameters,
+            bytes_per_value,
         })
     }
 
@@ -222,7 +233,7 @@ impl Array {
     }
 
     pub fn decoded_len(&self) -> usize {
-        self.inner.iter().product::<usize>() * 2
+        self.inner.iter().product::<usize>() * self.bytes_per_value
     }
 }
 
@@ -265,7 +276,7 @@ pub(super) fn index_entry(bytes: &[u8], chunk: Chunk) -> Result<Option<(u64, u64
     if offset == u64::MAX && len == u64::MAX {
         return Ok(None);
     }
-    if len == 0 || len > 8 << 20 || offset.checked_add(len).is_none() {
+    if len == 0 || len > 16 << 20 || offset.checked_add(len).is_none() {
         return Err(bad("invalid inner chunk extent"));
     }
     Ok(Some((offset, len)))

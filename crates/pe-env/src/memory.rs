@@ -9,7 +9,7 @@
 //! What is kept, per `(archive, shard key)`:
 //! - its shard index, or that the archive has no such shard;
 //! - each inner chunk downloaded, compressed exactly as served;
-//! - each inner chunk's decoded float16 bytes, sharing the same byte limit.
+//! - each inner chunk's decoded value bytes, sharing the same byte limit.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,7 +27,7 @@ pub enum Part {
     Head,
     /// One inner chunk, compressed, by number.
     Block(u32),
-    /// One inner chunk, decoded float16 bytes.
+    /// One inner chunk, decoded value bytes.
     Decoded(u32),
 }
 
@@ -38,7 +38,7 @@ pub enum Held {
     Missing,
     /// Compressed bytes exactly as served (a shard index or an inner chunk).
     Compressed(Bytes),
-    /// Validated decoded bytes, retained without expanding float16 values.
+    /// Validated decoded bytes, retained without expanding float16 or float32 values.
     Decoded(Bytes),
 }
 

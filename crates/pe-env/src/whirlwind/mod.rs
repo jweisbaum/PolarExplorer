@@ -372,12 +372,17 @@ impl Whirlwind {
                     }
                 };
                 let stride = array.inner[2]*array.inner[3];
+                let width = array.bytes_per_value;
                 let decoded = cells.into_iter().map(|cell| {
                     let offset = array.locate(cell).1;
                     let mut values = [f32::NAN;7];
                     for (i,param) in array.parameters.iter().enumerate() {
-                        let at = (offset + param * stride)*2;
-                        values[i] = half::f16::from_bits(u16::from_le_bytes([raw[at],raw[at+1]])).to_f32();
+                        let at = (offset + param * stride)*width;
+                        values[i] = if width == 2 {
+                            half::f16::from_bits(u16::from_le_bytes([raw[at],raw[at+1]])).to_f32()
+                        } else {
+                            f32::from_le_bytes([raw[at],raw[at+1],raw[at+2],raw[at+3]])
+                        };
                     }
                     (cell, values)
                 }).collect::<Vec<_>>();

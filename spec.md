@@ -1499,7 +1499,8 @@ expected in the combined layout: `data`
 contains `u10`, `v10`,
 `ucur`, `vcur`, `wave_direction`, `wave_height` and `wave_period`, mapped by
 the `param` coordinate names. There are no separate wave-array requests. Values
-are float16, stored in Zstandard-compressed inner chunks inside rectilinear
+are float16 (layout 2) or float32 (layout 3), among seven or eleven parameters,
+located by name, stored in Zstandard-compressed inner chunks inside rectilinear
 shards. Since 2026-10-11 the published inner chunks are 72 hours × all
 parameters × 20 × 20 cells (5° × 5°; 40 × 40 cells, 10° × 10°, before), in
 the same four latitude and five longitude shard bands. The reader takes the
@@ -1510,7 +1511,7 @@ required shard's checksummed index using a suffix Range request, then each
 required inner chunk using its exact byte range. It never downloads a complete
 shard or scans the bucket. Duplicate chunk requests are coalesced across
 positions and selected tracks, and the bounded session memory cache reuses
-indexes, compressed chunks and decoded float16 chunks across routes, including
+indexes, compressed chunks and decoded chunks across routes, including
 when a later request needs different parameters
 from the same chunk. Whirlwind additionally keeps validated compressed chunks
 in the bounded disk cache in Settings (§3.4), including across restarts.
