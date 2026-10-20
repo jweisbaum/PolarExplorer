@@ -102,7 +102,9 @@ The client's helpers: `click`, `type` (sets a value the way React sees it),
 `queueDialog`, `invoke` (a Tauri command), `run` (a script with `done`),
 `open`, `screenshot`. The harness adds `newProject`, `colourPixels` and
 `distinctColours` (assert on what a canvas actually shows),
-`setLanguageInSettings` and `toHex`.
+`setLanguageInSettings` and `toHex`. `fakeHindsightSync(archives)` serves
+Hindsight Sync's archive API on a loopback port and returns `{ port, listen(), close() }`;
+a driven app asks Hindsight Sync only on `PE_DRIVER_HINDSIGHT_PORT` (none when unset).
 
 Rules:
 

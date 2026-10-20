@@ -17,6 +17,7 @@
 
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 
 import { ROOT, safeName } from "../client.mjs";
@@ -127,4 +128,43 @@ export async function setLanguageInSettings(driver, language) {
   await driver.waitFor('[data-feature="settings:language"]');
   await driver.type('[data-feature="settings:language"]', language);
   await driver.waitFor(`html[lang="${language}"]`, { timeoutMs: 10_000 });
+}
+
+/**
+ * A stand-in for Hindsight Sync's archive API on `127.0.0.1`:
+ * `GET /v1/archives/{cloud,local}/reanalysis` answer the `archives` of that
+ * storage, as the real API does; a request carrying an `Origin` header is
+ * refused with 403 like the real one. It starts listening on a port the
+ * system picks; `close()` stops it and `listen()` starts it again on the
+ * same port, so a test can learn the port before the application starts
+ * (`PE_DRIVER_HINDSIGHT_PORT`) and show Hindsight Sync not running.
+ */
+export async function fakeHindsightSync(archives) {
+  const server = createServer((req, res) => {
+    const answer = (status, body) => {
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    if (req.headers.origin !== undefined) return answer(403, { error: "local_applications_only" });
+    const m = /^\/v1\/archives\/(cloud|local)\/reanalysis$/.exec(req.url ?? "");
+    if (req.method !== "GET" || !m) return answer(404, { error: "not_found" });
+    answer(200, { api_version: 1, archives: archives.filter((a) => a.storage === m[1]), errors: [] });
+  });
+  const listen = (port) => new Promise((done, fail) => {
+    server.once("error", fail);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", fail);
+      done(server.address().port);
+    });
+  });
+  const fake = {
+    port: await listen(0),
+    listen: () => listen(fake.port),
+    close: () => new Promise((done) => {
+      if (!server.listening) return done();
+      server.closeAllConnections();
+      server.close(() => done());
+    }),
+  };
+  return fake;
 }

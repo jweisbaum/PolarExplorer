@@ -56,7 +56,7 @@ export default {
       chunk_degrees: 5, chunk_hours: 72, products: ["wind10m"], place: "127.0.0.1",
     };
     await writeFile(join(root, "config", "settings.json"),
-      JSON.stringify({ chunk_cache: { location: "", size_limit_gb: 20 }, reanalysis: { port: 8765, connected_once: true, archive } }));
+      JSON.stringify({ chunk_cache: { location: "", size_limit_gb: 20 }, reanalysis: { port: 9, connected_once: true, archive } }));
     await writeFile(join(root, "config", "reanalysis-archive.json"), JSON.stringify({
       id: "ux",
       location: { protocol: "s3", bucket: "whirlwind-hindsight", prefix: "hindsight-routing",
