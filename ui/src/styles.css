@@ -1088,6 +1088,15 @@ button.source-label:hover { border-color: var(--border); background: var(--raise
 .settings-field select, .settings-field input { color: var(--text); }
 .settings-field input[type="number"] { width: 6rem; }
 .settings-field button { flex: none; white-space: nowrap; }
+/* Settings → Reanalysis: Hindsight Sync's logo beside the sentence that
+   asks for it, and its site as a link; the domain reads left to right in
+   every language. Scan and Port sit on one line in all three states. */
+.reanalysis-warning { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
+.reanalysis-warning img { flex: none; width: 48px; height: 48px; }
+.reanalysis-link { color: var(--accent); text-decoration: underline; direction: ltr; unicode-bidi: isolate; }
+.reanalysis-link:hover { text-decoration: none; }
+.reanalysis-link:focus-visible { outline: 1px solid var(--accent); }
+.reanalysis-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .settings-path {
   min-width: 0;
   overflow: hidden;

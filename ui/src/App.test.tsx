@@ -105,6 +105,8 @@ function backend() {
       case "set_weather_cache": settings = { ...settings, weather_cache: { directory: args?.directory as string, max_size_gb: args?.maxSizeGb as number } }; return settings;
       case "database_job_status": return { running: false, operation: "", failures: [], done: 0, total: 0, tracks: 0, skipped: 0, failed: 0, current: "", cancelled: false, error: null };
       case "app_info": return { name: "PolarExplorer", version: "0.1.0" };
+      // Hindsight Sync, never found: the Reanalysis section shows its warning.
+      case "reanalysis_probe": case "reanalysis_scan": return { detected: false, port: 8765, archives: [], unavailable: [] };
       // The MCP service, off: its section shows the switch and the port.
       case "mcp_status": return { enabled: false, port: 47392, token: "", bound_port: null, bind_error: null, sessions: 0, last_tool: null, clients: ["claude_code", "codex", "claude_desktop"] };
       case "mcp_connections": return ["claude_code", "codex", "claude_desktop"].map(client => ({ client, state: "disconnected", available: true, detail: "" }));
@@ -691,6 +693,8 @@ describe("switching language (plan.md M2 acceptance)", () => {
       // languages' own names, and symbols.
       const data = new Set(["Fastnet", "/boats/Fastnet.wpsproj", "v0.1.0", "PolarExplorer", "Claude Code", "Codex", "Claude Desktop", "English", "Français",
         "Deutsch", "Español", "Italiano", "Nederlands", "中文", "日本語", "العربية", "/cache/chunks", "/cache/whirlwind-hindsight-v1", "…",
+        // Hindsight Sync's site, a domain, from the Reanalysis section's warning.
+        "hindsight-sync.whirlwindai.com",
         // Country codes and the catalogue's commit, from the ORC polars section.
         "ORC", "ORR", "GBR", "NED", "c2ca870c6b22cc02c25afd5bac0f2d8297bf95de"]);
       const untranslated = before.filter((text, index) =>

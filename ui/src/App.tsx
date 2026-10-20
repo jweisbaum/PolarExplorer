@@ -16,7 +16,7 @@ import { describeError, reportFailure } from "./errors";
 import { later, lineText, reportError, shown, useHint, type Line } from "./hint";
 import { isBusy, useBusy } from "./busy";
 import { msg, setLanguage, useT } from "./i18n";
-import { api, ENV_CHANGED, ENV_PROGRESS, IpcError, QUIT_REQUESTED, QUIT_WAITING } from "./ipc";
+import { api, ENV_CHANGED, ENV_PROGRESS, IpcError, QUIT_REQUESTED, QUIT_WAITING, REANALYSIS_CHANGED } from "./ipc";
 import type { EnvJobsStatus } from "./generated/EnvJobsStatus";
 import { currentEnvJobs, envJobsBusy, setEnvJobs, useEnvJobs } from "./jobs";
 import { useLibraryScrape } from "./library/scrape";
@@ -36,6 +36,7 @@ import { resetSelection, selectSamplesOf } from "./selection";
 import type { CaptureRequest } from "./generated/CaptureRequest";
 import type { DocumentChanged } from "./generated/DocumentChanged";
 import type { McpActivity } from "./generated/McpActivity";
+import type { ScanResult } from "./generated/ScanResult";
 import type { ViewBoat } from "./generated/ViewBoat";
 import type { ViewSelection } from "./generated/ViewSelection";
 import type { ViewStage } from "./generated/ViewStage";
@@ -79,6 +80,8 @@ function Shell() {
   }, []);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  // What Rust's own probe last found of Hindsight Sync, for the Reanalysis section.
+  const [reanalysisScan, setReanalysisScan] = useState<ScanResult | null>(null);
   const [status, setStatus] = useState<Line | null>(null);
   // What an MCP client is doing, for the status bar's badge (spec.md 3.7).
   const [mcpActivity, setMcpActivity] = useState<McpActivity | null>(null);
@@ -360,6 +363,13 @@ function Shell() {
         }
       }),
       listen<McpActivity>("mcp://activity", (event) => setMcpActivity(event.payload)),
+      // A probe that found Hindsight Sync saved what it found (the port, that
+      // it connected, the archive's refreshed copy): read the settings again,
+      // and hand the listing to the Reanalysis section.
+      listen<ScanResult>(REANALYSIS_CHANGED, (event) => {
+        setReanalysisScan(event.payload);
+        void api.appSettings().then(setSettings).catch(() => undefined);
+      }),
     ].map((pending) => pending.catch(() => null));
     return () => { for (const pending of subs) void pending.then((off) => off?.()); };
   }, []);
@@ -446,7 +456,7 @@ function Shell() {
   }, [modal, project, startNewProject, openProject, save, saveAs, closeProject, flash]);
 
   const settingsDialog = showSettings && settings !== null && (
-    <SettingsDialog settings={settings} onSettings={setSettings} onClose={() => setShowSettings(false)} />
+    <SettingsDialog settings={settings} onSettings={setSettings} onClose={() => setShowSettings(false)} reanalysisScan={reanalysisScan} />
   );
   const trackerDialog = trackerOpening && <TrackerProjectDialog discardUnsaved={trackerOpening.discardUnsaved} onOpened={enter} onClose={() => setTrackerOpening(null)} />;
   const unsavedDialog = <>

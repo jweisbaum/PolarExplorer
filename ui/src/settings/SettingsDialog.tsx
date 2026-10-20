@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AppSettings } from "../generated/AppSettings";
 import type { AutosaveMode } from "../generated/AutosaveMode";
+import type { ScanResult } from "../generated/ScanResult";
 import type { Units } from "../generated/Units";
 import { onReveal } from "../help/highlight";
 import { useT } from "../i18n";
@@ -20,16 +21,19 @@ import LibrarySettings from "./LibrarySettings";
 import IntegerField from "./IntegerField";
 import WeatherCache from "./WeatherCache";
 import McpSection from "./McpSection";
+import Reanalysis from "./Reanalysis";
 import OrcScraper from "./OrcScraper";
 import OrrScraper from "./OrrScraper";
 
 /** The dot bands offered, knots either side of the plot's wind speed (spec.md 9.2). */
 const PLOT_BANDS = [0.25, 0.5, 1, 1.5, 2, 3, 5];
 
-export default function SettingsDialog({ settings, onSettings, onClose }: {
+export default function SettingsDialog({ settings, onSettings, onClose, reanalysisScan = null }: {
   settings: AppSettings;
   onSettings: (settings: AppSettings) => void;
   onClose: () => void;
+  /** What Rust's own probe last found, sent with `reanalysis://changed`. */
+  reanalysisScan?: ScanResult | null;
 }) {
   const t = useT();
   /** The last failure, described at render so a language switch relabels it. */
@@ -77,6 +81,7 @@ export default function SettingsDialog({ settings, onSettings, onClose }: {
       onReveal("settings:appearance", show),
       onReveal("settings:units", show),
       onReveal("settings:autosave", show),
+      onReveal("settings:reanalysis", show),
       onReveal("settings:weather", show),
       onReveal("settings:cache", show),
       onReveal("settings:network", show),
@@ -162,6 +167,11 @@ export default function SettingsDialog({ settings, onSettings, onClose }: {
           </label>
         </section>
 
+        <section data-section="settings:reanalysis">
+          <h3>{t("Reanalysis")}</h3>
+          <Reanalysis settings={settings} onSettings={onSettings} onError={report} pushed={reanalysisScan} />
+        </section>
+
         <section data-section="settings:weather">
           <h3>{t("Downloaded weather")}</h3>
           <p className="muted">
@@ -177,13 +187,13 @@ export default function SettingsDialog({ settings, onSettings, onClose }: {
         </section>
 
         <section data-section="settings:cache">
-          <h3>{t("Whirlwind cache")}</h3>
+          <h3>{t("Reanalysis cache")}</h3>
           <WeatherCache settings={settings} onSettings={onSettings} flush={flushCache} />
         </section>
 
         <section data-section="settings:network">
           <h3>{t("Network")}</h3>
-          <p className="muted">{t("Whirlwind downloads up to 64 chunks at once.")}</p>
+          <p className="muted">{t("Reanalysis downloads up to 64 chunks at once.")}</p>
           <label className="settings-field">
             {t("Request timeout (s)")}
             <IntegerField data-feature="settings:timeout" aria-label={t("Request timeout (s)")}
