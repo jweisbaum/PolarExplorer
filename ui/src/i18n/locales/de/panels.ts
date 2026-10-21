@@ -72,7 +72,6 @@ const catalogue: Record<string, string> = {
   "Importing polar files": "Polardateien werden importiert",
   "Imported 1 polar file.": "1 Polardatei importiert.",
   "Imported {count} polar files.": "{count} Polardateien importiert.",
-  "Import Expedition (.txt) and Adrena or grid (.pol, .csv) polars; several files at once": "Expedition- (.txt) und Adrena- oder Tabellenpolaren (.pol, .csv) importieren; mehrere Dateien auf einmal",
   "Import…": "Importieren…",
   "Files that were not imported": "Nicht importierte Dateien",
   "Remove this polar file from the project (undoable)": "Diese Polardatei aus dem Projekt entfernen (widerrufbar)",
@@ -224,6 +223,19 @@ const catalogue: Record<string, string> = {
   "all": "alle",
   "wind speed": "Windgeschwindigkeit",
   "map": "Karte",
+  "Import Expedition, Adrena, qtVlm, OpenCPN, LuckGrib and WhirlwindMatrixPolar files; several files at once": "Expedition-, Adrena-, qtVlm-, OpenCPN-, LuckGrib- und WhirlwindMatrixPolar-Dateien importieren; mehrere Dateien gleichzeitig",
+  "the WhirlwindMatrixPolar data is invalid or contains no boat-speed mode": "die WhirlwindMatrixPolar-Daten sind ungültig oder enthalten keinen Bootsgeschwindigkeitsmodus",
+  "Wind speed range": "Windgeschwindigkeitsbereich",
+  "Show the polar over a selected range of true wind speeds.": "Die Polare für einen ausgewählten Bereich wahrer Windgeschwindigkeiten anzeigen.",
+  "Plot display": "Diagrammdarstellung",
+  "Show data within a wind speed range": "Daten innerhalb eines Windgeschwindigkeitsbereichs anzeigen",
+  "Range": "Bereich",
+  "Minimum wind speed": "Minimale Windgeschwindigkeit",
+  "Maximum wind speed": "Maximale Windgeschwindigkeit",
+  "Density is probability per knot of boat speed": "Die Dichte ist die Wahrscheinlichkeit pro Knoten Bootsgeschwindigkeit",
+  "Probability density": "Wahrscheinlichkeitsdichte",
+  "Low": "Niedrig",
+  "High": "Hoch",
 };
 
 export default catalogue;

@@ -10,7 +10,6 @@ const catalogue: Record<string, string> = {
   "How far from the polar plot's wind speed a track sample may be and still be drawn.": "À quelle distance de la vitesse de vent du diagramme polaire un point de trace peut être et rester dessiné.",
   "samples": "points",
   "Import track files": "Importer des fichiers de traces",
-  "Import GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "Importer des traces GeoJSON et CSV, plusieurs fichiers à la fois, en choisissant les bateaux et en associant les colonnes.",
   "positions": "positions",
   "YellowBrick import": "Import YellowBrick",
   "Geovoile import": "Import Geovoile",
@@ -88,7 +87,6 @@ const catalogue: Record<string, string> = {
   "YellowBrick…": "YellowBrick…",
   "Geovoile…": "Geovoile…",
   "Blue Water…": "Blue Water…",
-  "Import GeoJSON and CSV tracks; several files at once": "Importer des traces GeoJSON et CSV ; plusieurs fichiers à la fois",
   "File…": "Fichier…",
   "Last import": "Dernier import",
   "{used} of {count} samples used": "{used} points utilisés sur {count}",
@@ -427,6 +425,9 @@ const catalogue: Record<string, string> = {
   "This race is sailed in legs; choose a leg to load its boat list": "Cette course se déroule en étapes ; choisissez une étape pour charger sa liste de bateaux",
   "Reload the boat list; newer tracks download when you click Import tracks": "Recharger la liste des bateaux ; les traces récentes seront téléchargées en cliquant sur Importer les traces",
   "Refresh boat list": "Actualiser les bateaux",
+  "Import GPX, GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "Importer des traces GPX, GeoJSON et CSV, plusieurs fichiers à la fois, en choisissant les bateaux et les colonnes.",
+  "Import GPX, GeoJSON and CSV tracks; several files at once": "Importer des traces GPX, GeoJSON et CSV ; plusieurs fichiers à la fois",
+  "this is not a usable GPX track": "ce fichier ne contient pas de trace GPX exploitable",
 };
 
 export default catalogue;

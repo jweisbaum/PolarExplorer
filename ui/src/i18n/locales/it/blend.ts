@@ -149,6 +149,21 @@ const catalogue: Record<string, string> = {
   "Maximum": "Massimo",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Combina le polari visibili per cella. La media usa i pesi delle sorgenti; mediana e p90 interpolano le velocità ordinate. Le impostazioni delle tracce non influiscono sulle viste con sole polari.",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "Il risultato delle polari mantiene il loro peso totale nella fusione con le tracce. Le celle delle tracce contano secondo peso e affidabilità dei campioni. Le celle vuote vengono riempite tra valori noti; la riga 0° vale 0 kn.",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "Esporta come qtVlm",
+  "Export as OpenCPN": "Esporta come OpenCPN",
+  "Export as LuckGrib": "Esporta come LuckGrib",
+  "Export as WhirlwindMatrixPolar": "Esporta come WhirlwindMatrixPolar",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "Nella finestra di esportazione: una tabella TWA × TWS separata da punti e virgola per qtVlm (.csv).",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "Nella finestra di esportazione: una tabella TWA × TWS separata da punti e virgola per OpenCPN (.pol).",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "Nella finestra di esportazione: una tabella TWA × TWS separata da tabulazioni per LuckGrib (.tsv).",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "Nella finestra di esportazione: una matrice SOG binaria compatta e autodescrittiva (.wmpolar).",
 };
 
 export default catalogue;

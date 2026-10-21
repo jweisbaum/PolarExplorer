@@ -135,6 +135,12 @@ const catalogue: Record<string, string> = {
   "Show the polar plot in the centre: boat speed against wind angle, one wind speed or all.": "Mostra al centro il diagramma polare: velocità della barca in funzione dell’angolo del vento, per una velocità del vento o per tutte.",
   "polar plot": "diagramma polare",
   "The polar plot: boat speed against wind angle": "Il diagramma polare: velocità della barca in funzione dell’angolo del vento",
+  "This tab or project is read only and cannot be changed.": "Questa scheda o progetto è di sola lettura e non può essere modificato.",
+  "Choosing a tab to import": "Scelta della scheda da importare",
+  "PolarExplorer tabs": "Schede PolarExplorer",
+  "Choosing where to export the tab": "Scelta della destinazione della scheda",
+  "Choosing where to export the project": "Scelta della destinazione del progetto",
+  "Export read-only project": "Esporta progetto di sola lettura",
 };
 
 export default catalogue;

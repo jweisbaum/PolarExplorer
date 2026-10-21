@@ -46,6 +46,8 @@ vi.mock("./scene3d", async (original) => {
     setRotateEnabled() {}
     resize() {}
     setGuides() {}
+    setPdfHighlight = vi.fn();
+    pickPdfCell() { return null; }
     setView = vi.fn();
     getView() { return { position: [0, 0, 40] as [number, number, number], target: [0, 0, 0] as [number, number, number] }; }
     setCells = vi.fn();

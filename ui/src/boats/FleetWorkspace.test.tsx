@@ -95,9 +95,9 @@ it("closes a tab from the × on it, after asking", async()=>{
  expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Polar 3");
  expect(host.querySelector('[data-feature="boats:name"]')).toBeNull();
 });
-it("names a tab a polar: Add Polar, Polar N, Delete Polar", async()=>{
+it("adds a tab containing a named polar and offers undoable deletion", async()=>{
  const add=toolbar.querySelector<HTMLButtonElement>('[data-feature="boats:add"]')!;
- expect(add.textContent).toBe("Add Polar");
+ expect(add.textContent).toBe("Add Tab");
  await click('[data-feature="boats:add"]');
  expect(invoke).toHaveBeenCalledWith("add_boat",{name:"Polar 2"});
  expect([...host.querySelectorAll('[role="tab"]')].map(tab=>tab.textContent)).toEqual(["Alpha","Polar 2"]);
@@ -106,7 +106,7 @@ it("names a tab a polar: Add Polar, Polar N, Delete Polar", async()=>{
  await click('[role="dialog"] button.danger');
  expect(host.querySelector('[data-feature="boats:restore"]')!.textContent).toBe("Undo Delete Polar");
 });
-it("puts the layout switch in the top bar as icons, beside Add Polar", async()=>{
+it("puts the layout switch in the top bar as icons, beside the tab controls", async()=>{
  const names:Record<string,string>={"boats:single":"Single view","boats:split":"Split view","boats:four":"Four-way view"};
  for(const [feature,name] of Object.entries(names)){
   expect(host.querySelector(`[data-feature="${feature}"]`)).toBeNull();
@@ -118,9 +118,9 @@ it("puts the layout switch in the top bar as icons, beside Add Polar", async()=>
   expect(button.title).toBe(name);
  }
  expect(toolbar.querySelector('[data-feature="boats:single"]')!.getAttribute("aria-pressed")).toBe("true");
- // In the same row as Add Polar, after it.
+ // In the same row as the tab controls, after them.
  const order=[...toolbar.querySelectorAll("[data-feature]")].map(el=>el.getAttribute("data-feature"));
- expect(order).toEqual(["boats:add","boats:single","boats:split","boats:four"]);
+ expect(order).toEqual(["boats:add","boats:import-tab","boats:export-tab","boats:single","boats:split","boats:four"]);
  await click('[data-feature="boats:add"]');await click('[data-feature="boats:split"]');
  expect(toolbar.querySelector('[data-feature="boats:split"]')!.getAttribute("aria-pressed")).toBe("true");
  expect(toolbar.querySelector('[data-feature="boats:single"]')!.getAttribute("aria-pressed")).toBe("false");
@@ -130,7 +130,7 @@ it("offers Export all beside the version, once there is more than one polar", as
  await click('[data-feature="boats:add"]');
  expect(host.querySelector('[data-feature="boats:export-all"]')).toBeNull();
  const all=status.querySelector<HTMLButtonElement>('[data-feature="boats:export-all"]')!;
- expect(all.textContent).toBe("Export all…");
+ expect(all.textContent).toBe("Export all tabs");
  await click('[data-feature="boats:export-all"]');
  expect(host.querySelector('.boat-export-dialog')).not.toBeNull();
 });

@@ -33,7 +33,7 @@ export const TOPICS: HelpTopic[] = [
     related: ["projects", "search", "map", "sources"] },
   { id: "projects", group: "Workspace", title: "Projects, saving and recovery",
     paragraphs: [
-      "A project is one attempt to build one polar for one boat. It is saved as a .wpsproj file that holds every source exactly as imported, with your changes stored beside it. A .pelocked project holds the same data and opens read-only.",
+      "A project holds one or more independent boat tabs for building their polars. It is saved as a .wpsproj file that holds every source exactly as imported, with your changes stored beside it. A .pelocked project holds the same data and opens read-only.",
       "Export Tab writes one independent .petab archive with the tab's polars, source overlays and filters, boat details, raw track fixes, samples and weather data. It uses the same portable ZIP and canonical JSON container on every operating system. Import Tab or drop a .petab file onto the project to add a locked tab; its red outline and Read only status mark it, and its contents cannot be edited.",
       "When an action would close a project with unsaved changes — New, Open, Open Recent, Close or quitting — PolarExplorer asks first: Save, Don’t save or Cancel. Cancel, Escape and a click outside the question all keep the project open as it is. Saving a project that has never been saved asks where to put it; cancelling that also cancels the action.",
     ],

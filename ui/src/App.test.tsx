@@ -372,18 +372,20 @@ describe("the project window", () => {
     await mount();
     const backend = invoke.getMockImplementation()!;
     let older!: (value: ProjectSummary) => void;
-    let newer!: (value: ProjectSummary) => void;
     invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
       if (command === "set_source_visible") return new Promise<ProjectSummary>((resolve) => {
-        if (args?.id === POLAR.id) older = resolve; else newer = resolve;
+        older = resolve;
       });
       return backend(command, args);
     });
     const boxes = () => [...document.querySelectorAll<HTMLInputElement>('[data-feature="sources:visible"]')];
     await click(boxes()[0]!);
-    await click(boxes()[1]!);
+    // Visibility edits are serialized. A newer external revision can
+    // still arrive before the pending mutation's response.
+    expect(boxes()[1]!.disabled).toBe(true);
     const latest = { ...project!, revision: 3, sources: [{ ...POLAR, visible: false }, { ...ORC, visible: false }] };
-    await act(async () => newer(latest));
+    const changed = events.get("document://changed") as unknown as (e: { payload: unknown }) => void;
+    await act(async () => changed({ payload: { project: latest, opened: false } }));
     expect(boxes().map(box => box.checked)).toEqual([false, false]);
     await act(async () => older({ ...latest, revision: 2, sources: [{ ...POLAR, visible: false }, ORC] }));
     expect(boxes().map(box => box.checked)).toEqual([false, false]);
@@ -722,10 +724,17 @@ describe("finding every control (plan.md M2 acceptance)", () => {
     await type(search, t(entry.label));
     await settle();
     const options = [...document.querySelectorAll<HTMLLIElement>(".help-menu-popup [role=option]")];
-    const match = options.find((option) =>
-      option.querySelector(".help-search-label")?.textContent === t(entry.label)
-      && option.querySelector(".help-search-detail")?.textContent === t(entry.description!));
+    // The 2D and 3D stages share labels (for example wave ranges). Pick
+    // the actual target, then verify its translated label and description.
+    const match = options.find((option) => option.dataset.featureTarget === id)
+      ?? options.find((option) => {
+        const target = FEATURES.find(f => f.id === option.dataset.featureTarget);
+        return entry.landing && target?.landing === entry.landing
+          && target.label === entry.label && target.description === entry.description;
+      });
     expect(match, `${id} is offered for “${t(entry.label)}”`).toBeDefined();
+    expect(match!.querySelector(".help-search-label")?.textContent).toBe(t(entry.label));
+    expect(match!.querySelector(".help-search-detail")?.textContent).toBe(t(entry.description!));
     document.querySelectorAll(".feature-flash").forEach((box) => box.remove());
     await act(async () => match!.click());
     await settle(entry.reveal?.length ? 250 : 80);
@@ -837,7 +846,7 @@ describe("polar files and the source list (plan.md M4)", () => {
 
   it("puts the blend first, then each source with its kind and count", async () => {
     await open([POLAR, TRACK]);
-    const rows = [...document.querySelectorAll(".source-list > li")];
+    const rows = [...document.querySelectorAll(".source-list > li.source-row")];
     expect(rows[0]!.textContent).toContain("Blend");
     expect(rows[1]!.textContent).toContain("71 cells");
     expect(rows[2]!.textContent).toContain("100/120 samples");
@@ -968,11 +977,20 @@ describe("polar files and the source list (plan.md M4)", () => {
   it("previews the export on either grid and saves it through the native dialog (spec.md 12)", async () => {
     await open([POLAR]);
     await click(feature("sources:export"));
+    const format = feature("export:format") as unknown as HTMLSelectElement;
+    expect(format.value).toBe("whirlwind_matrix_polar");
+    const chooseFormat = (value: string) => act(async () => {
+      format.value = value;
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await chooseFormat("expedition");
+    await settle(250);
     expect(commands("export_preview")).toEqual([{ boatContext: 1,  format: "expedition", axes: null }]);
     expect(q(".export-preview td.filled")!.textContent).toBe("0.00");
-    await click(feature("export:csv"));
+    await chooseFormat("csv");
     await click(feature("export:custom-grid"));
     await type(feature("export:custom-tws") as HTMLTextAreaElement, "8 12");
+    await settle(250);
     expect(commands("export_preview").at(-1)).toMatchObject({ format: "csv", axes: { tws: [8, 12] } });
     expect(q(".export-preview thead")!.textContent).toContain("12");
     dialog.save.mockResolvedValue("/boats/blend.csv");

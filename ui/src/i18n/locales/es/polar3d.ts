@@ -170,6 +170,22 @@ const catalogue: Record<string, string> = {
   "Show the samples and polar points you excluded.": "Mostrar los puntos y nodos de polar que ha excluido.",
   "excluded": "excluidos",
   "outliers": "valores atípicos",
+  "PDF": "PDF",
+  "probability density": "densidad de probabilidad",
+  "3D display mode": "Modo de visualización 3D",
+  "distribution": "distribución",
+  "Display": "Visualización",
+  "Probability density (PDF)": "Densidad de probabilidad (PDF)",
+  "No visible points pass the current filters to form a PDF.": "Ningún punto visible pasa los filtros actuales para formar una PDF.",
+  "Hover a cell to highlight it. Click to expand its PDF and show percentiles; press Escape to return. Drag to turn, right-drag to pan, scroll to zoom.": "Pase el cursor sobre una celda para resaltarla. Haga clic para ampliar su PDF y mostrar percentiles; pulse Escape para volver. Arrastre para girar, con el botón derecho para desplazar y use la rueda para ampliar.",
+  "TWA {twa}°, TWS {tws}": "TWA {twa}°, TWS {tws}",
+  "SOG: {speed}": "SOG: {speed}",
+  "Percentile: {percentile}%": "Percentil: {percentile}%",
+  "P{percentile}": "P{percentile}",
+  "Show all cells": "Mostrar todas las celdas",
+  "{count} wind-condition PDFs": "{count} PDF por condiciones de viento",
+  "{value} per knot": "{value} por nudo",
+  "Hover to highlight; click a cell to expand it.": "Pase el cursor para resaltar; haga clic en una celda para ampliarla.",
 };
 
 export default catalogue;

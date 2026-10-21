@@ -149,6 +149,22 @@ const catalogue: Record<string, string> = {
   "Maximum": "Maximum",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Combine les polaires visibles par cellule. La moyenne utilise les poids des sources ; la médiane et p90 interpolent les vitesses triées. Les réglages des traces ne concernent pas les vues contenant uniquement des polaires.",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "Le résultat des polaires conserve leur poids total lors de la fusion avec les traces. Les cellules des traces comptent selon leur poids et la confiance des échantillons. Les cellules vides sont interpolées entre les valeurs connues ; la ligne 0° vaut 0 kn.",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "Exporter au format qtVlm",
+  "Export as OpenCPN": "Exporter au format OpenCPN",
+  "Export as LuckGrib": "Exporter au format LuckGrib",
+  "Export as WhirlwindMatrixPolar": "Exporter au format WhirlwindMatrixPolar",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "Dans la fenêtre d’export : une table TWA × TWS séparée par des points-virgules pour qtVlm (.csv).",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "Dans la fenêtre d’export : une table TWA × TWS séparée par des points-virgules pour OpenCPN (.pol).",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "Dans la fenêtre d’export : une table TWA × TWS séparée par des tabulations pour LuckGrib (.tsv).",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "Dans la fenêtre d’export : une matrice SOG binaire compacte contenant sa propre description (.wmpolar).",
+
 };
 
 export default catalogue;

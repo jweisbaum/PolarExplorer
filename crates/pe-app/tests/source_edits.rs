@@ -346,6 +346,7 @@ fn every_history_label_is_listed_for_translation() {
             pe_app::polar_files::IMPORT_MANY,
             pe_app::orc::ADD_ORC,
             "Add ORR polar",
+            "Change source visibility",
             pe_app::tracks::IMPORT_ONE,
             pe_app::tracks::IMPORT_MANY,
             pe_core::command::EXCLUDE_DOTS_LABEL,

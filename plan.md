@@ -6,6 +6,25 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-21: Regression gates restored and Hindsight Sync validated — complete.**
+Resolved the nine Rust and 54 UI failures found during the status review.
+Numeric Expedition rows no longer resemble LuckGrib spreadsheet headers;
+overlapping qtVlm/OpenCPN headers retain the canonical CSV classification.
+Existing export bytes and golden files are unchanged. Added parser regressions
+and retained the failing property-test seed. Updated stale scene, tab, export,
+source-history and asynchronous-response tests to exercise the current controls.
+Completed missing interface translations and help content in all eight locales,
+and made help targets unambiguous when 2D and 3D controls share labels.
+Validation: 861 Rust tests and 534 UI tests pass, with 23 Rust tests ignored.
+Formatting, workspace clippy with warnings denied, TypeScript, the production
+UI build, offline policy, release checks and driver-tool tests pass. All five
+serial performance tests pass; Compare's three 512 × 512 surfaces measure
+62 ms against the 100 ms budget after native compilation finishes. Six real
+desktop walkthroughs pass: polar import, help search, language settings,
+weather, Hindsight reanalysis and cache settings. Representative screenshots
+were inspected, including Hindsight's first-run, detected and disconnected
+states. The Hindsight walkthrough uses an isolated fixture service.
+
 **2026-10-14: Multilingual matrix-format reference — implemented.**
 The standalone HTML now includes French, German, Arabic, Simplified Chinese,
 Japanese, Spanish, Dutch, Italian and Portuguese alongside English. Its language

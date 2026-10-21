@@ -1014,6 +1014,11 @@ adds the current certificates to it from ORC's own service (D31).
   - **Adrena / grid** (`.pol` tab-separated, `.csv` semicolon- or
     comma-separated): top-left cell `TWA\TWS`, `TWA/TWS` or `TWA`; first row
     TWS values; first column TWA values; cells BSP in knots.
+  - **qtVlm / OpenCPN** use the same semicolon-separated table headers as
+    CSV polars, so content detection reports CSV; their named export options
+    retain their own extensions and headers. **LuckGrib** also accepts a
+    nonnumeric corner label above the numeric wind-speed columns. A numeric
+    first cell belongs to an Expedition row, not a spreadsheet header.
   - **WhirlwindMatrixPolar** (`.wmpolar`): the binary v1 layout described
     below. It carries a speed matrix, a probability-density matrix, or both.
     In this app, import requires the speed matrix. Every present SOG value is

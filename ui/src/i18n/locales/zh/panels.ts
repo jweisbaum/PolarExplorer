@@ -68,7 +68,6 @@ const catalogue: Record<string, string> = {
   "Importing polar files": "正在导入极曲线文件",
   "Imported 1 polar file.": "已导入 1 个极曲线文件。",
   "Imported {count} polar files.": "已导入 {count} 个极曲线文件。",
-  "Import Expedition (.txt) and Adrena or grid (.pol, .csv) polars; several files at once": "导入 Expedition (.txt) 以及 Adrena 或网格 (.pol, .csv) 极曲线；可一次导入多个文件",
   "Import…": "导入…",
   "Files that were not imported": "未导入的文件",
   "Remove this polar file from the project (undoable)": "从项目中移除此极曲线文件（可撤销）",
@@ -216,6 +215,19 @@ const catalogue: Record<string, string> = {
   "all": "全部",
   "wind speed": "风速",
   "map": "地图",
+  "Import Expedition, Adrena, qtVlm, OpenCPN, LuckGrib and WhirlwindMatrixPolar files; several files at once": "导入 Expedition、Adrena、qtVlm、OpenCPN、LuckGrib 和 WhirlwindMatrixPolar 文件；可同时导入多个文件",
+  "the WhirlwindMatrixPolar data is invalid or contains no boat-speed mode": "WhirlwindMatrixPolar 数据无效或不包含船速模式",
+  "Wind speed range": "风速范围",
+  "Show the polar over a selected range of true wind speeds.": "显示所选真风速范围内的极曲线。",
+  "Plot display": "图表显示",
+  "Show data within a wind speed range": "显示风速范围内的数据",
+  "Range": "范围",
+  "Minimum wind speed": "最小风速",
+  "Maximum wind speed": "最大风速",
+  "Density is probability per knot of boat speed": "密度表示每节船速对应的概率",
+  "Probability density": "概率密度",
+  "Low": "低",
+  "High": "高",
 };
 
 export default catalogue;

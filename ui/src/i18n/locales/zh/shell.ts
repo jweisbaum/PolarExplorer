@@ -135,6 +135,12 @@ const catalogue: Record<string, string> = {
   "Show the polar plot in the centre: boat speed against wind angle, one wind speed or all.": "在中央显示极曲线图：船速与风角的关系，可显示单一风速或全部风速。",
   "polar plot": "极曲线图",
   "The polar plot: boat speed against wind angle": "极曲线图：船速与风角的关系",
+  "This tab or project is read only and cannot be changed.": "此标签页或项目为只读，无法修改。",
+  "Choosing a tab to import": "选择要导入的标签页",
+  "PolarExplorer tabs": "PolarExplorer 标签页",
+  "Choosing where to export the tab": "选择标签页导出位置",
+  "Choosing where to export the project": "选择项目导出位置",
+  "Export read-only project": "导出只读项目",
 };
 
 export default catalogue;

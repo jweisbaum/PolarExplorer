@@ -407,11 +407,13 @@ fn detect_text(text: &str) -> Result<PolarFileFormat> {
     let separator = table_separator(first);
     let lead = fields(first, separator);
     // LuckGrib accepts spreadsheet tables whose top-left label is ignored.
-    // Recognize that shape by its numeric wind-speed row and angle rows.
+    // Recognize that shape by its nonnumeric corner, numeric wind-speed
+    // row and angle rows. Expedition starts with a number too, but that
+    // number is a wind speed, not a table corner.
     if lead.len() >= 2
-        && !lead
-            .first()
-            .is_some_and(|field| is_table_header(field.text))
+        && !lead.first().is_some_and(|field| {
+            is_table_header(field.text) || number(line, *field, separator).is_ok()
+        })
         && lead[1..]
             .iter()
             .all(|field| tws_speed(line, *field, separator).is_ok())
@@ -425,20 +427,9 @@ fn detect_text(text: &str) -> Result<PolarFileFormat> {
     }
     if lead.first().is_some_and(|f| is_table_header(f.text)) {
         return Ok(match separator {
-            Separator::Semicolon
-                if lead
-                    .first()
-                    .is_some_and(|field| field.text.eq_ignore_ascii_case("TWA/TWS")) =>
-            {
-                PolarFileFormat::OpenCpn
-            }
-            Separator::Semicolon
-                if lead
-                    .first()
-                    .is_some_and(|field| field.text.eq_ignore_ascii_case("TWA\\TWS")) =>
-            {
-                PolarFileFormat::QtVlm
-            }
+            // qtVlm and OpenCPN use the same headers as existing CSV
+            // polars. Content alone cannot identify their producer; keep
+            // the canonical CSV classification and its round-trip bytes.
             Separator::Tab | Separator::Whitespace
                 if lead
                     .first()
@@ -612,6 +603,30 @@ mod tests {
         let unknown = d("\n  hello 6 7\n").unwrap_err();
         assert_eq!((unknown.line, unknown.column), (2, 3));
         assert_eq!(unknown.reason, Reason::UnknownFormat);
+    }
+
+    #[test]
+    fn numeric_expedition_rows_are_not_spreadsheet_headers() {
+        let parsed = read(b"6 40 5\n8 40 5.2\n").unwrap();
+        assert_eq!(parsed.format, PolarFileFormat::Expedition);
+        assert_eq!(parsed.polar.twa, [40.0]);
+        assert_eq!(parsed.polar.tws, [6.0, 8.0]);
+        assert_eq!(parsed.polar.bsp, [vec![Some(5.0), Some(5.2)]]);
+    }
+
+    #[test]
+    fn spreadsheet_variants_preserve_values_and_classify_shared_headers_as_csv() {
+        for (text, format) in [
+            ("TWA\\TWS;6;8\n40;5;5.5\n", PolarFileFormat::Csv),
+            ("twa/tws;6;8\n40;5;5.5\n", PolarFileFormat::Csv),
+            ("Boat\t6\t8\n40\t5\t5.5\n", PolarFileFormat::LuckGrib),
+        ] {
+            let parsed = read(text.as_bytes()).unwrap();
+            assert_eq!(parsed.format, format);
+            assert_eq!(parsed.polar.twa, [40.0]);
+            assert_eq!(parsed.polar.tws, [6.0, 8.0]);
+            assert_eq!(parsed.polar.bsp, [vec![Some(5.0), Some(5.5)]]);
+        }
     }
 
     #[test]

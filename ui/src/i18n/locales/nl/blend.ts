@@ -149,6 +149,21 @@ const catalogue: Record<string, string> = {
   "Maximum": "Maximum",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Combineert zichtbare polairen per cel. Het gemiddelde gebruikt brongewichten; mediaan en p90 interpoleren gesorteerde snelheden. Trackinstellingen hebben geen invloed op weergaven met alleen polairen.",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "Het polairresultaat behoudt het totale polairgewicht bij menging met tracks. Trackcellen tellen volgens gewicht en betrouwbaarheid van monsters. Lege cellen worden tussen bekende waarden gevuld; de rij 0° is 0 kn.",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "Exporteren als qtVlm",
+  "Export as OpenCPN": "Exporteren als OpenCPN",
+  "Export as LuckGrib": "Exporteren als LuckGrib",
+  "Export as WhirlwindMatrixPolar": "Exporteren als WhirlwindMatrixPolar",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "In het exportvenster: een TWA × TWS-tabel gescheiden door puntkomma’s voor qtVlm (.csv).",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "In het exportvenster: een TWA × TWS-tabel gescheiden door puntkomma’s voor OpenCPN (.pol).",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "In het exportvenster: een TWA × TWS-tabel gescheiden door tabs voor LuckGrib (.tsv).",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "In het exportvenster: een compacte binaire SOG-matrix met ingebouwde beschrijving (.wmpolar).",
 };
 
 export default catalogue;

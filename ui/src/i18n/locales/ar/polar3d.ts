@@ -169,6 +169,22 @@ const catalogue: Record<string, string> = {
   "Show the samples and polar points you excluded.": "إظهار النقاط وعُقد المنحنى القطبي التي استبعدتها.",
   "excluded": "مستبعَد",
   "outliers": "القيم الشاذة",
+  "PDF": "PDF",
+  "probability density": "كثافة الاحتمال",
+  "3D display mode": "نمط العرض ثلاثي الأبعاد",
+  "distribution": "التوزيع",
+  "Display": "العرض",
+  "Probability density (PDF)": "كثافة الاحتمال (PDF)",
+  "No visible points pass the current filters to form a PDF.": "لا توجد نقاط مرئية تجتاز المرشحات الحالية لتكوين PDF.",
+  "Hover a cell to highlight it. Click to expand its PDF and show percentiles; press Escape to return. Drag to turn, right-drag to pan, scroll to zoom.": "مرّر المؤشر فوق خلية لتمييزها. انقر لتوسيع PDF وعرض المئينات؛ اضغط Escape للعودة. اسحب للتدوير، واسحب بالزر الأيمن للتحريك، ومرّر للتكبير.",
+  "TWA {twa}°, TWS {tws}": "TWA {twa}°، TWS {tws}",
+  "SOG: {speed}": "SOG: {speed}",
+  "Percentile: {percentile}%": "المئين: {percentile}%",
+  "P{percentile}": "P{percentile}",
+  "Show all cells": "عرض جميع الخلايا",
+  "{count} wind-condition PDFs": "{count} من توزيعات PDF حسب ظروف الرياح",
+  "{value} per knot": "{value} لكل عقدة",
+  "Hover to highlight; click a cell to expand it.": "مرّر المؤشر للتمييز؛ وانقر على خلية لتوسيعها.",
 };
 
 export default catalogue;

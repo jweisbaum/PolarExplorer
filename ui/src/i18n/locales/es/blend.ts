@@ -149,6 +149,21 @@ const catalogue: Record<string, string> = {
   "Maximum": "Máximo",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Combina las polares visibles por celda. La media usa los pesos de las fuentes; la mediana y p90 interpolan velocidades ordenadas. Los ajustes de trazas no afectan a las vistas solo de polares.",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "El resultado de las polares conserva su peso total al mezclarse con trazas. Las celdas de trazas cuentan según su peso y la confianza de las muestras. Las celdas vacías se rellenan entre valores conocidos; la fila de 0° vale 0 kn.",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "Exportar como qtVlm",
+  "Export as OpenCPN": "Exportar como OpenCPN",
+  "Export as LuckGrib": "Exportar como LuckGrib",
+  "Export as WhirlwindMatrixPolar": "Exportar como WhirlwindMatrixPolar",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "En el diálogo de exportación: una tabla TWA × TWS separada por punto y coma para qtVlm (.csv).",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "En el diálogo de exportación: una tabla TWA × TWS separada por punto y coma para OpenCPN (.pol).",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "En el diálogo de exportación: una tabla TWA × TWS separada por tabulaciones para LuckGrib (.tsv).",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "En el diálogo de exportación: una matriz SOG binaria compacta y autodescriptiva (.wmpolar).",
 };
 
 export default catalogue;

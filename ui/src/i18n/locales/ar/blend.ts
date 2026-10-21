@@ -149,6 +149,21 @@ const catalogue: Record<string, string> = {
   "Maximum": "الحد الأقصى",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "يجمع المنحنيات القطبية المرئية لكل خلية. يستخدم المتوسط أوزان المصادر؛ ويستوفي الوسيط والمئين التسعون السرعات المرتبة. لا تؤثر إعدادات المسارات على العروض التي تحتوي على منحنيات قطبية فقط.",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "تحتفظ نتيجة المنحنيات القطبية بوزنها الإجمالي عند مزجها مع المسارات. تُحسب خلايا المسارات حسب الوزن وثقة العينات. تُملأ الخلايا الفارغة بين القيم المعروفة؛ وصف 0° يساوي 0 عقدة.",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "تصدير بصيغة qtVlm",
+  "Export as OpenCPN": "تصدير بصيغة OpenCPN",
+  "Export as LuckGrib": "تصدير بصيغة LuckGrib",
+  "Export as WhirlwindMatrixPolar": "تصدير بصيغة WhirlwindMatrixPolar",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "في نافذة التصدير: جدول TWA × TWS مفصول باستخدام الفواصل المنقوطة لبرنامج qtVlm (.csv).",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "في نافذة التصدير: جدول TWA × TWS مفصول باستخدام الفواصل المنقوطة لبرنامج OpenCPN (.pol).",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "في نافذة التصدير: جدول TWA × TWS مفصول باستخدام علامات الجدولة لبرنامج LuckGrib (.tsv).",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "في نافذة التصدير: مصفوفة SOG ثنائية مضغوطة وذاتية الوصف (.wmpolar).",
 };
 
 export default catalogue;

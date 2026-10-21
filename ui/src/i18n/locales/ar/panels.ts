@@ -68,7 +68,6 @@ const catalogue: Record<string, string> = {
   "Importing polar files": "استيراد ملفات المنحنيات القطبية",
   "Imported 1 polar file.": "تم استيراد ملف منحنى قطبي واحد.",
   "Imported {count} polar files.": "تم استيراد {count} من ملفات المنحنيات القطبية.",
-  "Import Expedition (.txt) and Adrena or grid (.pol, .csv) polars; several files at once": "استيراد المنحنيات القطبية بصيغة Expedition (.txt) وبصيغة Adrena أو الشبكة (.pol، .csv)؛ عدة ملفات دفعة واحدة",
   "Import…": "استيراد…",
   "Files that were not imported": "الملفات التي لم تُستورد",
   "Remove this polar file from the project (undoable)": "إزالة ملف المنحنى القطبي هذا من المشروع (قابلة للتراجع)",
@@ -216,6 +215,19 @@ const catalogue: Record<string, string> = {
   "all": "الكل",
   "wind speed": "سرعة الريح",
   "map": "الخريطة",
+  "Import Expedition, Adrena, qtVlm, OpenCPN, LuckGrib and WhirlwindMatrixPolar files; several files at once": "استيراد ملفات Expedition وAdrena وqtVlm وOpenCPN وLuckGrib وWhirlwindMatrixPolar؛ عدة ملفات دفعة واحدة",
+  "the WhirlwindMatrixPolar data is invalid or contains no boat-speed mode": "بيانات WhirlwindMatrixPolar غير صالحة أو لا تتضمن نمط سرعة القارب",
+  "Wind speed range": "نطاق سرعة الرياح",
+  "Show the polar over a selected range of true wind speeds.": "عرض البولار ضمن نطاق محدد من سرعات الرياح الحقيقية.",
+  "Plot display": "عرض الرسم",
+  "Show data within a wind speed range": "عرض البيانات ضمن نطاق سرعة الرياح",
+  "Range": "النطاق",
+  "Minimum wind speed": "أدنى سرعة للرياح",
+  "Maximum wind speed": "أقصى سرعة للرياح",
+  "Density is probability per knot of boat speed": "الكثافة هي الاحتمال لكل عقدة من سرعة القارب",
+  "Probability density": "كثافة الاحتمال",
+  "Low": "منخفض",
+  "High": "مرتفع",
 };
 
 export default catalogue;
