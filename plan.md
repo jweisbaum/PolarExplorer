@@ -6,6 +6,15 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-21: v0.3.14 release preflight — complete.**
+Workspace, npm, Tauri and lockfile versions now name 0.3.14 for Hindsight Sync
+integration and the regression fixes validated below. The existing v0.3.13
+tag remains unchanged. The tag/version guard, signing-configuration tests,
+release-asset tests, production UI build, formatting and offline policy pass.
+Regenerating the IPC bindings leaves their committed files unchanged. The
+release workflow builds all five platforms, repeats the full test gates, and
+publishes the beta only after every installer succeeds.
+
 **2026-10-21: Regression gates restored and Hindsight Sync validated — complete.**
 Resolved the nine Rust and 54 UI failures found during the status review.
 Numeric Expedition rows no longer resemble LuckGrib spreadsheet headers;
