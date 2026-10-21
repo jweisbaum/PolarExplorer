@@ -54,19 +54,20 @@ last: number,
  */
 messages: number,
 /**
- * Bytes to download for the wind.
+ * Bytes to download. The archive keeps wind, waves and current in one
+ * chunk, so this is every part's download.
  */
 wind_bytes: number,
 /**
- * Bytes to download for the waves (counted whether or not ticked).
+ * Always 0: the waves come in the wind's chunks.
  */
 waves_bytes: number,
 /**
- * Bytes to download for the current (counted whether or not ticked).
+ * Always 0: the current comes in the wind's chunks.
  */
 current_bytes: number,
 /**
- * Bytes of the parts ticked already downloaded this session.
+ * Bytes already held in memory or on disk.
  */
 cached_bytes: number,
 /**

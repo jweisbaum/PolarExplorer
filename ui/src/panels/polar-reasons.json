@@ -13,5 +13,6 @@
   "too-many-cells",
   "too-many-values",
   "no-speeds",
+  "matrix-invalid",
   "unreadable"
 ]

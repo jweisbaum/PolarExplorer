@@ -52,7 +52,6 @@ const catalogue: Record<string, string> = {
   "Delete this snapshot": "Supprimer cet instantané",
   "Discard": "Abandonner",
   "Open": "Ouvrir",
-  "Open a saved .wpsproj project": "Ouvrir un projet .wpsproj enregistré",
   "Forget every project in this list. The projects themselves are not deleted.": "Oublier tous les projets de cette liste. Les projets eux-mêmes ne sont pas supprimés.",
   "{path} was not found. Click to remove it from the list.": "{path} est introuvable. Cliquez pour le retirer de la liste.",
   "Not found": "Introuvable",
@@ -62,6 +61,7 @@ const catalogue: Record<string, string> = {
   "{path} is no longer there. Remove it from the recent projects?": "{path} n’existe plus. Le retirer des projets récents ?",
   "Remove": "Retirer",
   "Language, theme, units, autosave, cache and network ({chord})": "Langue, thème, unités, enregistrement automatique, cache et réseau ({chord})",
+  "Open a saved .wpsproj project or a read-only .pelocked project": "Ouvrir un projet .wpsproj enregistré ou un projet .pelocked en lecture seule",
 };
 
 export default catalogue;

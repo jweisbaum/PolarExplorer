@@ -35,41 +35,45 @@ empty display inputs. Only normalized certificate data is stored, not raw HTML,
 page scripts or login/session state.
 See `assets/orr/README.md` for the snapshot’s provenance and rebuild command.
 
-## Wind and waves: ERA5
+## Weather: archives listed by Hindsight Sync
+
+PolarExplorer reads weather from one reanalysis archive, chosen in Settings →
+**Reanalysis** among those that [Hindsight Sync](https://hindsight-sync.whirlwindai.com),
+a separate application on this computer, lists: in the cloud, read with the
+credentials Hindsight Sync hands out, or in a folder on this computer.
+PolarExplorer asks Hindsight Sync's read-only API on `127.0.0.1` which
+archives exist and reads only the one chosen. Each track's samples record
+the archive's identity and layout version. The archives hold wind, waves and
+current (with tide) on one hourly 0.25° grid; Hindsight Sync builds them from
+the upstream data below.
+
+### Wind and waves: ERA5
 
 Contains modified Copernicus Climate Change Service information. ERA5 is
-produced by ECMWF for the Copernicus Climate Change Service (C3S). PolarExplorer
-interpolates archive values to track positions and converts units; these
-derived samples are not an official ECMWF product.
+produced by ECMWF for the Copernicus Climate Change Service (C3S). The
+archives are built from it and PolarExplorer interpolates their values to
+track positions and converts units; these derived samples are not an
+official ECMWF product.
 
 - [ERA5 hourly data on single levels](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=overview)
   provides the underlying wind and wave data, dataset documentation and licence.
-- [WeatherBench2](https://weatherbench2.readthedocs.io/en/latest/data-guide.html)
-  supplies the hourly 0.25° ERA5 archive through 2023-01-10 used for historical
-  wind sampling (`1959-2023_01_10-full_37-1h-0p25deg-chunk-1.zarr`).
-- [ARCO-ERA5](https://github.com/google-research/arco-era5) supplies the
-  `full_37-1h-0p25deg-chunk-1.zarr-v3` archive used for waves and the wind fallback.
-  Both archives are hosted on Google Cloud. The archive software's licence
-  does not replace the underlying ERA5 data terms.
+- [ARCO-ERA5](https://github.com/google-research/arco-era5), hosted on Google
+  Cloud, is the copy of ERA5 Hindsight Sync reads it from. The archive
+  software's licence does not replace the underlying ERA5 data terms.
 
 Neither the European Commission nor ECMWF is responsible for PolarExplorer'
 use of Copernicus information or for its derived results.
 
-## Currents: Copernicus Marine
+### Currents: Copernicus Marine
 
-Generated using E.U. Copernicus Marine Service Information. Product identifiers
-and DOI links for the current sources supported by PolarExplorer are:
-
-| Product | Use | DOI |
-| --- | --- | --- |
-| `NWSHELF_MULTIYEAR_PHY_004_009` | North-West European Shelf reanalysis | [10.48670/moi-00059](https://doi.org/10.48670/moi-00059) |
-| `IBI_MULTIYEAR_PHY_005_002` | Iberia–Biscay–Ireland reanalysis | [10.48670/moi-00029](https://doi.org/10.48670/moi-00029) |
-| `GLOBAL_ANALYSISFORECAST_PHY_001_024` | Global merged surface currents | [10.48670/moi-00016](https://doi.org/10.48670/moi-00016) |
-| `MULTIOBS_GLO_PHY_MYNRT_015_003` | GlobCurrent multiyear and near-real-time total currents | [10.48670/mds-00327](https://doi.org/10.48670/mds-00327) |
-
-The product pages provide their scientific references and licence. When
-sharing derived work, cite the products actually used and retain the sample
-provenance. See the service's [citation guidance](https://help.marine.copernicus.eu/en/articles/4444611-citing-copernicus-marine-products-and-services).
+Generated using E.U. Copernicus Marine Service Information. The archives'
+surface current, tide included, is Copernicus Marine's GlobCurrent total
+current, product `MULTIOBS_GLO_PHY_MYNRT_015_003` (multiyear and
+near-real-time, DOI [10.48670/mds-00327](https://doi.org/10.48670/mds-00327)).
+Its product page provides its scientific references and licence. When
+sharing derived work, cite that product and retain the sample provenance.
+See the service's
+[citation guidance](https://help.marine.copernicus.eu/en/articles/4444611-citing-copernicus-marine-products-and-services).
 
 ## Basemap and imported tracks
 

@@ -1,234 +1,16 @@
+use super::testing::{
+    self, Dtype, Server, archive, fixture, fixture_with, serve, serve_delayed, serve_revision,
+    zstd_raw,
+};
 use super::*;
 use crate::Dataset;
-use crate::grid::{Axis, Grid};
-use std::io::{Read, Write};
-use std::net::TcpListener;
-use std::sync::atomic::AtomicUsize;
 
-// An independent Zstandard raw-block fixture: standard magic, single segment,
-// four-byte content size, and one final uncompressed block.
-fn zstd_raw(raw: &[u8]) -> Vec<u8> {
-    let mut b = vec![0x28, 0xb5, 0x2f, 0xfd, 0xa0];
-    b.extend_from_slice(&(raw.len() as u32).to_le_bytes());
-    let block = ((raw.len() as u32) << 3) | 1;
-    b.extend_from_slice(&block.to_le_bytes()[..3]);
-    b.extend_from_slice(raw);
-    b
-}
-
-fn archive() -> Archive {
-    let array = |np| Array {
-        shape: [4, np, 4, 8],
-        inner: [2, np, 2, 2],
-        bands: [vec![2, 2], vec![4, 4]],
-        parameters: (0..np).collect(),
-    };
-    Archive {
-        data: array(7),
-        grid: Grid {
-            lat: Axis::from_values("lat", &[60., 30., 0., -30.]).unwrap(),
-            lon: Axis::from_values("lon", &[-180., -135., -90., -45., 0., 45., 90., 135.]).unwrap(),
-        },
-        time: TimeAxis {
-            first: 946684800,
-            step: 3600,
-            len: 4,
-        },
-    }
-}
-
-fn fixture() -> BTreeMap<String, Vec<u8>> {
-    let mut objects = BTreeMap::new();
-    for t in 0..2 {
-        for y in 0..2 {
-            for x in 0..2 {
-                let mut shard = Vec::new();
-                let mut index = Vec::new();
-                for inner in 0..2 {
-                    let mut raw = Vec::new();
-                    for step in 0..2 {
-                        for param in 0..7 {
-                            for row in 0..2 {
-                                for _col in 0..2 {
-                                    let hour = (t * 2 + step) as f32;
-                                    let value = match param {
-                                        0 => 2. * hour + (y * 2 + row) as f32,
-                                        1 => 4.,
-                                        2 => 0.5,
-                                        3 => -0.25,
-                                        4 => {
-                                            if step == 0 {
-                                                350.
-                                            } else {
-                                                10.
-                                            }
-                                        }
-                                        5 => 2. + hour,
-                                        _ => 8.,
-                                    };
-                                    raw.extend_from_slice(
-                                        &half::f16::from_f32(value).to_bits().to_le_bytes(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    let encoded = zstd_raw(&raw);
-                    index.extend_from_slice(&(shard.len() as u64).to_le_bytes());
-                    index.extend_from_slice(&(encoded.len() as u64).to_le_bytes());
-                    shard.extend(encoded);
-                    assert_eq!(inner, index.len() / 16 - 1);
-                }
-                index.extend_from_slice(&crc32c::crc32c(&index).to_le_bytes());
-                shard.extend(index);
-                objects.insert(
-                    Chunk {
-                        time: t,
-                        lat: y,
-                        lon: x,
-                        inner: 0,
-                    }
-                    .key(),
-                    shard,
-                );
-            }
-        }
-    }
-    objects
-}
-
-#[derive(Debug)]
-struct Server {
-    endpoint: String,
-    requests: Arc<Mutex<Vec<(String, String)>>>,
-    peak: Arc<AtomicUsize>,
-    stop: Arc<AtomicBool>,
-    thread: Option<std::thread::JoinHandle<()>>,
-    pipelined: Arc<AtomicBool>,
-}
-impl Drop for Server {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::SeqCst);
-        if let Some(t) = self.thread.take() {
-            t.join().unwrap();
-        }
-    }
-}
-fn serve(objects: BTreeMap<String, Vec<u8>>, status: u16) -> Server {
-    serve_revision(objects, status, "fixture-v1")
-}
-fn serve_revision(objects: BTreeMap<String, Vec<u8>>, status: u16, revision: &str) -> Server {
-    serve_delayed(objects, status, revision, None)
-}
-fn serve_delayed(
-    objects: BTreeMap<String, Vec<u8>>,
-    status: u16,
-    revision: &str,
-    slow_index: Option<String>,
-) -> Server {
-    let revision = revision.to_owned();
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    listener.set_nonblocking(true).unwrap();
-    let endpoint = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
-    let requests = Arc::new(Mutex::new(Vec::new()));
-    let live = Arc::new(AtomicUsize::new(0));
-    let peak = Arc::new(AtomicUsize::new(0));
-    let stop = Arc::new(AtomicBool::new(false));
-    let index_finished = Arc::new(AtomicBool::new(false));
-    let pipelined = Arc::new(AtomicBool::new(false));
-    let pipelined_result = Arc::clone(&pipelined);
-    let (r, p, s) = (Arc::clone(&requests), Arc::clone(&peak), Arc::clone(&stop));
-    let objects = Arc::new(objects);
-    let thread = std::thread::spawn(move || {
-        let mut workers = Vec::new();
-        while !s.load(Ordering::SeqCst) {
-            let Ok((mut socket, _)) = listener.accept() else {
-                std::thread::sleep(Duration::from_millis(2));
-                continue;
-            };
-            let (r, p, live, objects) = (
-                Arc::clone(&r),
-                Arc::clone(&p),
-                Arc::clone(&live),
-                Arc::clone(&objects),
-            );
-            let revision = revision.clone();
-            let (slow_index, index_finished, pipelined) = (
-                slow_index.clone(),
-                Arc::clone(&index_finished),
-                Arc::clone(&pipelined),
-            );
-            workers.push(std::thread::spawn(move || {
-                socket.set_nonblocking(false).unwrap();
-                socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-                let mut request = Vec::new();
-                let mut buf = [0u8;2048];
-                while !request.windows(4).any(|b| b == b"\r\n\r\n") {
-                    let n = socket.read(&mut buf).unwrap(); if n == 0 { return; } request.extend_from_slice(&buf[..n]);
-                }
-                let text = String::from_utf8(request).unwrap();
-                let key = text.split_whitespace().nth(1).unwrap().trim_start_matches('/').to_owned();
-                let range = text.lines().find_map(|line| line.strip_prefix("range: ")).unwrap_or("").to_owned();
-                assert!(!text.to_ascii_lowercase().contains("authorization:"));
-                assert!(!text.to_ascii_lowercase().contains("x-amz-"));
-                r.lock().unwrap().push((key.clone(),range.clone()));
-                if slow_index.as_ref() == Some(&key) && range.starts_with("bytes=-") {
-                    std::thread::sleep(Duration::from_millis(250));
-                    index_finished.store(true, Ordering::SeqCst);
-                } else if slow_index.is_some() && !range.starts_with("bytes=-") && !index_finished.load(Ordering::SeqCst) {
-                    pipelined.store(true, Ordering::SeqCst);
-                }
-                let now = live.fetch_add(1,Ordering::SeqCst)+1; p.fetch_max(now,Ordering::SeqCst);
-                std::thread::sleep(Duration::from_millis(35));
-                let reply = if status != 206 { format!("HTTP/1.1 {status} Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").into_bytes() }
-                else if let Some(body) = objects.get(&key).filter(|_| range.is_empty()) {
-                    let mut response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",body.len()).into_bytes();
-                    response.extend_from_slice(body); response
-                }
-                else if let Some(body) = objects.get(&key) {
-                    let bytes = range.strip_prefix("bytes=").expect("only byte ranges for field data");
-                    let (a,b) = bytes.split_once('-').unwrap();
-                    let (start,end) = if a.is_empty() { (body.len()-b.parse::<usize>().unwrap(),body.len()) }
-                        else { (a.parse::<usize>().unwrap(),b.parse::<usize>().unwrap()+1) };
-                    let mut response = format!("HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nETag: \"{revision}\"\r\nConnection: close\r\n\r\n",end-start,start,end-1,body.len()).into_bytes();
-                    response.extend_from_slice(&body[start..end]); response
-                } else { b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec() };
-                let _ = socket.write_all(&reply);
-                live.fetch_sub(1,Ordering::SeqCst);
-            }));
-        }
-        for worker in workers {
-            worker.join().unwrap();
-        }
-    });
-    Server {
-        endpoint,
-        requests,
-        peak,
-        stop,
-        thread: Some(thread),
-        pipelined: pipelined_result,
-    }
-}
 fn reader(server: &Server, concurrency: usize) -> Whirlwind {
-    let mut w = Whirlwind::new(
-        Source::S3,
-        Source::S3.credentials(),
-        Duration::from_secs(5),
-        BlockCache::new(16 << 20),
-        concurrency,
-    )
-    .unwrap();
-    w.s3.endpoint = Some(server.endpoint.clone());
-    *w.archive.lock().unwrap() = Some(Arc::new(archive()));
-    w
+    testing::whirlwind_at(server.endpoint(), concurrency, BlockCache::new(16 << 20))
 }
 
 #[test]
 fn public_s3_reads_metadata_and_chunk_ranges_without_signing() {
-    assert!(Source::S3.credentials().is_none());
-    assert!(Source::R2.credentials().is_some());
-    assert!(Source::Tigris.credentials().is_some());
     let mut objects = fixture();
     objects.insert("zarr.json".into(), b"{\"zarr_format\":3}".to_vec());
     let server = serve(objects, 206);
@@ -236,7 +18,7 @@ fn public_s3_reads_metadata_and_chunk_ranges_without_signing() {
     let cancel = Arc::new(AtomicBool::new(false));
     let metadata = w
         .runtime
-        .block_on(w.s3.get("zarr.json", None, &cancel))
+        .block_on(w.transport.get("zarr.json", None, &cancel))
         .unwrap()
         .unwrap();
     assert_eq!(&metadata[..], b"{\"zarr_format\":3}");
@@ -279,7 +61,7 @@ fn sparse_ranges_interpolate_and_reuse_cache() {
     assert_eq!(out[0], out[1]);
     let wind = out[0].wind.unwrap();
     assert_eq!((wind.u, wind.v), (1.5, 4.)); // half an hour + half a latitude cell
-    assert_eq!(wind.dataset, Dataset::WhirlwindHindsight);
+    assert_eq!(wind.dataset, Dataset::Hindsight);
     let waves = out[0].waves.unwrap();
     assert!((waves.from.unwrap() % 360.).abs() < 1e-5);
     assert_eq!((waves.hs, waves.period_s), (Some(2.5), Some(8.)));
@@ -305,14 +87,34 @@ fn sparse_ranges_interpolate_and_reuse_cache() {
 
 #[test]
 fn missing_shards_are_missing_but_forbidden_is_an_error() {
-    for status in [404, 403] {
+    for status in [404, 403, 401, 400] {
         let server = serve(BTreeMap::new(), status);
         let w = reader(&server, 2);
         let result = w.sample(&[point()], &options(), &Arc::new(AtomicBool::new(false)));
-        if status == 404 {
-            assert_eq!(result.unwrap(), vec![EnvPoint::default()]);
-        } else {
-            assert!(result.unwrap_err().to_string().contains("403"));
+        match status {
+            404 => assert_eq!(result.unwrap(), vec![EnvPoint::default()]),
+            // A refusal for the credentials is its own kind of error.
+            401 | 403 => {
+                let error = result.unwrap_err();
+                assert!(
+                    matches!(&error, EnvError::Auth { status: s, .. } if *s == status),
+                    "{error:?}"
+                );
+                assert!(
+                    error
+                        .to_string()
+                        .starts_with("the archive refused the read of ")
+                );
+            }
+            // A 400 that names no credentials code is not one.
+            _ => {
+                let error = result.unwrap_err();
+                assert!(matches!(&error, EnvError::Open(_)), "{error:?}");
+                assert!(
+                    error.to_string().contains("the archive answered 400"),
+                    "{error}"
+                );
+            }
         }
     }
 }
@@ -415,8 +217,10 @@ fn live_whirlwind_anonymous_sample() {
         return;
     }
     let w = Whirlwind::new(
-        Source::S3,
-        Source::S3.credentials(),
+        ArchiveRef {
+            identity: "s3://whirlwind-hindsight/hindsight-routing".into(),
+            location: s3_bare("whirlwind-hindsight", "hindsight-routing"),
+        },
         Duration::from_secs(30),
         BlockCache::new(32 << 20),
         CONCURRENCY,
@@ -569,29 +373,6 @@ fn a_new_shard_version_cannot_reuse_old_disk_chunks() {
 }
 
 #[test]
-fn storage_sources_do_not_share_cached_chunks_or_provenance() {
-    let path = std::env::temp_dir().join(format!("pe-whirlwind-sources-{}", std::process::id()));
-    let disk = DiskCache::open(&path, 16 << 20).unwrap();
-    let server = serve(fixture(), 206);
-    let cancel = Arc::new(AtomicBool::new(false));
-    for source in [Source::S3, Source::R2, Source::Tigris] {
-        let mut w = reader(&server, 4).with_disk_cache(Arc::clone(&disk));
-        w.s3.source = source;
-        assert!(w.estimate(&[point()]).unwrap().hourly_bytes > 0);
-        let out = w.sample(&[point()], &options(), &cancel).unwrap();
-        assert_eq!(out[0].wind.unwrap().dataset, source.dataset());
-        assert_eq!(out[0].current.unwrap().dataset, source.dataset());
-        assert_eq!(out[0].waves.unwrap().dataset, source.dataset());
-        assert_eq!(w.estimate(&[point()]).unwrap().hourly_bytes, 0);
-    }
-    // All three have the same shard key, ETag, extent and data, but each
-    // source must read its own chunk before that source can reuse it.
-    assert_eq!(server.requests.lock().unwrap().len(), 6);
-    drop(disk);
-    std::fs::remove_dir_all(path).unwrap();
-}
-
-#[test]
 fn fetching_wind_then_waves_reuses_the_same_combined_chunk() {
     let server = serve(fixture(), 206);
     let w = reader(&server, 4);
@@ -639,57 +420,6 @@ fn reads_the_recorded_s3_layout_with_five_degree_inner_chunks() {
     let (east, _) = data.locate((73, 203, 1127));
     assert_eq!(east.key(), chunk.key());
     assert_eq!(east.inner, 136);
-}
-
-/// R2 and Tigris stay selectable, but since 2026-10-11 neither holds
-/// weather: the request authenticates, then either the metadata is absent
-/// (the reader says so) or the metadata opens and every chunk is missing
-/// (missing weather, not an error). A credential or layout failure fails.
-#[test]
-#[ignore = "live R2 and Tigris; run explicitly with PE_TEST_LIVE=1"]
-fn live_r2_and_tigris_hold_no_weather() {
-    if std::env::var("PE_TEST_LIVE").as_deref() != Ok("1") {
-        return;
-    }
-    for source in [Source::R2, Source::Tigris] {
-        let w = Whirlwind::new(
-            source,
-            source.credentials(),
-            Duration::from_secs(45),
-            BlockCache::new(32 << 20),
-            CONCURRENCY,
-        )
-        .unwrap();
-        let cancel = Arc::new(AtomicBool::new(false));
-        let p = Point {
-            t: crate::time::parse_utc("2000-01-03T12:30:00").unwrap(),
-            lat: 48.,
-            lon: -5.,
-        };
-        match w.archive(&cancel) {
-            Err(error) => {
-                let error = error.to_string();
-                eprintln!("{source:?} live: {error} ({:?})", w.net_totals());
-                assert!(
-                    error.contains("Whirlwind metadata missing"),
-                    "{source:?}: {error}"
-                );
-            }
-            Ok(archive) => {
-                assert_eq!(archive.data.inner, [72, 7, 20, 20]);
-                let out = w.sample(&[p], &options(), &cancel).unwrap();
-                eprintln!(
-                    "{source:?} live: metadata only, {out:?} ({:?})",
-                    w.net_totals()
-                );
-                assert_eq!(
-                    out,
-                    vec![EnvPoint::default()],
-                    "{source:?} still serves weather"
-                );
-            }
-        }
-    }
 }
 
 #[test]
@@ -804,4 +534,439 @@ fn chunk_downloads_start_before_unrelated_shard_indexes_finish() {
         server.pipelined.load(Ordering::SeqCst),
         "a slow index must not hold up chunks from other shards"
     );
+}
+
+fn s3(endpoint_url: Option<&str>, region: &str, path_style: bool) -> ArchiveLocation {
+    ArchiveLocation::S3 {
+        bucket: "whirlwind-hindsight".into(),
+        prefix: "hindsight-routing".into(),
+        endpoint_url: endpoint_url.map(str::to_owned),
+        region: region.into(),
+        force_path_style: path_style,
+        credentials: None,
+    }
+}
+
+#[test]
+fn base_url_follows_the_provider_rules() {
+    // What the template expands to, built here so the source names no bucket host.
+    let (bucket, region, prefix) = ("whirlwind-hindsight", "us-east-1", "hindsight-routing");
+    assert_eq!(
+        s3(None, "us-east-1", false).base_url().unwrap(),
+        format!("https://{bucket}.s3.{region}.amazonaws.com/{prefix}")
+    );
+    assert_eq!(
+        s3(None, "us-east-1", false).place(),
+        format!("{bucket}.s3.{region}.amazonaws.com")
+    );
+    // `.invalid` (RFC 2606) stands for an R2 account host: never resolved.
+    let r2 = s3(
+        Some("https://acct.r2.cloudflarestorage.invalid"),
+        "auto",
+        true,
+    );
+    assert_eq!(
+        r2.base_url().unwrap(),
+        "https://acct.r2.cloudflarestorage.invalid/whirlwind-hindsight/hindsight-routing"
+    );
+    assert_eq!(r2.place(), "acct.r2.cloudflarestorage.invalid");
+    // Trailing slashes on the endpoint and the prefix are dropped.
+    let mut slashed = s3(
+        Some("https://acct.r2.cloudflarestorage.invalid/"),
+        "auto",
+        true,
+    );
+    if let ArchiveLocation::S3 { prefix, .. } = &mut slashed {
+        prefix.push('/');
+    }
+    assert_eq!(slashed.base_url().unwrap(), r2.base_url().unwrap());
+    // Without path style the bucket is a subdomain of the endpoint.
+    assert_eq!(
+        s3(Some("https://store.example.invalid:9000"), "auto", false)
+            .base_url()
+            .unwrap(),
+        "https://whirlwind-hindsight.store.example.invalid:9000/hindsight-routing"
+    );
+    let folder = ArchiveLocation::File {
+        path: "/data/hindsight".into(),
+    };
+    assert!(matches!(folder.base_url(), Err(EnvError::Open(_))));
+    assert_eq!(folder.place(), "/data/hindsight");
+    assert!(
+        s3(Some("ftp://host.invalid"), "auto", true)
+            .base_url()
+            .is_err()
+    );
+}
+
+#[test]
+fn signed_reads_carry_the_location_region_and_never_the_secret() {
+    let server = testing::serve_signed(fixture());
+    let mut location = testing::location(server.endpoint());
+    if let ArchiveLocation::S3 {
+        region,
+        credentials,
+        ..
+    } = &mut location
+    {
+        *region = "auto".into();
+        *credentials = Some(Credentials::new("KEYID", "secret-never-sent"));
+    }
+    let reference = ArchiveRef {
+        identity: "r2://whirlwind-hindsight/hindsight-routing".into(),
+        location,
+    };
+    let debug = format!("{reference:?}");
+    assert!(debug.contains("Credentials([redacted])") && !debug.contains("secret-never-sent"));
+    let w = testing::whirlwind_for(reference, 4, BlockCache::new(16 << 20));
+    let out = w
+        .sample(&[point()], &options(), &Arc::new(AtomicBool::new(false)))
+        .unwrap();
+    assert!(out[0].wind.is_some());
+    let headers = server.headers.lock().unwrap();
+    assert!(!headers.is_empty());
+    for request in headers.iter() {
+        let auth = request
+            .lines()
+            .find_map(|l| l.strip_prefix("authorization: "))
+            .expect("every read is signed");
+        assert!(auth.starts_with("AWS4-HMAC-SHA256 Credential=KEYID/"));
+        assert!(auth.contains("/auto/s3/aws4_request"), "{auth}");
+        assert!(!request.contains("secret-never-sent"));
+    }
+}
+
+#[test]
+fn two_identities_never_share_cached_chunks() {
+    let path = std::env::temp_dir().join(format!("pe-whirlwind-identities-{}", std::process::id()));
+    let disk = DiskCache::open(&path, 16 << 20).unwrap();
+    let memory = BlockCache::new(16 << 20);
+    let server = serve(fixture(), 206);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let mut counts = Vec::new();
+    for identity in [
+        "s3://whirlwind-hindsight/hindsight-routing",
+        "r2://whirlwind-hindsight/hindsight-routing",
+    ] {
+        let reference = ArchiveRef {
+            identity: identity.into(),
+            location: testing::location(server.endpoint()),
+        };
+        let w = testing::whirlwind_for(reference, 4, Arc::clone(&memory))
+            .with_disk_cache(Arc::clone(&disk));
+        assert!(w.estimate(&[point()]).unwrap().hourly_bytes > 0);
+        let out = w.sample(&[point()], &options(), &cancel).unwrap();
+        assert_eq!(out[0].wind.unwrap().dataset, Dataset::Hindsight);
+        assert_eq!(w.estimate(&[point()]).unwrap().hourly_bytes, 0);
+        counts.push(server.requests.lock().unwrap().len());
+    }
+    // Same shard key, ETag, extent, bytes, memory and disk cache: the second
+    // identity still reads its own index and chunk.
+    assert_eq!(counts, [2, 4]);
+    drop(disk);
+    std::fs::remove_dir_all(path).unwrap();
+}
+
+#[test]
+fn the_location_json_round_trips_hindsight_syncs_shape() {
+    // Hindsight Sync's `location` objects (src/api/catalog.rs), with the
+    // fields the reader ignores.
+    let cloud = serde_json::json!({
+        "protocol": "s3", "provider": "r2",
+        "bucket": "whirlwind-hindsight", "prefix": "hindsight-routing",
+        "s3_uri": "r2://whirlwind-hindsight/hindsight-routing",
+        "endpoint_url": "https://acct.r2.cloudflarestorage.invalid",
+        "region": "auto", "force_path_style": true,
+        "credentials": {"access_key_id": "KEYID", "secret_access_key": "SECRET", "session_token": null},
+        "credential_error": null,
+    });
+    let parsed: ArchiveLocation = serde_json::from_value(cloud.clone()).unwrap();
+    assert_eq!(
+        parsed,
+        ArchiveLocation::S3 {
+            bucket: "whirlwind-hindsight".into(),
+            prefix: "hindsight-routing".into(),
+            endpoint_url: Some("https://acct.r2.cloudflarestorage.invalid".into()),
+            region: "auto".into(),
+            force_path_style: true,
+            credentials: Some(Credentials::new("KEYID", "SECRET")),
+        }
+    );
+    let written = serde_json::to_value(&parsed).unwrap();
+    let mut expected = cloud;
+    for ignored in ["provider", "s3_uri", "credential_error"] {
+        expected.as_object_mut().unwrap().remove(ignored);
+    }
+    assert_eq!(written, expected);
+    assert_eq!(
+        serde_json::from_value::<ArchiveLocation>(written).unwrap(),
+        parsed
+    );
+    // Amazon S3 without credentials: no endpoint, a credential error instead.
+    let aws: ArchiveLocation = serde_json::from_value(serde_json::json!({
+        "protocol": "s3", "provider": "s3", "bucket": "b", "prefix": "p",
+        "endpoint_url": null, "region": "us-east-1", "force_path_style": false,
+        "credentials": null, "credential_error": "missing",
+    }))
+    .unwrap();
+    assert_eq!(aws, s3_bare("b", "p"));
+
+    let local = serde_json::json!({"protocol": "file", "path": "/Users/sailor/Hindsight/routing"});
+    let parsed: ArchiveLocation = serde_json::from_value(local.clone()).unwrap();
+    assert_eq!(
+        parsed,
+        ArchiveLocation::File {
+            path: "/Users/sailor/Hindsight/routing".into()
+        }
+    );
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), local);
+}
+
+fn s3_bare(bucket: &str, prefix: &str) -> ArchiveLocation {
+    ArchiveLocation::S3 {
+        bucket: bucket.into(),
+        prefix: prefix.into(),
+        endpoint_url: None,
+        region: "us-east-1".into(),
+        force_path_style: false,
+        credentials: None,
+    }
+}
+
+const ELEVEN: [&str; 11] = [
+    "mslp",
+    "u10",
+    "z500",
+    "v10",
+    "ucur",
+    "vcur",
+    "wave_direction",
+    "wave_height",
+    "wave_period",
+    "wind_speed",
+    "wind_constancy",
+];
+
+fn sample_opened(objects: BTreeMap<String, Vec<u8>>) -> (Vec<EnvPoint>, Arc<layout::Archive>) {
+    let server = serve(objects, 206);
+    let w = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let out = w.sample(&[point()], &options(), &cancel).unwrap();
+    let archive = w.archive(&cancel).unwrap();
+    (out, archive)
+}
+
+#[test]
+fn a_layout_3_archive_samples_the_same_values_as_layout_2() {
+    // Both archives are opened from their served metadata, not preset.
+    let (two, two_layout) = sample_opened(fixture());
+    let three_objects = fixture_with(Dtype::F32, &ELEVEN);
+    let root: serde_json::Value = serde_json::from_slice(&three_objects["zarr.json"]).unwrap();
+    assert_eq!(root["attributes"]["historysyncer_layout_version"], 3);
+    let (three, three_layout) = sample_opened(three_objects);
+    assert_eq!(
+        (two_layout.data.bytes_per_value, two_layout.data.shape[1]),
+        (2, 7)
+    );
+    assert_eq!(
+        (
+            three_layout.data.bytes_per_value,
+            three_layout.data.shape[1]
+        ),
+        (4, 11)
+    );
+    assert_eq!(three_layout.data.parameters, vec![1, 3, 4, 5, 6, 7, 8]);
+    assert!(two[0].wind.is_some() && two[0].waves.is_some() && two[0].current.is_some());
+    assert_eq!(two, three);
+}
+
+#[test]
+fn a_parameter_axis_that_disagrees_with_the_data_is_refused_naming_both_numbers() {
+    let mut objects = fixture_with(Dtype::F32, &ELEVEN);
+    let mut data: serde_json::Value = serde_json::from_slice(&objects["data/zarr.json"]).unwrap();
+    data["shape"][1] = serde_json::json!(12);
+    objects.insert("data/zarr.json".into(), serde_json::to_vec(&data).unwrap());
+    let server = serve(objects, 206);
+    let w = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let err = w.archive(&cancel).unwrap_err().to_string();
+    assert!(
+        err.contains("11 parameter names") && err.contains("12 parameters"),
+        "{err}"
+    );
+}
+
+fn parameter_axis(names: &[&str]) -> (serde_json::Value, Vec<u8>) {
+    let metadata = serde_json::json!({
+        "zarr_format":3,"node_type":"array","shape":[names.len()],
+        "data_type":{"name":"fixed_length_utf32","configuration":{"length_bytes":56}},
+        "chunk_key_encoding":{"name":"default","configuration":{"separator":"/"}},
+        "chunk_grid":{"name":"regular","configuration":{"chunk_shape":[names.len()]}},
+        "codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"zstd"}]
+    });
+    let mut raw = vec![0u8; names.len() * 56];
+    for (slot, name) in names.iter().enumerate() {
+        for (i, ch) in name.chars().enumerate() {
+            raw[slot * 56 + i * 4..slot * 56 + i * 4 + 4]
+                .copy_from_slice(&(ch as u32).to_le_bytes());
+        }
+    }
+    (metadata, zstd_raw(&raw))
+}
+
+#[test]
+fn an_archive_missing_a_needed_parameter_is_refused_by_name() {
+    let needed = [
+        "u10",
+        "v10",
+        "ucur",
+        "vcur",
+        "wave_direction",
+        "wave_height",
+        "wave_period",
+    ];
+    let names: Vec<&str> = ELEVEN
+        .iter()
+        .copied()
+        .filter(|n| *n != "wave_period")
+        .collect();
+    let (metadata, bytes) = parameter_axis(&names);
+    let err = layout::parameters(&metadata, &bytes, &needed).unwrap_err();
+    assert!(
+        err.to_string().contains("lacks parameter wave_period"),
+        "{err}"
+    );
+    let (metadata, bytes) = parameter_axis(&ELEVEN);
+    assert_eq!(
+        layout::parameters(&metadata, &bytes, &needed).unwrap(),
+        vec![1, 3, 4, 5, 6, 7, 8]
+    );
+}
+
+fn sharded(data_type: &str, inner: [usize; 4]) -> serde_json::Value {
+    serde_json::json!({
+        "zarr_format":3,"node_type":"array","shape":[inner[0],11,inner[2],inner[3]],
+        "data_type":data_type,"fill_value":"NaN","dimension_names":["time","param","latitude","longitude"],
+        "chunk_key_encoding":{"name":"default","configuration":{"separator":"/"}},
+        "chunk_grid":{"name":"rectilinear","configuration":{"kind":"inline","chunk_shapes":[inner[0],11,[inner[2]],[inner[3]]]}},
+        "codecs":[{"name":"sharding_indexed","configuration":{
+            "chunk_shape":inner,"index_location":"end",
+            "codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"zstd","configuration":{"level":5}}],
+            "index_codecs":[{"name":"bytes","configuration":{"endian":"little"}},{"name":"crc32c"}]
+        }}]
+    })
+}
+
+#[test]
+fn the_inner_chunk_bound_counts_values_not_bytes() {
+    let parameters = vec![1, 3, 4, 5, 6, 7, 8];
+    let ok = Array::parse(&sharded("float32", [72, 11, 40, 80]), parameters.clone()).unwrap();
+    assert_eq!(ok.decoded_len(), 72 * 11 * 40 * 80 * 4);
+    assert!(Array::parse(&sharded("float32", [96, 11, 80, 80]), parameters).is_err());
+}
+
+#[test]
+fn a_float64_archive_is_refused() {
+    assert!(
+        Array::parse(
+            &sharded("float64", [2, 11, 2, 2]),
+            vec![1, 3, 4, 5, 6, 7, 8]
+        )
+        .is_err()
+    );
+}
+
+fn folder(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("pe-whirlwind-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn folder_reader(dir: &std::path::Path) -> Whirlwind {
+    let reference = ArchiveRef {
+        identity: format!("file://{}", dir.display()),
+        location: testing::file_location(dir),
+    };
+    Whirlwind::new(
+        reference,
+        Duration::from_secs(5),
+        BlockCache::new(16 << 20),
+        4,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_folder_archive_samples_like_the_served_one() {
+    let dir = folder("samples");
+    testing::write_fixture(&dir);
+    let server = serve(fixture(), 206);
+    let served = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
+    let local = folder_reader(&dir);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let from_folder = local.sample(&[point()], &options(), &cancel).unwrap();
+    let from_server = served.sample(&[point()], &options(), &cancel).unwrap();
+    assert_eq!(from_folder, from_server);
+    assert_eq!(from_folder[0].wind.unwrap().u, 1.5);
+    assert_eq!(local.net_totals(), (0, 0));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_missing_shard_file_is_missing_data_and_a_vanished_folder_fails_the_open_with_its_path() {
+    let dir = folder("missing");
+    testing::write_fixture(&dir);
+    let local = folder_reader(&dir);
+    let cancel = AtomicBool::new(false);
+    let missing = local
+        .runtime
+        .block_on(local.transport.get("data/c/9/9/9/9", None, &cancel))
+        .unwrap();
+    assert!(missing.is_none());
+    let past = local.runtime.block_on(local.transport.get(
+        "zarr.json",
+        Some(Range::Bytes(1 << 20, 4)),
+        &cancel,
+    ));
+    assert!(past.unwrap_err().to_string().contains("zarr.json"));
+    std::fs::remove_dir_all(&dir).unwrap();
+    let error = local
+        .runtime
+        .block_on(local.transport.get("zarr.json", None, &cancel))
+        .unwrap_err();
+    assert!(error.to_string().contains(&dir.display().to_string()));
+    let reference = ArchiveRef {
+        identity: "file".into(),
+        location: testing::file_location(&dir),
+    };
+    let error = Whirlwind::new(
+        reference,
+        Duration::from_secs(5),
+        BlockCache::new(1 << 20),
+        4,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains(&dir.display().to_string()));
+}
+
+#[test]
+fn folder_archives_use_memory_but_never_the_disk_cache() {
+    let dir = folder("nocache");
+    testing::write_fixture(&dir);
+    let cache_dir = folder("nocache-disk");
+    let disk = DiskCache::open(&cache_dir, 16 << 20).unwrap();
+    let local = folder_reader(&dir).with_disk_cache(Arc::clone(&disk));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let out = local.sample(&[point()], &options(), &cancel).unwrap();
+    assert!(out[0].wind.is_some());
+    assert_eq!(disk.size().unwrap(), 0);
+    // The second sample is answered from memory.
+    let before = local.decoded_chunks.load(Ordering::SeqCst);
+    assert_eq!(local.sample(&[point()], &options(), &cancel).unwrap(), out);
+    assert_eq!(local.decoded_chunks.load(Ordering::SeqCst), before);
+    drop(local);
+    drop(disk);
+    std::fs::remove_dir_all(dir).unwrap();
+    std::fs::remove_dir_all(cache_dir).unwrap();
 }

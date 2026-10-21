@@ -119,3 +119,6 @@ Database, Heatmap, Overlay (only where shown as a technical term), 3D, 2D.
 | library (SYRF) | bibliotheek | |
 | Shift / Esc / Cmd / Ctrl | Shift / Esc / Cmd / Ctrl | |
 | add | toevoegen | |
+| Hindsight Sync | Hindsight Sync | Product name; never translated. |
+| reanalysis archive | heranalyse-archief | |
+| Scan (button) | Zoeken | |

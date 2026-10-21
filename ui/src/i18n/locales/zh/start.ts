@@ -52,7 +52,6 @@ const catalogue: Record<string, string> = {
   "Delete this snapshot": "删除此快照",
   "Discard": "丢弃",
   "Open": "打开",
-  "Open a saved .wpsproj project": "打开已保存的 .wpsproj 项目",
   "Forget every project in this list. The projects themselves are not deleted.": "清除此列表中的所有项目。项目本身不会被删除。",
   "{path} was not found. Click to remove it from the list.": "未找到 {path}。点按以将其从列表中移除。",
   "Not found": "未找到",
@@ -62,6 +61,7 @@ const catalogue: Record<string, string> = {
   "{path} is no longer there. Remove it from the recent projects?": "{path} 已不存在。要将其从最近的项目中移除吗？",
   "Remove": "移除",
   "Language, theme, units, autosave, cache and network ({chord})": "语言、主题、单位、自动保存、缓存和网络 ({chord})",
+  "Open a saved .wpsproj project or a read-only .pelocked project": "打开已保存的 .wpsproj 项目或只读的 .pelocked 项目",
 };
 
 export default catalogue;

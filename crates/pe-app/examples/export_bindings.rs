@@ -88,6 +88,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     pe_app::orr::OrrProgress::export_all(&cfg)?;
     pe_app::orc::OrcProgress::export_all(&cfg)?;
     pe_app::catalogues::CatalogueSettings::export_all(&cfg)?;
+    pe_app::reanalysis::ReanalysisSettings::export_all(&cfg)?;
+    pe_app::reanalysis::ScanResult::export_all(&cfg)?;
     BlendSettingsInput::export_all(&cfg)?;
     ExportAxes::export_all(&cfg)?;
     pe_app::matrix_export::MatrixExportOptions::export_all(&cfg)?;

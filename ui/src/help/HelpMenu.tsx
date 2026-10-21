@@ -116,7 +116,7 @@ export default function HelpMenu() {
       </li>;
     }
     if (result.kind === "feature") {
-      return <li key={`f:${result.feature.id}`} {...props}>
+      return <li key={`f:${result.feature.id}`} data-feature-target={result.feature.id} {...props}>
         <span className="help-search-label">{t(result.feature.label)}</span>
         {result.feature.description && <span className="help-search-detail">{t(result.feature.description)}</span>}
       </li>;

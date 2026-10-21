@@ -507,7 +507,7 @@ pub struct SampleFilters {
     /// wind crosses the bow or the stern between neighbours (spec.md 7.6).
     pub exclude_tacks: bool,
     /// Exclude samples whose current came from a tier without tides
-    /// (spec.md 7.5.1).
+    /// (spec.md 7.5).
     pub exclude_no_tide: bool,
     /// Require both wave height and wave direction.
     pub exclude_unknown_wave: bool,

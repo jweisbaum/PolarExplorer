@@ -12,12 +12,10 @@
 //! ```
 //!
 //! A Fastnet 2025 boat of about five days is imported from YellowBrick and
-//! its weather fetched hourly through the real archives. It prints the
-//! pre-flight estimate, the bytes downloaded, the bytes the same fetch cost
-//! as whole chunks before M14e (the sum of every chunk's own size, from the
-//! headers read), the seconds, and what the track adds to the project file;
-//! then a second boat of the race, which reads the first one's blocks from
-//! memory. About 150–250 MB in all, and nothing on disk.
+//! its weather fetched hourly through the real archive. It prints the
+//! pre-flight estimate, the bytes downloaded, the seconds, and what the
+//! track adds to the project file; then a second boat of the race, which
+//! reads the first one's chunks from memory.
 
 mod common;
 
@@ -55,6 +53,7 @@ fn a_fastnet_boat_costs_megabytes_to_fetch_and_kilobytes_to_keep() {
     }
     let root = TempRoot::new("weather-download");
     let app = root.state();
+    common::choose_live_archive(&app);
     projects::create(&app, "Weather".to_owned(), None, false).unwrap();
     let view = trackers::download_listed(
         &app,
@@ -92,16 +91,14 @@ fn a_fastnet_boat_costs_megabytes_to_fetch_and_kilobytes_to_keep() {
     let provider = env::provider(&app).unwrap();
 
     for (n, &id) in ids.iter().enumerate() {
-        let estimate = env::estimate_for(&app, &[id], false, Some(provider.memory())).unwrap();
+        let estimate = env::estimate_for(&app, &[id], false).unwrap();
         let (r0, b0) = provider.net_totals();
-        let w0 = provider.memory().whole_chunk_bytes();
         env::queue_fetch(&app, &[id], "hourly", false).unwrap();
         let start = Instant::now();
         let outcome = env::run_next(&app, provider.as_ref(), &Quiet, 1_760_000_000, false);
         let seconds = start.elapsed().as_secs_f64();
         assert_eq!(outcome, Some(Outcome::Done));
         let (r1, b1) = provider.net_totals();
-        let whole = provider.memory().whole_chunk_bytes() - w0;
 
         let summary = projects::summary(&app).unwrap().unwrap();
         let track = summary
@@ -130,7 +127,7 @@ fn a_fastnet_boat_costs_megabytes_to_fetch_and_kilobytes_to_keep() {
         println!(
             "M14e | boat {} {:?}: {} fixes over {span_h:.0} h, {} with wind | estimate {:.1} MB hourly \
              ({:.1} MB already in memory), stored ~{} B | downloaded {:.1} MB in {} \
-             requests, {seconds:.1} s | as whole chunks {:.1} MB | tracks/{}.json {} B deflated \
+             requests, {seconds:.1} s | tracks/{}.json {} B deflated \
              ({} B plain), of which the environment {} B ({:.1} B per sample) | memory {:.0} MB",
             n + 1,
             source.label,
@@ -141,7 +138,6 @@ fn a_fastnet_boat_costs_megabytes_to_fetch_and_kilobytes_to_keep() {
             estimate.stored_bytes,
             (b1 - b0) as f64 / 1e6,
             r1 - r0,
-            whole as f64 / 1e6,
             t.id.raw(),
             stored,
             plain,

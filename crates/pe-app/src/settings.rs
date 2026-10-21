@@ -117,34 +117,6 @@ pub struct Units {
     pub distance: DistanceUnit,
 }
 
-/// Archive used for newly requested historical weather.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export_to = "DataSource.ts")]
-#[serde(rename_all = "snake_case")]
-pub enum DataSource {
-    /// Existing public archives and current-source fallbacks.
-    #[default]
-    OpenData,
-    /// Whirlwind Hindsight on S3.
-    Whirlwind,
-    /// Whirlwind Hindsight on Cloudflare R2 (Source 2).
-    WhirlwindR2,
-    /// Whirlwind Hindsight on Tigris (Source 3).
-    WhirlwindTigris,
-}
-
-impl DataSource {
-    pub fn whirlwind_source(self) -> Option<pe_env::whirlwind::Source> {
-        use pe_env::whirlwind::Source;
-        match self {
-            Self::OpenData => None,
-            Self::Whirlwind => Some(Source::S3),
-            Self::WhirlwindR2 => Some(Source::R2),
-            Self::WhirlwindTigris => Some(Source::Tigris),
-        }
-    }
-}
-
 /// How the reanalysis fetcher uses the network (spec.md 3.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export_to = "NetworkSettings.ts")]
@@ -235,8 +207,10 @@ pub struct Settings {
     pub weather_cache: crate::weather_cache::WeatherCacheSettings,
     /// Network use by the reanalysis fetcher.
     pub network: NetworkSettings,
-    /// Historical wind, waves and current archive.
-    pub data_source: DataSource,
+    /// Hindsight Sync's port and the reanalysis archive chosen among those
+    /// it lists (spec.md 3.4). Its location, credentials included, is kept
+    /// in `reanalysis-archive.json`, never here: this crosses IPC.
+    pub reanalysis: crate::reanalysis::ReanalysisSettings,
     /// The map projection.
     pub projection: MapProjection,
     /// How far from the 2D plot's wind speed a sample may be and still be
@@ -262,7 +236,7 @@ impl Default for Settings {
             weather_memory_mb: DEFAULT_WEATHER_MEMORY_MB,
             weather_cache: crate::weather_cache::WeatherCacheSettings::default(),
             network: NetworkSettings::default(),
-            data_source: DataSource::default(),
+            reanalysis: crate::reanalysis::ReanalysisSettings::default(),
             projection: MapProjection::default(),
             plot_tws_band_kn: crate::polar_plot::DEFAULT_TWS_BAND_KN,
             mcp: McpSettings::default(),
@@ -375,7 +349,14 @@ impl Settings {
                 read_field(network, "concurrency", &mut settings.network.concurrency);
                 read_field(network, "timeout_s", &mut settings.network.timeout_s);
             }
-            read_field(&object, "data_source", &mut settings.data_source);
+            // An earlier build's choice among three fixed archives is not
+            // read: an archive is now chosen among Hindsight Sync's.
+            if let Some(serde_json::Value::Object(reanalysis)) = object.get("reanalysis") {
+                let slot = &mut settings.reanalysis;
+                read_field(reanalysis, "port", &mut slot.port);
+                read_field(reanalysis, "connected_once", &mut slot.connected_once);
+                read_field(reanalysis, "archive", &mut slot.archive);
+            }
             if let Some(serde_json::Value::Object(cache)) = object.get("weather_cache") {
                 read_field(cache, "directory", &mut settings.weather_cache.directory);
                 read_field(
@@ -438,6 +419,10 @@ impl Settings {
         }
         if !(PLOT_BAND_RANGE_KN.0..=PLOT_BAND_RANGE_KN.1).contains(&self.plot_tws_band_kn) {
             self.plot_tws_band_kn = defaults.plot_tws_band_kn;
+        }
+        // Port 0 is "any port": nothing listens there.
+        if self.reanalysis.port == 0 {
+            self.reanalysis.port = defaults.reanalysis.port;
         }
         // Port 0 is "any port": no client configuration could name it.
         if self.mcp.port == 0 {
@@ -643,20 +628,6 @@ pub fn network_set(state: &AppState, network: NetworkSettings) -> Result<Setting
     })
 }
 
-/// Changes the archive for subsequent weather requests.
-#[tauri::command]
-pub fn set_data_source(state: tauri::State<'_, AppState>, source: DataSource) -> Result<Settings> {
-    data_source_set(&state, source)
-}
-
-/// Saves the preference without altering already fetched project values.
-pub fn data_source_set(state: &AppState, source: DataSource) -> Result<Settings> {
-    update(state, |settings| {
-        settings.data_source = source;
-        Ok(())
-    })
-}
-
 /// Changes the map projection.
 #[tauri::command]
 pub fn set_projection(
@@ -716,6 +687,21 @@ pub fn legacy_chunk_dir(settings_file: &Path, default_cache_dir: &Path) -> PathB
         .join("chunks")
 }
 
+/// The dataset folders an earlier version's chunk cache wrote, one per
+/// archive it read.
+const LEGACY_CACHE_FOLDERS: [&str; 10] = [
+    "whirlwind-hindsight",
+    "whirlwind-hindsight-r2",
+    "whirlwind-hindsight-tigris",
+    "wb2-era5-1h",
+    "arco-era5",
+    "cmems-nws-my-uv-geo",
+    "cmems-ibi-my-cur-geo",
+    "cmems-glo-merged-uv-geo",
+    "globcurrent-my-geo",
+    "globcurrent-nrt-geo",
+];
+
 /// Whether `dir` looks like nothing but an earlier version's chunk cache:
 /// every entry a folder named for a dataset it read (`wb2-era5-1h`, …).
 /// A folder holding anything else is not ours to delete.
@@ -727,7 +713,7 @@ fn only_dataset_folders(dir: &Path) -> bool {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         (entry.file_type().is_ok_and(|kind| kind.is_dir())
-            && pe_env::Dataset::ALL.iter().any(|d| d.id() == name))
+            && LEGACY_CACHE_FOLDERS.contains(&name.as_ref()))
             || name == ".DS_Store"
     })
 }
@@ -995,7 +981,14 @@ mod tests {
     fn the_defaults_are_the_ones_the_spec_names() {
         let s = Settings::default();
         assert_eq!(s.language, "en");
-        assert_eq!(s.data_source, DataSource::OpenData);
+        assert_eq!(
+            s.reanalysis,
+            crate::reanalysis::ReanalysisSettings {
+                port: 8765,
+                connected_once: false,
+                archive: None,
+            }
+        );
         assert_eq!(s.theme, "harbour");
         assert_eq!(s.units.speed, SpeedUnit::Kn);
         assert_eq!(s.units.wave_height, WaveHeightUnit::M);
@@ -1034,6 +1027,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// An earlier build's fixed-archive choice is ignored, and a file without
+    /// `reanalysis` has its defaults; one with it keeps every member.
+    #[test]
+    fn an_old_archive_choice_is_ignored_and_reanalysis_defaults() {
+        let dir = temp("data-source");
+        let file = dir.join("settings.json");
+        std::fs::write(
+            &file,
+            r#"{ "data_source": "whirlwind_r2", "theme": "paper" }"#,
+        )
+        .unwrap();
+        let s = Settings::load(&file);
+        assert_eq!(
+            s.reanalysis,
+            crate::reanalysis::ReanalysisSettings::default()
+        );
+        assert_eq!(s.theme, "paper");
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(!json.contains("data_source"), "{json}");
+
+        std::fs::write(
+            &file,
+            r#"{ "reanalysis": { "port": 9001, "connected_once": true, "archive": "not an archive" } }"#,
+        )
+        .unwrap();
+        let s = Settings::load(&file);
+        assert_eq!(s.reanalysis.port, 9001);
+        assert!(s.reanalysis.connected_once);
+        assert_eq!(s.reanalysis.archive, None);
+        std::fs::write(&file, r#"{ "reanalysis": { "port": 0 } }"#).unwrap();
+        assert_eq!(Settings::load(&file).reanalysis.port, 8765);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// One bad value costs that preference, not the recent list beside it.
     #[test]
     fn an_unreadable_field_loses_only_itself() {
@@ -1044,7 +1071,7 @@ mod tests {
             r#"{ "recent_projects": ["/keep.wpsproj"], "units": { "speed": "furlongs" },
                  "language": "tlh", "theme": "neon", "autosave": "save",
                  "network": { "concurrency": 500, "timeout_s": 1 },
-                 "weather_memory_mb": 1, "data_source": "unknown" }"#,
+                 "weather_memory_mb": 1, "reanalysis": { "port": "x" } }"#,
         )
         .unwrap();
         let s = Settings::load(&file);

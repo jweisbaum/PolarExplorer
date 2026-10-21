@@ -63,11 +63,18 @@ impl Work {
                 );
             }
             Err(EnvError::Cancelled) => return self.finish(state, Outcome::Cancelled),
-            Err(err) => return self.finish(state, Outcome::Failed(err.to_string())),
+            Err(err) => return self.finish(state, failed(&err)),
         };
+        let provenance = Provenance::of(&self.task.archive);
         if with_track(state, self.target, |track| {
             for (&index, env) in indices.iter().zip(&found) {
-                ingest(&mut track.samples[index], &mut track.env_meta, env, now);
+                ingest(
+                    &mut track.samples[index],
+                    &mut track.env_meta,
+                    env,
+                    &provenance,
+                    now,
+                );
             }
             track.env_meta.status = status_of(&track.samples, false);
         })?
@@ -182,7 +189,7 @@ pub(super) fn run(
                     {
                         Outcome::Cancelled
                     } else {
-                        Outcome::Failed(err.to_string())
+                        failed(&err)
                     };
                     item.finish(state, outcome)?;
                 }
@@ -193,14 +200,14 @@ pub(super) fn run(
         let found = provider.sample(&points, &options, cancel);
         let warnings = provider.take_warnings();
         match found {
-            Err(err @ (EnvError::Open(_) | EnvError::Cache(_))) => {
+            Err(err @ (EnvError::Open(_) | EnvError::Auth { .. } | EnvError::Cache(_))) => {
                 // Authentication, connection and local-cache failures are
                 // shared. Do not repeat a failing request for every boat.
                 for item in &mut work {
                     let outcome = if state.env_jobs.cancelled(&item.task) {
                         Outcome::Cancelled
                     } else {
-                        Outcome::Failed(err.to_string())
+                        failed(&err)
                     };
                     item.finish(state, outcome)?;
                 }
@@ -246,10 +253,12 @@ pub(super) fn run(
                     {
                         Outcome::Cancelled
                     } else {
-                        Outcome::Failed(match &other {
-                            Err(err) => err.to_string(),
-                            _ => "The weather archive returned an incomplete batch".to_owned(),
-                        })
+                        match &other {
+                            Err(err) => failed(err),
+                            _ => Outcome::Failed(
+                                "The weather archive returned an incomplete batch".to_owned(),
+                            ),
+                        }
                     };
                     work[*i].finish(state, outcome)?;
                 }

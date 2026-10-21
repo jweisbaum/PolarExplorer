@@ -1,45 +1,47 @@
-//! Read-only, bucket-scoped transport: anonymous S3 or signed R2/Tigris reads.
-//! Secrets never enter URLs or errors.
+//! Read-only, bucket-scoped transport: anonymous or signed reads of any
+//! S3-compatible location. Secrets never enter URLs or errors.
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use bytes::Bytes;
 use hmac::{Hmac, Mac};
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use zarrs_storage::Bytes;
 
-use super::Source;
-use crate::http::{NetStats, RETRIES};
+use super::{ArchiveLocation, Credentials};
 use crate::{EnvError, Result};
+
+/// How many times a transient failure is tried again before it is reported.
+const RETRIES: u32 = 3;
+
+/// Counters for what went over the network.
+#[derive(Debug, Default)]
+pub(super) struct NetStats {
+    /// Requests sent, including ones answered "missing".
+    pub requests: AtomicU64,
+    /// Body bytes received.
+    pub bytes: AtomicU64,
+    /// Keys the archive answered 403 or 404 for.
+    pub missing: AtomicU64,
+    /// Requests sent again after a transient failure.
+    pub retries: AtomicU64,
+}
+
+impl NetStats {
+    /// `(requests, bytes, missing)` at this moment.
+    pub fn snapshot(&self) -> (u64, u64, u64) {
+        (
+            self.requests.load(Ordering::Relaxed),
+            self.bytes.load(Ordering::Relaxed),
+            self.missing.load(Ordering::Relaxed),
+        )
+    }
+}
 
 const EMPTY_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-/// Only the Rust transport owns credentials, never IPC or project data.
-#[derive(Clone, Deserialize)]
-pub struct Credentials {
-    access_key_id: String,
-    secret_access_key: String,
-    #[serde(default)]
-    session_token: Option<String>,
-}
-
-impl std::fmt::Debug for Credentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Credentials([redacted])")
-    }
-}
-
 impl Credentials {
-    pub(super) fn fixed(access_key_id: &str, secret_access_key: &str) -> Self {
-        Self {
-            access_key_id: access_key_id.into(),
-            secret_access_key: secret_access_key.into(),
-            session_token: None,
-        }
-    }
-
     fn headers(
         &self,
         url: &reqwest::Url,
@@ -52,6 +54,10 @@ impl Credentials {
         let host = url
             .host_str()
             .ok_or_else(|| EnvError::Open("invalid S3 endpoint".into()))?;
+        // The Host header names a port that is not the scheme's default.
+        let host = url
+            .port()
+            .map_or_else(|| host.to_owned(), |p| format!("{host}:{p}"));
         let mut canonical = format!("host:{host}\n");
         let mut signed = "host".to_owned();
         if let Some(range) = range {
@@ -125,13 +131,13 @@ pub(super) enum Range {
 /// A single shared async connection pool and request limit for every job.
 #[derive(Debug)]
 pub(super) struct S3 {
-    pub source: Source,
+    /// The object root, with no trailing `/`.
+    base: String,
+    region: String,
     client: reqwest::Client,
     credentials: Option<Credentials>,
     pub stats: Arc<NetStats>,
     permits: tokio::sync::Semaphore,
-    #[cfg(test)]
-    pub endpoint: Option<String>,
 }
 
 #[derive(Debug)]
@@ -141,33 +147,26 @@ pub(super) struct Object {
 }
 
 impl S3 {
-    pub fn new(
-        source: Source,
-        credentials: Option<Credentials>,
-        timeout: Duration,
-        concurrency: usize,
-    ) -> Result<Self> {
-        Ok(Self {
-            source,
-            client: crate::net::s3_client(timeout)?,
+    pub fn new(location: &ArchiveLocation, timeout: Duration, concurrency: usize) -> Result<Self> {
+        let base = location.base_url()?;
+        let ArchiveLocation::S3 {
+            region,
             credentials,
+            ..
+        } = location
+        else {
+            return Err(EnvError::Open(
+                "a folder archive is not read over S3".into(),
+            ));
+        };
+        Ok(Self {
+            base,
+            region: region.clone(),
+            client: crate::net::s3_client(timeout)?,
+            credentials: credentials.clone(),
             stats: Arc::new(NetStats::default()),
             permits: tokio::sync::Semaphore::new(concurrency.max(1)),
-            #[cfg(test)]
-            endpoint: None,
         })
-    }
-
-    pub async fn get(
-        &self,
-        key: &str,
-        range: Option<Range>,
-        cancel: &AtomicBool,
-    ) -> Result<Option<Bytes>> {
-        Ok(self
-            .get_versioned(key, range, cancel)
-            .await?
-            .map(|object| object.bytes))
     }
 
     pub async fn get_versioned(
@@ -190,9 +189,9 @@ impl S3 {
         });
         let limit = match range {
             Some(Range::Bytes(_, n) | Range::Suffix(n)) => n,
-            None => 8 << 20,
+            None => 16 << 20,
         };
-        if limit == 0 || limit > 8 << 20 {
+        if limit == 0 || limit > 16 << 20 {
             return Err(EnvError::Layout(
                 "Whirlwind object exceeds the read limit".into(),
             ));
@@ -206,7 +205,7 @@ impl S3 {
             if cancel.load(Ordering::SeqCst) {
                 return Err(EnvError::Cancelled);
             }
-            let url = reqwest::Url::parse(&format!("{}/{key}", self.source.url()))
+            let url = reqwest::Url::parse(&format!("{}/{key}", self.base))
                 .map_err(|_| EnvError::Open("invalid S3 endpoint".into()))?;
             let headers = if let Some(credentials) = &self.credentials {
                 let now = SystemTime::now()
@@ -214,12 +213,7 @@ impl S3 {
                     .unwrap_or_default()
                     .as_secs() as i64;
                 let timestamp = crate::time::to_iso(now).replace(['-', ':'], "");
-                credentials.headers(
-                    &url,
-                    self.source.region(),
-                    range_text.as_deref(),
-                    &timestamp,
-                )?
+                credentials.headers(&url, &self.region, range_text.as_deref(), &timestamp)?
             } else {
                 let mut headers = HeaderMap::new();
                 if let Some(range) = &range_text {
@@ -232,14 +226,24 @@ impl S3 {
                 headers
             };
             let url = url.to_string();
-            #[cfg(test)]
-            let url = self.endpoint.as_ref().map_or(url, |e| format!("{e}/{key}"));
             self.stats.requests.fetch_add(1, Ordering::Relaxed);
             let request = async {
                 let mut response = self.client.get(&url).headers(headers).send().await?;
                 let status = response.status();
                 if status == reqwest::StatusCode::NOT_FOUND {
                     return Ok((status, None, None, None));
+                }
+                if status == reqwest::StatusCode::BAD_REQUEST {
+                    // AWS answers an expired or unknown key with a 400 whose
+                    // error code is the only sign it is the credentials.
+                    let mut body = Vec::new();
+                    while let Some(chunk) = response.chunk().await? {
+                        body.extend_from_slice(&chunk);
+                        if body.len() > ERROR_BODY_LIMIT {
+                            break;
+                        }
+                    }
+                    return Ok((status, Some(Bytes::from(body)), None, None));
                 }
                 if !status.is_success() {
                     return Ok((status, None, None, None));
@@ -290,11 +294,17 @@ impl S3 {
                     }
                     return Ok(Some(Object { bytes, etag }));
                 }
-                Ok((status, _, _, _)) => {
+                Ok((status, body, _, _)) => {
+                    if refused_for_credentials(status.as_u16(), body.as_deref()) {
+                        return Err(EnvError::Auth {
+                            status: status.as_u16(),
+                            key: key.to_owned(),
+                        });
+                    }
                     if !status.is_server_error() && status.as_u16() != 429 && status.as_u16() != 408
                     {
                         return Err(EnvError::Open(format!(
-                            "Whirlwind S3 answered {status} for {key}"
+                            "the archive answered {status} for {key}"
                         )));
                     }
                     true
@@ -316,8 +326,31 @@ impl S3 {
             }
         }
         Err(EnvError::Open(format!(
-            "Whirlwind S3 request failed for {key} after retries"
+            "the archive request failed for {key} after retries"
         )))
+    }
+}
+
+/// How much of a 400's body is read to find its error code.
+const ERROR_BODY_LIMIT: usize = 8 << 10;
+
+/// The S3 error codes of a 400 that mean the credentials, not the request.
+const CREDENTIAL_CODES: [&str; 3] = [
+    "<Code>ExpiredToken</Code>",
+    "<Code>InvalidAccessKeyId</Code>",
+    "<Code>SignatureDoesNotMatch</Code>",
+];
+
+/// Whether an answer refuses the read for want of valid credentials, which
+/// a Scan in Settings can refresh.
+fn refused_for_credentials(status: u16, body: Option<&[u8]>) -> bool {
+    match status {
+        401 | 403 => true,
+        400 => body.is_some_and(|body| {
+            let text = String::from_utf8_lossy(body);
+            CREDENTIAL_CODES.iter().any(|code| text.contains(code))
+        }),
+        _ => false,
     }
 }
 
@@ -375,19 +408,65 @@ mod tests {
         assert!(validate_range(Range::Suffix(20), Some("bytes 79-98/100"), 20).is_err());
     }
 
+    /// AWS's documented error responses (S3 API reference, "Error
+    /// responses"): the codes that mean the key, not the request.
+    #[test]
+    fn only_a_credentials_answer_is_a_refusal_for_credentials() {
+        let aws = |code: &str| {
+            format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>{code}</Code><Message>m</Message></Error>"
+            )
+        };
+        assert!(refused_for_credentials(401, None));
+        assert!(refused_for_credentials(403, None));
+        assert!(refused_for_credentials(
+            403,
+            Some(aws("AccessDenied").as_bytes())
+        ));
+        for code in [
+            "ExpiredToken",
+            "InvalidAccessKeyId",
+            "SignatureDoesNotMatch",
+        ] {
+            assert!(
+                refused_for_credentials(400, Some(aws(code).as_bytes())),
+                "{code}"
+            );
+        }
+        for (status, body) in [
+            (400, Some(aws("InvalidArgument"))),
+            (400, Some(aws("InvalidRange"))),
+            (400, None),
+            (404, Some(aws("NoSuchKey"))),
+            (409, Some(aws("ExpiredToken"))),
+            (500, None),
+        ] {
+            assert!(
+                !refused_for_credentials(status, body.as_deref().map(str::as_bytes)),
+                "{status} {body:?}"
+            );
+        }
+    }
+
     #[test]
     fn credential_debug_and_errors_never_contain_secrets() {
-        let c = Credentials {
-            access_key_id: "TEST".into(),
-            secret_access_key: "secret-never-print".into(),
-            session_token: Some("token-never-print".into()),
+        let mut c = Credentials::new("TEST", "secret-never-print");
+        c.session_token = Some("token-never-print".into());
+        let location = ArchiveLocation::S3 {
+            bucket: "whirlwind-hindsight".into(),
+            prefix: "hindsight-routing".into(),
+            endpoint_url: None,
+            region: "us-east-1".into(),
+            force_path_style: false,
+            credentials: None,
         };
         let debug = format!("{c:?}");
         assert!(!debug.contains("secret-never-print") && !debug.contains("token-never-print"));
         let headers = c
             .headers(
-                &reqwest::Url::parse(&format!("{}/data/c/0/0/1/2", Source::S3.url())).unwrap(),
-                Source::S3.region(),
+                &reqwest::Url::parse(&format!("{}/data/c/0/0/1/2", location.base_url().unwrap()))
+                    .unwrap(),
+                "us-east-1",
                 Some("bytes=0-63"),
                 "20261007T010203Z",
             )

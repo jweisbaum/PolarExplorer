@@ -68,7 +68,6 @@ const catalogue: Record<string, string> = {
   "Importing polar files": "ポーラーファイルを読み込み中",
   "Imported 1 polar file.": "ポーラーファイルを 1 件読み込みました。",
   "Imported {count} polar files.": "ポーラーファイルを {count} 件読み込みました。",
-  "Import Expedition (.txt) and Adrena or grid (.pol, .csv) polars; several files at once": "Expedition（.txt）と Adrena またはグリッド形式（.pol、.csv）のポーラーを読み込みます。複数のファイルをまとめて読み込めます",
   "Import…": "読み込む…",
   "Files that were not imported": "読み込まれなかったファイル",
   "Remove this polar file from the project (undoable)": "このポーラーファイルをプロジェクトから削除します（取り消し可能）",
@@ -216,6 +215,19 @@ const catalogue: Record<string, string> = {
   "all": "すべて",
   "wind speed": "風速",
   "map": "地図",
+  "Import Expedition, Adrena, qtVlm, OpenCPN, LuckGrib and WhirlwindMatrixPolar files; several files at once": "Expedition、Adrena、qtVlm、OpenCPN、LuckGrib、WhirlwindMatrixPolar のファイルをインポート（複数ファイル可）",
+  "the WhirlwindMatrixPolar data is invalid or contains no boat-speed mode": "WhirlwindMatrixPolar データが無効か、艇速モードを含んでいません",
+  "Wind speed range": "風速範囲",
+  "Show the polar over a selected range of true wind speeds.": "選択した真風速範囲のポーラーを表示します。",
+  "Plot display": "グラフ表示",
+  "Show data within a wind speed range": "風速範囲内のデータを表示",
+  "Range": "範囲",
+  "Minimum wind speed": "最小風速",
+  "Maximum wind speed": "最大風速",
+  "Density is probability per knot of boat speed": "密度は艇速1ノットあたりの確率です",
+  "Probability density": "確率密度",
+  "Low": "低",
+  "High": "高",
 };
 
 export default catalogue;

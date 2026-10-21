@@ -45,7 +45,15 @@ URL='https?://[^"'"'"'`[:space:])>]+'
 # them must *start* with one of these, so a line naming an allowed host cannot
 # smuggle a second one past the check. `{…}` stands for a format placeholder
 # in a subdomain, which is how Geovoile's per-race hosts are built.
-ENV_HOSTS='^https?://(storage\.googleapis\.com/weatherbench2|storage\.googleapis\.com/gcp-public-data-arco-era5|s3\.waw3-1\.cloudferro\.com/mdl-arco-|whirlwind-hindsight\.s3\.us-east-1\.amazonaws\.com/hindsight-routing|3d5456ad10ebc32c8a3c259aa84e6c64\.r2\.cloudflarestorage\.com/whirlwind-hindsight/hindsight-routing|fly\.storage\.tigris\.dev/whirlwind-hindsight/hindsight-routing)'
+# pe-env names no archive: it reads Hindsight Sync on loopback and the
+# location Hindsight Sync hands it, so its hosts are 127.0.0.1 and Amazon
+# S3's virtual-hosted template, and nothing else. Its tests build the
+# address the template expands to from the same placeholders.
+ENV_HOSTS='^https?://(127\.0\.0\.1([/:?#]|$)|\{bucket\}\.s3\.\{region\}\.amazonaws\.com([/:?#]|$))'
+# Hindsight Sync's product page: opened by the browser on request, never
+# fetched. One line of one file may name it, the constant itself; anywhere
+# else, the host is a finding like any other.
+SITE_LINE='^crates/pe-app/src/reanalysis\.rs:[0-9]+:pub const SITE: &str = "https://hindsight-sync\.whirlwindai\.com";$'
 TRACKER_HOSTS='^https?://(((cf|app)\.)?yb\.tl|([A-Za-z0-9_{}-]+\.)*geovoile\.com|(api|race)\.bluewatertracks\.com|www\.regattaman\.com|data\.orc\.org)([/:?#]|$)'
 
 fail=0
@@ -77,7 +85,7 @@ hits=$(grep -rnE 'https?://' ui/src ui/index.html 2>/dev/null \
 hits=$(find crates -name '*.rs' -not -path 'crates/pe-env/*' -not -path 'crates/pe-trackers/*' \
   -not -path 'crates/pe-app/src/library/tests.rs' -not -path 'crates/pe-app/src/library/scrape/tests.rs' \
   -exec grep -nHE 'https?://' {} + 2>/dev/null \
-  | grep -vE "$COMMENT" | grep -vE "$ALLOW" || true)
+  | grep -vE "$COMMENT" | grep -vE "$SITE_LINE" | grep -vE "$ALLOW" || true)
 [ -n "$hits" ] && report "absolute URL in rust source" "$hits"
 
 # In those crates, only the hosts they exist to read.

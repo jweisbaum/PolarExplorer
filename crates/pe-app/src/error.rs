@@ -97,6 +97,15 @@ pub enum AppError {
         message: String,
     },
 
+    /// A fetch or a GRIB export was asked for with no reanalysis archive to
+    /// read (spec.md 7.5): none chosen, or its remembered location gone.
+    /// `reason` names the setting to go to.
+    #[error("{reason}")]
+    NoReanalysisArchive {
+        /// The whole message.
+        reason: String,
+    },
+
     /// A tracker download or decode failed (spec.md 7.2).
     #[error("{0}")]
     Tracker(#[from] pe_trackers::TrackerError),
@@ -142,6 +151,7 @@ impl AppError {
             Self::DuplicateCertificate { .. } => "orc-duplicate",
             Self::Doing { .. } => "doing",
             Self::Export { .. } => "export-refused",
+            Self::NoReanalysisArchive { .. } => "no-reanalysis-archive",
             Self::Tracker(e) => match e {
                 pe_trackers::TrackerError::NotAnEvent { .. } => "tracker-address",
                 pe_trackers::TrackerError::Unavailable { .. } => "tracker-unavailable",

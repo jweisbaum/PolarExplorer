@@ -10,7 +10,6 @@ const catalogue: Record<string, string> = {
   "How far from the polar plot's wind speed a track sample may be and still be drawn.": "Cuánto puede alejarse un punto de traza de la velocidad del viento del diagrama polar y seguir dibujándose.",
   "samples": "puntos",
   "Import track files": "Importar archivos de trazas",
-  "Import GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "Importar trazas GeoJSON y CSV, varios archivos a la vez, eligiendo los barcos y asignando las columnas.",
   "positions": "posiciones",
   "YellowBrick import": "Importación de YellowBrick",
   "Geovoile import": "Importación de Geovoile",
@@ -88,7 +87,6 @@ const catalogue: Record<string, string> = {
   "YellowBrick…": "YellowBrick…",
   "Geovoile…": "Geovoile…",
   "Blue Water…": "Blue Water…",
-  "Import GeoJSON and CSV tracks; several files at once": "Importar trazas GeoJSON y CSV; varios archivos a la vez",
   "File…": "Archivo…",
   "Last import": "Última importación",
   "{used} of {count} samples used": "{used} de {count} puntos usados",
@@ -427,6 +425,9 @@ const catalogue: Record<string, string> = {
   "This race is sailed in legs; choose a leg to load its boat list": "Esta regata tiene etapas; elija una para cargar su lista de barcos",
   "Reload the boat list; newer tracks download when you click Import tracks": "Recargar la lista de barcos; las trazas recientes se descargarán al pulsar Importar trazas",
   "Refresh boat list": "Actualizar lista de barcos",
+  "Import GPX, GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "Importar trazas GPX, GeoJSON y CSV de varios archivos a la vez, eligiendo los barcos y asignando las columnas.",
+  "Import GPX, GeoJSON and CSV tracks; several files at once": "Importar trazas GPX, GeoJSON y CSV; varios archivos a la vez",
+  "this is not a usable GPX track": "esta no es una traza GPX utilizable",
 };
 
 export default catalogue;

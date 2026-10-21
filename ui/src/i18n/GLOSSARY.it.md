@@ -104,3 +104,6 @@ TWS, *la* BSP, *il* VMG, *il* COG, *lo* SOG.
 | feature search / control | ricerca delle funzioni / comando | |
 | operand (Compare A / B) | termine di confronto | |
 | AI client | client di IA | |
+| Hindsight Sync | Hindsight Sync | Product name; never translated. |
+| reanalysis archive | archivio di rianalisi | |
+| Scan (button) | Cerca | |

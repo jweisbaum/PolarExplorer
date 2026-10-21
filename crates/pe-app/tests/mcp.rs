@@ -1214,12 +1214,29 @@ async fn samples_are_listed_excluded_and_included_through_the_tools() {
 async fn weather_estimate_answers_without_fetching() {
     let root = TempRoot::new("mcp-estimate");
     let app = mock_app(&root);
+    // The fixture archive on a loopback stub, so the estimate reaches no
+    // network.
+    let archive = pe_env::whirlwind::testing::serve(pe_env::whirlwind::testing::fixture(), 200);
+    // A reader owns a runtime, which may not be dropped on this one: the
+    // provider is built and replaced on a thread of its own.
+    let state = app.state::<AppState>().inner().clone();
+    let endpoint = archive.endpoint().to_owned();
+    std::thread::spawn(move || {
+        common::remember_archive(&state, Some(&endpoint));
+        pe_app::env::provider(&state).unwrap();
+        state.env_provider.lock().unwrap().as_mut().unwrap().1 =
+            std::sync::Arc::new(pe_env::whirlwind::testing::reader_at(&endpoint));
+    })
+    .join()
+    .unwrap();
     let (port, token) = serve(&app);
     let (client, id) = with_track(&root, port, &token).await;
     let estimate = call(&client, "weather_estimate", json!({ "sources": [id] })).await;
     assert_eq!(estimate["samples"], 12);
     assert!(estimate.get("three_hourly_bytes").is_none());
-    assert!(estimate["hourly_bytes"].as_u64().unwrap() > 0);
+    // The fixture archive holds 2000-01-01 only: none of the track's hours,
+    // so nothing to download.
+    assert_eq!(estimate["hourly_bytes"], 0);
     assert_eq!(
         call(&client, "weather_jobs", json!({})).await["tracks"],
         json!([])
@@ -1242,6 +1259,7 @@ async fn weather_estimate_answers_without_fetching() {
 async fn weather_jobs_survive_disconnect_and_cancel_explicitly() {
     let root = TempRoot::new("mcp-dropped");
     let app = mock_app(&root);
+    common::remember_archive(&app.state::<AppState>(), None);
     let (port, token) = serve(&app);
     let (client, id) = with_track(&root, port, &token).await;
     let request = json!({"sources":[id],"restart":true,"request_id":"weather-once"});
@@ -1356,6 +1374,7 @@ async fn a_misspelt_key_in_a_patch_is_refused_naming_the_keys() {
 async fn a_weather_call_without_a_boat_is_the_first_boats_alone() {
     let root = TempRoot::new("mcp-weather-boats");
     let app = mock_app(&root);
+    common::remember_archive(&app.state::<AppState>(), None);
     let (port, token) = serve(&app);
     let (client, id) = with_track(&root, port, &token).await;
     call(&client, "boat_add", json!({ "name": "Second" })).await;

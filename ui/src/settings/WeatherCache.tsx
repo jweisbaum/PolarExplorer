@@ -54,7 +54,7 @@ export default function WeatherCache({ settings, onSettings, flush }: {
   });
   const clear = () => action(async () => { await persist(); setStatus(await api.clearWeatherCache()); setCleared(true); });
   return <div className="weather-cache-settings">
-    <p className="muted">{t("Whirlwind keeps downloaded chunks on disk for reuse across routes and app restarts. The least recently used chunks are removed when the cache is full.")}</p>
+    <p className="muted">{t("Reanalysis keeps downloaded chunks on disk for reuse across routes and app restarts. The least recently used chunks are removed when the cache is full.")}</p>
     <label className="settings-field">
       {t("Cache directory")}
       <input data-feature="settings:cache-directory" aria-label={t("Cache directory")} title={t("Leave empty to use the application cache directory")}
@@ -72,7 +72,7 @@ export default function WeatherCache({ settings, onSettings, flush }: {
         }} />
     </label>
     {status && <p className="muted" title={status.directory}>{t("Cached on disk: {size}", { size: formatBytes(status.bytes) })}</p>}
-    <button data-feature="settings:cache-clear" title={t("Remove cached Whirlwind downloads. Weather saved in projects is kept.")} disabled={busy} onClick={() => void clear()}>{t("Clear cache")}</button>
+    <button data-feature="settings:cache-clear" title={t("Remove cached reanalysis downloads. Weather saved in projects is kept.")} disabled={busy} onClick={() => void clear()}>{t("Clear cache")}</button>
     {cleared && <p role="status">{t("Cache cleared")}</p>}
     {error !== null && <p className="modal-error" role="alert" title={describeError(error).detail}>{describeError(error).text}</p>}
   </div>;

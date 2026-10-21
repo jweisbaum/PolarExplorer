@@ -149,6 +149,21 @@ const catalogue: Record<string, string> = {
   "Maximum": "Maximum",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "Kombiniert sichtbare Polaren pro Zelle. Der Mittelwert verwendet Quellgewichte; Median und p90 interpolieren sortierte Geschwindigkeiten. Track-Einstellungen beeinflussen reine Polarenansichten nicht.",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "Das Polarenergebnis behält beim Mischen mit Tracks das gesamte Polarengewicht. Track-Zellen zählen nach Gewicht und Stichprobenkonfidenz. Leere Zellen werden zwischen bekannten Werten gefüllt; die 0°-Zeile beträgt 0 kn.",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "Als qtVlm exportieren",
+  "Export as OpenCPN": "Als OpenCPN exportieren",
+  "Export as LuckGrib": "Als LuckGrib exportieren",
+  "Export as WhirlwindMatrixPolar": "Als WhirlwindMatrixPolar exportieren",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "Im Exportdialog: eine durch Semikolons getrennte TWA × TWS-Tabelle für qtVlm (.csv).",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "Im Exportdialog: eine durch Semikolons getrennte TWA × TWS-Tabelle für OpenCPN (.pol).",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "Im Exportdialog: eine durch Tabulatoren getrennte TWA × TWS-Tabelle für LuckGrib (.tsv).",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "Im Exportdialog: eine kompakte binäre SOG-Matrix mit eingebetteter Beschreibung (.wmpolar).",
 };
 
 export default catalogue;

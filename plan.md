@@ -6,6 +6,25 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-21: Regression gates restored and Hindsight Sync validated — complete.**
+Resolved the nine Rust and 54 UI failures found during the status review.
+Numeric Expedition rows no longer resemble LuckGrib spreadsheet headers;
+overlapping qtVlm/OpenCPN headers retain the canonical CSV classification.
+Existing export bytes and golden files are unchanged. Added parser regressions
+and retained the failing property-test seed. Updated stale scene, tab, export,
+source-history and asynchronous-response tests to exercise the current controls.
+Completed missing interface translations and help content in all eight locales,
+and made help targets unambiguous when 2D and 3D controls share labels.
+Validation: 861 Rust tests and 534 UI tests pass, with 23 Rust tests ignored.
+Formatting, workspace clippy with warnings denied, TypeScript, the production
+UI build, offline policy, release checks and driver-tool tests pass. All five
+serial performance tests pass; Compare's three 512 × 512 surfaces measure
+62 ms against the 100 ms budget after native compilation finishes. Six real
+desktop walkthroughs pass: polar import, help search, language settings,
+weather, Hindsight reanalysis and cache settings. Representative screenshots
+were inspected, including Hindsight's first-run, detected and disconnected
+states. The Hindsight walkthrough uses an isolated fixture service.
+
 **2026-10-14: Multilingual matrix-format reference — implemented.**
 The standalone HTML now includes French, German, Arabic, Simplified Chinese,
 Japanese, Spanish, Dutch, Italian and Portuguese alongside English. Its language
@@ -1976,6 +1995,41 @@ Geovoile, an unknown match mode and unsaved work; the library answers
 `downloaded: false` and refuses an import in words when not set up. The
 guide test holds every tool it names to the tools that exist.
 
+### M28 — Hindsight Sync · **complete** (2026-10-20)
+
+Asked 2026-10-19: weather comes from the archives Hindsight Sync lists,
+chosen in Settings, rather than from a built-in list (D35; design
+`docs/superpowers/specs/2026-10-19-hindsight-sync-design.md`).
+
+- [x] Open Data, the Data sources picker and the three fixed Whirlwind
+  endpoints with their built-in credentials removed; the Whirlwind reader is
+  the one reanalysis reader.
+- [x] `pe-env::hindsight::probe` asks Hindsight Sync's loopback API for its
+  cloud and local reanalysis archives; a cloud listing without credentials
+  is unavailable.
+- [x] The reader takes any listed location: signed S3-compatible reads with
+  the vendored credentials, or a local folder (same byte ranges, no disk
+  cache); layouts 2 and 3, parameters located by name.
+- [x] `pe-app`'s `reanalysis.rs`: the port, `connected_once` and the chosen
+  archive's display details in `settings.json`, its location and
+  credentials in `reanalysis-archive.json` (0600 from the first byte);
+  probes at startup and when Settings opens, off the async runtime; Scan
+  tries the saved port, 8765, then Hindsight Sync's own settings file.
+- [x] Settings → **Reanalysis**: the warning with the logo and the link,
+  the quiet "not running" line, and the archive dropdown with the chosen
+  archive's range and mode; help, user guide and all nine languages.
+- [x] The GRIB export reads the chosen archive; fetches without one are
+  refused naming the setting.
+- [x] The webdriver-only seam `PE_DRIVER_HINDSIGHT_PORT`, so a driven run
+  never contacts a real Hindsight Sync.
+
+**Validation.** `pe-env` tests probe a loopback stub serving Hindsight
+Sync's response shapes and read fixture archives of both layouts over a
+loopback S3 stub and from a folder; `pe-app` tests hold the location file
+owner-only and keep credentials out of the IPC `Settings`; the UX test
+`tools/webdriver/ux/16-reanalysis.test.mjs` drives all three Settings states
+against a fake Hindsight Sync.
+
 ## 3. Testing strategy
 
 - **Unit**: geodesy, derivation, interpolation, binning, blending, parsers,
@@ -2042,6 +2096,7 @@ guide test holds every tool it names to the tools that exist.
 | D34 | (settled with the user 2026-10-06): **the SYRF database's metadata download is restored, read-only**, amending invariant 4's "no crate connects to a database" (2026-10-04). Only `pe-app`'s `library::database` has a PostgreSQL client (`postgres` with rustls/ring; `check:offline` admits it there alone). It connects only when the person presses **Download boat metadata** or **Test connection**, with no schedule. The server enforces read-only twice, with `default_transaction_read_only` on and a `READ ONLY` transaction, so the earlier download's temporary tables became CTEs. The SQL export, `pg_dump` and scraping into the database stay removed. The download **merges**: the database's records replace their own earlier ones, scraped records stay, and the database copy wins a race both hold | The user's request of 2026-10-06 ("restore a setting in the settings to do a read only metadata export from the syrf database") and their answers: read-only metadata only, merge keeping scraped records |
 | D33 | M25 (settled with the user 2026-10-02): **Remove tacks and gybes leaves out only the sample on either side** of a change of tack, no time window. Schema 8: the dropped filters vanish on load, a track's one given-or-derived preference becomes one for heading and one for speed (both what it was), and Stokes drift loads off; the setting stays in the document for the fetch. Full-size 2D puts the 0° axis on the stage's centre line; the right panel keeps the sources. Heading/COG/TWD ranges are compass sectors needing both bounds; the editor holds a lone bound until its partner is typed rather than send half a sector. The 3D first-load framing uses a camera view offset to the free area's centre, set once, so later panel toggles leave the framing as it was (spec §3.2). |
 | D22 | Polar edits and segments (M13): one `EditCells` command for every edit tool (overrides before/after per cell, the tool naming the undo entry, drags coalescing); segment bins are half-steps around each output-grid node with nothing beyond the outer half-steps, and nothing is binned into a 0° TWA node (samples nearest 0° are dropped, not moved: the 0° row is 0 kn, spec §12.3; controller ruling); spread is the sample standard deviation; smooth is the 3×3 binomial kernel over neighbours with a value as the blend reads them (excluded nodes take no part; controller ruling); the 3D samples key mixes a per-opening nonce, so two openings never share one; views show sources as edited, and the 2D curves also leave excluded nodes out | Spec §10.4 and §12.1 named the tools, the statistic and "count and spread" without the binning edges, the spread measure, the kernel or how undo groups them |
+| D35 | M28 (settled with the user 2026-10-19): **Hindsight Sync is the one source of reanalysis archives.** The Data sources picker, Open Data (WeatherBench2, ARCO-ERA5 and the Copernicus Marine tiers) and the three fixed Whirlwind endpoints (S3, R2, Tigris, with their built-in credentials) are removed. Settings → Reanalysis asks Hindsight Sync's read-only API on `127.0.0.1` (saved port, default 8765; Scan also tries 8765 and the port in Hindsight Sync's own settings file) and lists its cloud and local reanalysis archives. **The credentials Hindsight Sync vendors are the only way a cloud archive is read**: a listing with null credentials cannot be chosen. The chosen archive's location and credentials are remembered in `reanalysis-archive.json` beside `settings.json`, owner-only (0600) from its first byte, so fetches work while Hindsight Sync is closed; the IPC `Settings` never carries them. Provenance `name` is the archive's identity (a cloud `uri`, or a local copy's `source_uri`), `version` is `hindsight-layout-<n>`, `has_tide` is `Some(true)`. Both layouts are read (2: float16, seven parameters; 3: float32, eleven), parameters located by name in the `param` axis. The GRIB export reads the chosen archive. Driven runs reach Hindsight Sync only through the webdriver-only seam `PE_DRIVER_HINDSIGHT_PORT` | The user's requests of 2026-10-19 ("now include a check for the hindsight sync app…", "remember locations", "Use the credentials vendored by hindsight sync") and the design `docs/superpowers/specs/2026-10-19-hindsight-sync-design.md` |
 
 ## 6. Settled before coding started
 

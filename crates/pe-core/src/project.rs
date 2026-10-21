@@ -160,7 +160,7 @@ pub struct BlendSettings {
     /// Feed the polar from current-corrected values where a current exists
     /// (spec.md 7.5, D13).
     pub use_corrected: bool,
-    /// Include Stokes drift in the global merged current (spec.md 7.5.1).
+    /// Include Stokes drift in the current (spec.md 7.5).
     pub include_stokes_drift: bool,
     /// The blend's colour in every plot.
     pub colour: Colour,

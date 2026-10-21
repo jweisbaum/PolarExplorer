@@ -169,6 +169,22 @@ const catalogue: Record<string, string> = {
   "Show the samples and polar points you excluded.": "显示你排除的样本点和极曲线节点。",
   "excluded": "排除",
   "outliers": "异常值",
+  "PDF": "PDF",
+  "probability density": "概率密度",
+  "3D display mode": "3D 显示模式",
+  "distribution": "分布",
+  "Display": "显示",
+  "Probability density (PDF)": "概率密度（PDF）",
+  "No visible points pass the current filters to form a PDF.": "没有可见点通过当前筛选条件，无法生成 PDF。",
+  "Hover a cell to highlight it. Click to expand its PDF and show percentiles; press Escape to return. Drag to turn, right-drag to pan, scroll to zoom.": "悬停以突出显示单元格。单击可展开 PDF 并显示百分位数；按 Escape 返回。拖动旋转，右键拖动平移，滚动缩放。",
+  "TWA {twa}°, TWS {tws}": "TWA {twa}°，TWS {tws}",
+  "SOG: {speed}": "SOG: {speed}",
+  "Percentile: {percentile}%": "百分位数：{percentile}%",
+  "P{percentile}": "P{percentile}",
+  "Show all cells": "显示所有单元格",
+  "{count} wind-condition PDFs": "{count} 个风况 PDF",
+  "{value} per knot": "每节 {value}",
+  "Hover to highlight; click a cell to expand it.": "悬停以突出显示；单击单元格以展开。",
 };
 
 export default catalogue;

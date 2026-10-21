@@ -19,7 +19,7 @@
     ["carte de chaleur", "compare:heat-map", "compare:heat-map"],
     ["vue de dessus", "view3d:camera-top", "view3d:camera-top"],
     ["COG depuis", "tracks:cog-from", "tracks:cog-from"],
-    ["lasso", "view3d:tool-lasso", "view3d:tool-lasso"]
+    ["lasso", "plot:lasso", "plot:lasso"]
   ],
   "de": [
     ["Halse", "tracks:tacks", "tracks:tacks"],
@@ -39,7 +39,7 @@
     ["Heatmap", "compare:heat-map", "compare:heat-map"],
     ["Draufsicht", "view3d:camera-top", "view3d:camera-top"],
     ["COG von", "tracks:cog-from", "tracks:cog-from"],
-    ["Lasso", "view3d:tool-lasso", "view3d:tool-lasso"],
+    ["Lasso", "plot:lasso", "plot:lasso"],
     ["Sprache", "settings:language", "settings:language"],
     ["Wetter", "tracks:fetch-weather", "tracks:fetch-weather"]
   ]

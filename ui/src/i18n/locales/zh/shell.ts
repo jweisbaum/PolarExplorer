@@ -110,6 +110,7 @@ const catalogue: Record<string, string> = {
   "That value is not accepted.": "不接受该值。",
   "The operation could not be completed.": "无法完成该操作。",
   "Something went wrong inside PolarExplorer.": "PolarExplorer 内部出现问题。",
+  "No reanalysis archive can be read. Choose one in Settings, or press Scan there.": "无法读取任何再分析存档。请在设置中选择一个，或在那里点击扫描。",
   "Something went wrong.": "出现问题。",
   "Undone: {action}": "已撤销：{action}",
   "Redone: {action}": "已重做：{action}",
@@ -134,6 +135,12 @@ const catalogue: Record<string, string> = {
   "Show the polar plot in the centre: boat speed against wind angle, one wind speed or all.": "在中央显示极曲线图：船速与风角的关系，可显示单一风速或全部风速。",
   "polar plot": "极曲线图",
   "The polar plot: boat speed against wind angle": "极曲线图：船速与风角的关系",
+  "This tab or project is read only and cannot be changed.": "此标签页或项目为只读，无法修改。",
+  "Choosing a tab to import": "选择要导入的标签页",
+  "PolarExplorer tabs": "PolarExplorer 标签页",
+  "Choosing where to export the tab": "选择标签页导出位置",
+  "Choosing where to export the project": "选择项目导出位置",
+  "Export read-only project": "导出只读项目",
 };
 
 export default catalogue;

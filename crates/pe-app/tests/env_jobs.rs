@@ -23,6 +23,7 @@ use pe_app::{edit, projects};
 use pe_core::canonical::{env_degrees, env_knots};
 use pe_core::track::{EnvStatus, Track};
 use pe_env::dataset::Dataset;
+use pe_env::whirlwind::testing;
 use pe_env::{EnvError, EnvPoint, Options, Point, Provider, Vector, Waves};
 
 /// 2025-07-26T12:00Z.
@@ -34,18 +35,11 @@ const NOW: i64 = 1_760_000_000;
 /// A newline in the fake key fails header validation before any HTTP request.
 #[test]
 fn whirlwind_estimate_ipc_returns_errors_and_can_retry_without_hanging() {
-    use pe_app::settings::DataSource;
     use std::time::Duration;
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     let root = TempRoot::new("whirlwind-estimate-ipc");
     let (state, id) = imported(&root);
-    state
-        .with_session(|s| {
-            s.settings.data_source = DataSource::Whirlwind;
-            Ok(())
-        })
-        .unwrap();
     let fake =
         serde_json::json!({"access_key_id":"TEST\nINVALID", "secret_access_key":"test-secret"});
     std::fs::write(
@@ -56,10 +50,13 @@ fn whirlwind_estimate_ipc_returns_errors_and_can_retry_without_hanging() {
     // The public S3 provider must initialise even with an invalid legacy file.
     // Inject invalid signing credentials explicitly to fail before HTTP.
     env::provider(&state).unwrap();
+    let mut archive = pe_app::reanalysis::captured(&state).unwrap().archive_ref();
+    if let pe_env::whirlwind::ArchiveLocation::S3 { credentials, .. } = &mut archive.location {
+        *credentials = Some(serde_json::from_value(fake).unwrap());
+    }
     state.env_provider.lock().unwrap().as_mut().unwrap().1 = Arc::new(
-        pe_env::Reanalysis::whirlwind(
-            pe_env::whirlwind::Source::S3,
-            Some(serde_json::from_value(fake).unwrap()),
+        pe_env::Reanalysis::open(
+            archive,
             Duration::from_secs(1),
             pe_env::BlockCache::new(16 << 20),
         )
@@ -114,26 +111,23 @@ fn whirlwind_estimate_ipc_returns_errors_and_can_retry_without_hanging() {
         );
     }
     assert!(state.env_jobs.status().tracks.is_empty());
-    state
-        .with_session(|s| {
-            s.settings.data_source = DataSource::OpenData;
-            Ok(())
-        })
-        .unwrap();
-    let estimate: serde_json::Value = invoke().unwrap().deserialize().unwrap();
-    assert_eq!(estimate["samples"], 61);
-    assert!(estimate["hourly_bytes"].as_u64().unwrap() > 0);
 }
 
-/// One boat sailing north up 5°W from 49.5°N, 0.01° every 10 minutes, for
-/// ten hours: 61 positions.
+/// One boat sailing north up 5°W from 49.5°N, a position every two hours
+/// for five days: 61 positions, two 72-hour batches (36 and 25).
 fn track_file(root: &TempRoot) -> String {
-    let features: Vec<String> = (0..=60)
+    track_file_at(root, NOON, 49.5, -5.0, 60, 7200)
+}
+
+/// A boat sailing north up `lon` from `lat` at 0.06° an hour (3.6 kn), a
+/// position every `step` seconds from `t0`: `last + 1` positions.
+fn track_file_at(root: &TempRoot, t0: i64, lat: f64, lon: f64, last: i64, step: i64) -> String {
+    let features: Vec<String> = (0..=last)
         .map(|k| {
             format!(
-                r#"{{"type":"Feature","geometry":{{"type":"Point","coordinates":[-5.0,{}]}},"properties":{{"time":{},"boat":"Alpha"}}}}"#,
-                49.5 + 0.01 * k as f64,
-                NOON + 600 * k
+                r#"{{"type":"Feature","geometry":{{"type":"Point","coordinates":[{lon},{}]}},"properties":{{"time":{},"boat":"Alpha"}}}}"#,
+                lat + 0.06 * (step * k) as f64 / 3600.0,
+                t0 + step * k
             )
         })
         .collect();
@@ -151,12 +145,18 @@ fn track_file(root: &TempRoot) -> String {
 
 /// A project with the track imported; returns the track's source id.
 fn imported(root: &TempRoot) -> (AppState, u64) {
+    imported_from(root, track_file(root))
+}
+
+/// A project with the track at `path` imported; returns its source id.
+fn imported_from(root: &TempRoot, path: String) -> (AppState, u64) {
     let app = root.state();
+    common::remember_archive(&app, None);
     projects::create(&app, "Env".to_owned(), None, false).unwrap();
     let result = tracks::import(
         &app,
         &[TrackFileRequest {
-            path: track_file(root),
+            path,
             mapping: None,
             boats: None,
         }],
@@ -166,39 +166,43 @@ fn imported(root: &TempRoot) -> (AppState, u64) {
     (app, id)
 }
 
+/// Points the session's provider at `pe-env`'s fixture archive on a
+/// loopback stub, so an estimate reads its indexes there.
+fn stub_archive(app: &AppState) -> testing::Server {
+    let server = testing::serve(testing::fixture(), 200);
+    env::provider(app).unwrap();
+    app.env_provider.lock().unwrap().as_mut().unwrap().1 =
+        Arc::new(testing::reader_at(server.endpoint()));
+    server
+}
+
 /// Values that depend only on a position's time and place, as the real
-/// archives' do. Wind from WeatherBench2 for the first four hours and
-/// ARCO-ERA5 after; current from the NW Shelf north of 49.8°N and
-/// GlobCurrent (no tide) south of it.
+/// archive's do; the current differs north and south of 49.8°N.
 fn truth(p: &Point) -> EnvPoint {
     let hours = (p.t - NOON) as f64 / 3600.0;
     EnvPoint {
         wind: Some(Vector {
             u: 5.0 + 0.1 * hours,
             v: -3.0 + 0.01 * p.lat,
-            dataset: if hours < 4.0 {
-                Dataset::Wb2Era5Hourly
-            } else {
-                Dataset::ArcoEra5
-            },
+            dataset: Dataset::Hindsight,
         }),
         waves: Some(Waves {
             period_s: Some(8.5),
             hs: Some(1.0 + 0.01 * p.lon),
             from: Some((p.t / 60).rem_euclid(360) as f64),
-            dataset: Dataset::ArcoEra5,
+            dataset: Dataset::Hindsight,
         }),
         current: Some(if p.lat > 49.8 {
             Vector {
                 u: 0.2,
                 v: 0.1,
-                dataset: Dataset::CmemsNwsMy,
+                dataset: Dataset::Hindsight,
             }
         } else {
             Vector {
                 u: 0.1,
                 v: -0.1,
-                dataset: Dataset::GlobCurrentMy,
+                dataset: Dataset::Hindsight,
             }
         }),
     }
@@ -331,8 +335,8 @@ fn a_fetch_fills_every_sample_in_project_units() {
     assert_eq!(t.env_meta.status, EnvStatus::Ready);
     assert_eq!(t.env_meta.interval_s, Some(3600));
     assert!(t.samples.iter().all(|s| s.env_fetched));
-    // Ten hours in 3-hour batches: four calls, every sample once.
-    assert_eq!(fake.calls.load(Ordering::SeqCst), 4);
+    // Five days in 72-hour batches: two calls, every sample once.
+    assert_eq!(fake.calls.load(Ordering::SeqCst), 2);
     assert_eq!(fake.points.load(Ordering::SeqCst), 61);
     // Dataset name and version per sample (invariant 3).
     let names: Vec<(&str, Option<bool>)> = t
@@ -341,21 +345,15 @@ fn a_fetch_fills_every_sample_in_project_units() {
         .iter()
         .map(|d| (d.name.as_str(), d.has_tide))
         .collect();
-    // In the order samples first referred to them; ARCO-ERA5 wind after
-    // 4 h reuses the ARCO record the waves made.
+    // One record for the archive every part came from.
     assert_eq!(
         names,
-        [
-            ("wb2-era5-1h", None),
-            ("arco-era5", None),
-            ("globcurrent-my-geo", Some(true)),
-            ("cmems-nws-my-uv-geo", Some(true)),
-        ]
+        [("s3://whirlwind-hindsight/hindsight-routing", Some(true))]
     );
     assert!(t.env_meta.datasets.iter().all(|d| d.fetched_at == NOW));
     let first = &t.samples[0];
     assert_eq!(first.wind_dataset, Some(0));
-    assert_eq!(first.current_dataset, Some(2));
+    assert_eq!(first.current_dataset, Some(0));
     // u = 5, v = -3 + 0.495 m/s: speed √(u² + v²) × 3600/1852 kn, kept
     // to 0.01 kn (D27).
     let (u, v) = (5.0f64, -3.0 + 0.01 * 49.5);
@@ -372,7 +370,7 @@ fn a_fetch_fills_every_sample_in_project_units() {
     assert!((first.twa.unwrap() - (360.0 - from)).abs() < 1e-9);
     assert!(first.bsp_corrected.is_some(), "a current was found");
     // Progress reached the frontend, and so did each written batch.
-    assert_eq!(sink.changed.load(Ordering::SeqCst), 5);
+    assert_eq!(sink.changed.load(Ordering::SeqCst), 3);
     let last = sink.progress.lock().unwrap().last().cloned().unwrap();
     assert!(last.tracks.is_empty());
     // With wind, the samples have their place in the polar.
@@ -437,15 +435,15 @@ fn a_cancelled_fetch_resumes_to_the_uninterrupted_result() {
     let (b, id_b) = fetched(&root_b, true);
     let partial = track(&b, id_b);
     assert_eq!(partial.env_meta.status, EnvStatus::Partial);
-    // The first batch (0–3 h, 18 samples) finished; nothing after it.
-    assert_eq!(partial.samples.iter().filter(|s| s.env_fetched).count(), 18);
+    // The first batch (0–70 h, 36 samples) finished; nothing after it.
+    assert_eq!(partial.samples.iter().filter(|s| s.env_fetched).count(), 36);
     assert!(
-        partial.samples[18..]
+        partial.samples[36..]
             .iter()
             .all(|s| !s.env_fetched && s.tws.is_none())
     );
     // What finished is exactly what the uninterrupted run found.
-    assert_eq!(partial.samples[..18], straight.samples[..18]);
+    assert_eq!(partial.samples[..36], straight.samples[..36]);
 
     // Refetch resumes the rest, and only the rest, to exactly the same
     // project data.
@@ -454,7 +452,7 @@ fn a_cancelled_fetch_resumes_to_the_uninterrupted_result() {
     assert_eq!(drain(&b, &resuming, &Sink::default()), vec![Outcome::Done]);
     assert_eq!(
         resuming.points.load(Ordering::SeqCst),
-        61 - 18,
+        61 - 36,
         "only the rest"
     );
     let resumed = track(&b, id_b);
@@ -479,7 +477,7 @@ fn a_cancelled_fetch_saves_as_partial_and_resumes_after_reopening() {
     assert_eq!(reopened.env_meta.status, EnvStatus::Partial);
     assert_eq!(
         reopened.samples.iter().filter(|s| s.env_fetched).count(),
-        18
+        36
     );
     let summary = projects::summary(&b).unwrap().unwrap();
     assert_eq!(
@@ -601,29 +599,27 @@ fn replacing_the_project_cancels_its_jobs() {
     assert_eq!(drain(&app, &Fake::new(), &Sink::default()), vec![]);
 }
 
+/// Hand-counted: 13 positions from 2000-01-01T00Z to 02Z at 45N 80W
+/// (the fixture archive's first hours) need the stencil rows 60N–30N and
+/// columns 90W–45W, one inner chunk of each of the two time shards. Each
+/// inner chunk is 2 hours × 7 parameters × 2 × 2 float16 values (112
+/// bytes) stored as one raw Zstandard block, 12 bytes of framing: 124.
 #[test]
 fn estimates_hourly_download_and_rejects_other_intervals() {
     let root = TempRoot::new("env-estimate");
-    let (app, id) = imported(&root);
-    let e = env::estimate_for(&app, &[id], false, None).unwrap();
-    assert_eq!(e.samples, 61);
-    // Hours 12Z to 22Z: 11 hourly steps, each five 64-byte heads and one
-    // block of u, v, wave height, direction and period (recorded block sizes).
-    // The period adds a 168,068-byte block and its 64-byte header.
-    assert!(
-        e.hourly_bytes >= 11 * (1_205_249 + 168_068 + 64),
-        "{}",
-        e.hourly_bytes
+    let (app, id) = imported_from(
+        &root,
+        track_file_at(&root, 946_684_800, 45.0, -80.0, 12, 600),
     );
-    assert!(
-        e.hourly_bytes < 11 * (1_205_249 + 168_068 + 64) + 2_000_000,
-        "{}",
-        e.hourly_bytes
-    );
+    let _server = stub_archive(&app);
+    let e = env::estimate_for(&app, &[id], false).unwrap();
+    assert_eq!(e.samples, 13);
+    assert_eq!(e.hourly_bytes, 2 * 124);
+    assert_eq!(e.cached_bytes, 0);
     assert!(env::queue_fetch(&app, &[id], "three_hourly", false).is_err());
     assert!(app.env_jobs.status().tracks.is_empty());
     // What the project grows by: bytes per sample, not megabytes.
-    assert_eq!(e.stored_bytes, 61 * env::STORED_BYTES_PER_SAMPLE);
+    assert_eq!(e.stored_bytes, 13 * env::STORED_BYTES_PER_SAMPLE);
     assert!(env::queue_fetch(&app, &[id], "weekly", false).is_err());
 }
 
@@ -649,10 +645,8 @@ fn a_legacy_three_hourly_track_is_estimated_and_refetched_hourly() {
         Ok(())
     })
     .unwrap();
-    assert_eq!(
-        env::estimate_for(&app, &[id], false, None).unwrap().samples,
-        61
-    );
+    let _server = stub_archive(&app);
+    assert_eq!(env::estimate_for(&app, &[id], false).unwrap().samples, 61);
     env::queue_fetch(&app, &[id], "hourly", false).unwrap();
     let fake = Fake::new();
     assert_eq!(drain(&app, &fake, &Sink::default()), vec![Outcome::Done]);
@@ -815,8 +809,8 @@ fn boat_jobs_with_equal_source_ids_are_independent() {
 }
 
 #[test]
-fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
-    use pe_app::settings::{self, DataSource};
+fn changing_the_archive_replaces_existing_values_and_keeps_queued_choice() {
+    use pe_app::reanalysis;
     struct Whirlwind(Dataset);
     impl Provider for Whirlwind {
         fn sample(
@@ -838,62 +832,70 @@ fn changing_data_source_replaces_existing_values_and_keeps_queued_choice() {
                 .collect())
         }
     }
+    // Hindsight Sync lists two archives with different identities.
+    let archive = |id: &str, uri: &str| {
+        serde_json::json!({"id": id, "name": id, "storage": "cloud", "uri": uri,
+            "mode": "global", "start_datetime": "2000-01-01T00:00:00Z",
+            "chunk_degrees": 5, "chunk_hours": 72, "products": ["wind10m"],
+            "layout_version": 3, "location": {"protocol": "s3", "bucket": "b",
+            "prefix": "p", "endpoint_url": "http://127.0.0.1:9", "region": "auto",
+            "force_path_style": true, "credentials": {"access_key_id": "k",
+            "secret_access_key": "s", "session_token": null}}})
+    };
+    let listing = serde_json::json!({"api_version": 1, "errors": [], "archives": [
+        archive("a", "r2://a/routing"), archive("b", "tigris://b/routing")]});
+    let hindsight = common::stub(vec![("/cloud/reanalysis", 200, listing.to_string())]);
     let root = TempRoot::new("source-switch");
     let (app, id) = imported(&root);
+    reanalysis::port_set(&app, hindsight.port).unwrap();
+    let choose = |id: &str| {
+        reanalysis::archive_set(&app, Some(id.to_owned())).unwrap();
+    };
     let sink = Sink::default();
+    choose("a");
     env::queue_fetch(&app, &[id], "hourly", false).unwrap();
     assert_eq!(
-        drain(&app, &Whirlwind(Dataset::WhirlwindHindsight), &sink),
+        drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
         vec![Outcome::Done]
     );
-    // Existing values are Whirlwind, so switching to Open Data must replace
-    // even a ready track without requiring an explicit restart.
+    // Existing values are from `a`, so choosing `b` must replace even a
+    // ready track without requiring an explicit restart.
+    choose("b");
     env::queue_fetch(&app, &[id], "hourly", false).unwrap();
-    // A preference change after queueing must not change that queued request.
-    settings::data_source_set(&app, DataSource::Whirlwind).unwrap();
-    let provider = Fake::new();
-    assert_eq!(drain(&app, &provider, &sink), vec![Outcome::Done]);
+    // A choice made after queueing must not change that queued request.
+    choose("a");
+    assert_eq!(
+        drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
+        vec![Outcome::Done]
+    );
     let fetched = track(&app, id);
     assert!(
         fetched
             .env_meta
             .datasets
             .iter()
-            .all(|d| d.name != Dataset::WhirlwindHindsight.id())
+            .all(|d| d.name == "tigris://b/routing")
     );
     assert!(fetched.samples.iter().all(|s| s.env_fetched));
-    env::queue_fetch(&app, &[id], "hourly", false).unwrap();
-    assert_eq!(
-        drain(&app, &Whirlwind(Dataset::WhirlwindHindsight), &sink),
-        vec![Outcome::Done]
-    );
-    assert!(
-        track(&app, id)
-            .env_meta
-            .datasets
-            .iter()
-            .all(|d| d.name == Dataset::WhirlwindHindsight.id())
-    );
-    for (source, dataset) in [
-        (DataSource::WhirlwindR2, Dataset::WhirlwindR2),
-        (DataSource::WhirlwindTigris, Dataset::WhirlwindTigris),
-        (DataSource::Whirlwind, Dataset::WhirlwindHindsight),
-    ] {
-        settings::data_source_set(&app, source).unwrap();
-        // A ready route must be fetched again when its storage source changes.
+    for (chosen, identity) in [("a", "r2://a/routing"), ("b", "tigris://b/routing")] {
+        choose(chosen);
+        // A ready track must be fetched again when its archive changes.
         assert!(
             !env::queue_fetch(&app, &[id], "hourly", false)
                 .unwrap()
                 .tracks
                 .is_empty()
         );
-        assert_eq!(drain(&app, &Whirlwind(dataset), &sink), vec![Outcome::Done]);
+        assert_eq!(
+            drain(&app, &Whirlwind(Dataset::Hindsight), &sink),
+            vec![Outcome::Done]
+        );
         assert!(
             track(&app, id)
                 .env_meta
                 .datasets
                 .iter()
-                .all(|d| d.name == dataset.id())
+                .all(|d| d.name == identity)
         );
     }
 }
@@ -934,11 +936,7 @@ fn imported_fleet_dates(
 ) -> (AppState, Vec<u64>) {
     let app = root.state();
     projects::create(&app, "Fleet weather".into(), None, false).unwrap();
-    app.with_session(|s| {
-        s.settings.data_source = pe_app::settings::DataSource::WhirlwindR2;
-        Ok(())
-    })
-    .unwrap();
+    common::remember_archive(&app, None);
     let features: Vec<_> = (0..boats).flat_map(|boat| (0..samples).map(move |k| {
         serde_json::json!({"type":"Feature", "geometry":{"type":"Point","coordinates":[-5.0, 50.0 + boat as f64 * 0.001]},
             "properties":{"time":NOON + k as i64 * 600 + date_spacing * boat as i64, "boat":format!("Fleet {boat}")}})
@@ -1017,16 +1015,7 @@ impl Provider for FleetProvider<'_> {
         if self.fail_north && points.iter().any(|p| p.lat > 50.0015) {
             return Err(EnvError::OutOfRange("broken northern chunk".into()));
         }
-        Ok(points
-            .iter()
-            .map(|p| {
-                let mut env = truth(p);
-                env.wind.as_mut().unwrap().dataset = Dataset::WhirlwindR2;
-                env.waves.as_mut().unwrap().dataset = Dataset::WhirlwindR2;
-                env.current.as_mut().unwrap().dataset = Dataset::WhirlwindR2;
-                env
-            })
-            .collect())
+        Ok(points.iter().map(truth).collect())
     }
 }
 
@@ -1178,11 +1167,6 @@ fn fleet_batch_sample_cap_is_shared_across_all_tracks() {
 fn fleet_keeps_equal_source_ids_in_different_boat_tabs_separate() {
     let root = TempRoot::new("env-fleet-tabs");
     let (app, id) = imported(&root);
-    app.with_session(|s| {
-        s.settings.data_source = pe_app::settings::DataSource::WhirlwindR2;
-        Ok(())
-    })
-    .unwrap();
     let first = projects::summary(&app).unwrap().unwrap().id;
     let second = pe_app::boats::add(&app, "Sister ship".into()).unwrap().id;
     let child = app.scoped(Some(second));
@@ -1226,7 +1210,8 @@ fn fleet_keeps_equal_source_ids_in_different_boat_tabs_separate() {
         drain(&app, &provider, &Sink::default()),
         [Outcome::Cancelled]
     );
-    assert_eq!(provider.inner.calls.lock().unwrap()[0].len(), 122);
+    // The first shared batch: each boat's first 72 hours, 36 samples.
+    assert_eq!(provider.inner.calls.lock().unwrap()[0].len(), 72);
     assert!(track(&app, id).samples.iter().all(|s| !s.env_fetched));
     assert_eq!(track(&child, id).env_meta.status, EnvStatus::Ready);
     assert!(app.env_jobs.status().failure.is_none());
@@ -1262,7 +1247,10 @@ fn a_shared_archive_error_fails_the_fleet_without_repeating_it_for_each_boat() {
             _: &Arc<AtomicBool>,
         ) -> pe_env::Result<Vec<EnvPoint>> {
             self.0.fetch_add(1, Ordering::SeqCst);
-            Err(EnvError::Open("Whirlwind S3 answered 403".into()))
+            Err(EnvError::Auth {
+                status: 403,
+                key: "data/c/0/0/0/0".into(),
+            })
         }
     }
     let provider = Forbidden(AtomicUsize::new(0));

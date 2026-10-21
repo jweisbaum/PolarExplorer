@@ -169,6 +169,22 @@ const catalogue: Record<string, string> = {
   "Show the samples and polar points you excluded.": "除外したサンプル点とポーラーの格子点を表示します。",
   "excluded": "除外",
   "outliers": "外れ値",
+  "PDF": "PDF",
+  "probability density": "確率密度",
+  "3D display mode": "3D 表示モード",
+  "distribution": "分布",
+  "Display": "表示",
+  "Probability density (PDF)": "確率密度（PDF）",
+  "No visible points pass the current filters to form a PDF.": "現在のフィルターを通過する表示点がないため、PDF を作成できません。",
+  "Hover a cell to highlight it. Click to expand its PDF and show percentiles; press Escape to return. Drag to turn, right-drag to pan, scroll to zoom.": "セルにポインターを合わせて強調表示します。クリックで PDF を拡大してパーセンタイルを表示し、Escape で戻ります。ドラッグで回転、右ドラッグで移動、スクロールで拡大縮小します。",
+  "TWA {twa}°, TWS {tws}": "TWA {twa}°、TWS {tws}",
+  "SOG: {speed}": "SOG: {speed}",
+  "Percentile: {percentile}%": "パーセンタイル：{percentile}%",
+  "P{percentile}": "P{percentile}",
+  "Show all cells": "すべてのセルを表示",
+  "{count} wind-condition PDFs": "風況別 PDF：{count} 個",
+  "{value} per knot": "1ノットあたり {value}",
+  "Hover to highlight; click a cell to expand it.": "ポインターを合わせて強調表示し、セルをクリックして拡大します。",
 };
 
 export default catalogue;

@@ -110,6 +110,7 @@ const catalogue: Record<string, string> = {
   "That value is not accepted.": "هذه القيمة غير مقبولة.",
   "The operation could not be completed.": "تعذّر إكمال العملية.",
   "Something went wrong inside PolarExplorer.": "حدث خطأ داخل PolarExplorer.",
+  "No reanalysis archive can be read. Choose one in Settings, or press Scan there.": "لا يمكن قراءة أي أرشيف لإعادة التحليل. اختر واحدًا في الإعدادات، أو اضغط على فحص هناك.",
   "Something went wrong.": "حدث خطأ.",
   "Undone: {action}": "تم التراجع: {action}",
   "Redone: {action}": "تمت الإعادة: {action}",
@@ -134,6 +135,12 @@ const catalogue: Record<string, string> = {
   "Show the polar plot in the centre: boat speed against wind angle, one wind speed or all.": "عرض المخطط القطبي في الوسط: سرعة القارب مقابل زاوية الريح، لسرعة ريح واحدة أو لكل السرعات.",
   "polar plot": "المخطط القطبي",
   "The polar plot: boat speed against wind angle": "المخطط القطبي: سرعة القارب مقابل زاوية الريح",
+  "This tab or project is read only and cannot be changed.": "علامة التبويب أو المشروع للقراءة فقط ولا يمكن تعديله.",
+  "Choosing a tab to import": "اختيار علامة تبويب لاستيرادها",
+  "PolarExplorer tabs": "علامات تبويب PolarExplorer",
+  "Choosing where to export the tab": "اختيار مكان تصدير علامة التبويب",
+  "Choosing where to export the project": "اختيار مكان تصدير المشروع",
+  "Export read-only project": "تصدير مشروع للقراءة فقط",
 };
 
 export default catalogue;

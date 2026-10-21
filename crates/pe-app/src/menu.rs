@@ -125,7 +125,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "Catalogue ORC : {records} certificats de jieter/orc-data, commit {commit} du {date}, construit le {built}."
         }
         ("fr", L::DataCredits) => {
-            "Données : jieter/orc-data (MIT) ; ERA5 d’ECMWF / Copernicus Climate Change Service, via WeatherBench2 et ARCO-ERA5 ; E.U. Copernicus Marine Service Information ; fond de carte Natural Earth (domaine public).\n\nLe guide et les mentions des sources sont fournis dans le dossier documentation de l’application."
+            "Données : jieter/orc-data (MIT) ; ERA5 d’ECMWF / Copernicus Climate Change Service, via ARCO-ERA5 ; E.U. Copernicus Marine Service Information ; fond de carte Natural Earth (domaine public).\n\nLe guide et les mentions des sources sont fournis dans le dossier documentation de l’application."
         }
 
         ("de", L::About) => "Über PolarExplorer",
@@ -153,7 +153,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "ORC-Katalog: {records} Messbriefe aus jieter/orc-data, Commit {commit} vom {date}, erstellt am {built}."
         }
         ("de", L::DataCredits) => {
-            "Daten: jieter/orc-data (MIT); ERA5 von ECMWF / Copernicus Climate Change Service, über WeatherBench2 und ARCO-ERA5; E.U. Copernicus Marine Service Information; Kartengrundlage von Natural Earth (gemeinfrei).\n\nDas Handbuch und die Quellenangaben liegen im Ordner documentation der Anwendung."
+            "Daten: jieter/orc-data (MIT); ERA5 von ECMWF / Copernicus Climate Change Service, über ARCO-ERA5; E.U. Copernicus Marine Service Information; Kartengrundlage von Natural Earth (gemeinfrei).\n\nDas Handbuch und die Quellenangaben liegen im Ordner documentation der Anwendung."
         }
 
         ("es", L::About) => "Acerca de PolarExplorer",
@@ -181,7 +181,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "Catálogo ORC: {records} certificados de jieter/orc-data, commit {commit} del {date}, compilado el {built}."
         }
         ("es", L::DataCredits) => {
-            "Datos: jieter/orc-data (MIT); ERA5 de ECMWF / Copernicus Climate Change Service, a través de WeatherBench2 y ARCO-ERA5; E.U. Copernicus Marine Service Information; mapa base de Natural Earth (dominio público).\n\nLa guía del usuario y los avisos de las fuentes de datos se incluyen en la carpeta documentation de la aplicación."
+            "Datos: jieter/orc-data (MIT); ERA5 de ECMWF / Copernicus Climate Change Service, a través de ARCO-ERA5; E.U. Copernicus Marine Service Information; mapa base de Natural Earth (dominio público).\n\nLa guía del usuario y los avisos de las fuentes de datos se incluyen en la carpeta documentation de la aplicación."
         }
 
         ("it", L::About) => "Informazioni su PolarExplorer",
@@ -209,7 +209,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "Catalogo ORC: {records} certificati da jieter/orc-data, commit {commit} del {date}, compilato il {built}."
         }
         ("it", L::DataCredits) => {
-            "Dati: jieter/orc-data (MIT); ERA5 di ECMWF / Copernicus Climate Change Service, tramite WeatherBench2 e ARCO-ERA5; E.U. Copernicus Marine Service Information; mappa di base Natural Earth (pubblico dominio).\n\nLa guida per l’utente e le note sulle fonti dei dati si trovano nella cartella documentation dell’applicazione."
+            "Dati: jieter/orc-data (MIT); ERA5 di ECMWF / Copernicus Climate Change Service, tramite ARCO-ERA5; E.U. Copernicus Marine Service Information; mappa di base Natural Earth (pubblico dominio).\n\nLa guida per l’utente e le note sulle fonti dei dati si trovano nella cartella documentation dell’applicazione."
         }
 
         ("nl", L::About) => "Over PolarExplorer",
@@ -237,7 +237,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "ORC-catalogus: {records} meetbrieven uit jieter/orc-data, commit {commit} van {date}, gebouwd op {built}."
         }
         ("nl", L::DataCredits) => {
-            "Gegevens: jieter/orc-data (MIT); ERA5 van ECMWF / Copernicus Climate Change Service, via WeatherBench2 en ARCO-ERA5; E.U. Copernicus Marine Service Information; basiskaart van Natural Earth (publiek domein).\n\nDe gebruikershandleiding en de vermeldingen van de gegevensbronnen staan in de map documentation van de app."
+            "Gegevens: jieter/orc-data (MIT); ERA5 van ECMWF / Copernicus Climate Change Service, via ARCO-ERA5; E.U. Copernicus Marine Service Information; basiskaart van Natural Earth (publiek domein).\n\nDe gebruikershandleiding en de vermeldingen van de gegevensbronnen staan in de map documentation van de app."
         }
 
         ("zh", L::About) => "关于 PolarExplorer",
@@ -265,7 +265,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "ORC 目录：来自 jieter/orc-data 的 {records} 份证书，提交 {commit}（{date}），构建于 {built}。"
         }
         ("zh", L::DataCredits) => {
-            "数据：jieter/orc-data (MIT)；ECMWF / Copernicus Climate Change Service 的 ERA5，经由 WeatherBench2 和 ARCO-ERA5；E.U. Copernicus Marine Service Information；Natural Earth 底图（公有领域）。\n\n用户指南和数据来源声明位于应用程序的 documentation 文件夹中。"
+            "数据：jieter/orc-data (MIT)；ECMWF / Copernicus Climate Change Service 的 ERA5，经由 ARCO-ERA5；E.U. Copernicus Marine Service Information；Natural Earth 底图（公有领域）。\n\n用户指南和数据来源声明位于应用程序的 documentation 文件夹中。"
         }
 
         ("ja", L::About) => "PolarExplorer について",
@@ -293,7 +293,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "ORC カタログ：jieter/orc-data の証書 {records} 件、コミット {commit}（{date}）、ビルド {built}。"
         }
         ("ja", L::DataCredits) => {
-            "データ：jieter/orc-data (MIT)、ECMWF / Copernicus Climate Change Service の ERA5（WeatherBench2 および ARCO-ERA5 経由）、E.U. Copernicus Marine Service Information、Natural Earth のベースマップ（パブリックドメイン）。\n\nユーザーガイドとデータソースの表記は、アプリケーションの documentation フォルダにあります。"
+            "データ：jieter/orc-data (MIT)、ECMWF / Copernicus Climate Change Service の ERA5（ARCO-ERA5 経由）、E.U. Copernicus Marine Service Information、Natural Earth のベースマップ（パブリックドメイン）。\n\nユーザーガイドとデータソースの表記は、アプリケーションの documentation フォルダにあります。"
         }
 
         ("ar", L::About) => "حول PolarExplorer",
@@ -321,7 +321,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "كتالوج ORC: ‏{records} شهادة من jieter/orc-data، الإيداع {commit} بتاريخ {date}، بُني في {built}."
         }
         ("ar", L::DataCredits) => {
-            "البيانات: jieter/orc-data (MIT)؛ ERA5 من ECMWF / Copernicus Climate Change Service عبر WeatherBench2 وARCO-ERA5؛ E.U. Copernicus Marine Service Information؛ خريطة الأساس من Natural Earth (ملكية عامة).\n\nدليل المستخدم وإشعارات مصادر البيانات موجودة في مجلد documentation الخاص بالتطبيق."
+            "البيانات: jieter/orc-data (MIT)؛ ERA5 من ECMWF / Copernicus Climate Change Service عبر ARCO-ERA5؛ E.U. Copernicus Marine Service Information؛ خريطة الأساس من Natural Earth (ملكية عامة).\n\nدليل المستخدم وإشعارات مصادر البيانات موجودة في مجلد documentation الخاص بالتطبيق."
         }
 
         (_, L::About) => "About PolarExplorer",
@@ -349,7 +349,7 @@ pub fn text(language: &str, label: Label) -> &'static str {
             "ORC catalogue: {records} certificates from jieter/orc-data, commit {commit} of {date}, built {built}."
         }
         (_, L::DataCredits) => {
-            "Data: jieter/orc-data (MIT); ERA5 from ECMWF / Copernicus Climate Change Service, via WeatherBench2 and ARCO-ERA5; E.U. Copernicus Marine Service Information; Natural Earth basemap (public domain).\n\nThe user guide and data source notices are included in the application’s documentation folder."
+            "Data: jieter/orc-data (MIT); ERA5 from ECMWF / Copernicus Climate Change Service, via ARCO-ERA5; E.U. Copernicus Marine Service Information; Natural Earth basemap (public domain).\n\nThe user guide and data source notices are included in the application’s documentation folder."
         }
     }
 }
@@ -571,7 +571,6 @@ mod tests {
                 "jieter/orc-data (MIT)",
                 "ECMWF",
                 "Copernicus Climate Change Service",
-                "WeatherBench2",
                 "ARCO-ERA5",
                 "Copernicus Marine",
                 "Natural Earth",

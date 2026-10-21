@@ -110,6 +110,7 @@ const catalogue: Record<string, string> = {
   "That value is not accepted.": "その値は受け付けられません。",
   "The operation could not be completed.": "操作を完了できませんでした。",
   "Something went wrong inside PolarExplorer.": "PolarExplorer の内部で問題が発生しました。",
+  "No reanalysis archive can be read. Choose one in Settings, or press Scan there.": "読み取れる再解析アーカイブがありません。設定で選ぶか、設定でスキャンを押してください。",
   "Something went wrong.": "問題が発生しました。",
   "Undone: {action}": "取り消しました：{action}",
   "Redone: {action}": "やり直しました：{action}",
@@ -134,6 +135,12 @@ const catalogue: Record<string, string> = {
   "Show the polar plot in the centre: boat speed against wind angle, one wind speed or all.": "中央にポーラー図を表示します。風向角に対する艇速を、1 つの風速またはすべての風速で示します。",
   "polar plot": "ポーラー図",
   "The polar plot: boat speed against wind angle": "ポーラー図：風向角に対する艇速",
+  "This tab or project is read only and cannot be changed.": "このタブまたはプロジェクトは読み取り専用のため変更できません。",
+  "Choosing a tab to import": "インポートするタブを選択",
+  "PolarExplorer tabs": "PolarExplorer タブ",
+  "Choosing where to export the tab": "タブのエクスポート先を選択",
+  "Choosing where to export the project": "プロジェクトのエクスポート先を選択",
+  "Export read-only project": "読み取り専用プロジェクトをエクスポート",
 };
 
 export default catalogue;

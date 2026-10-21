@@ -10,23 +10,18 @@
 //! in the archives' units (m/s, m, degrees "from"), as GRIB wants them.
 //!
 //! **Where it comes from.** The same [`Provider`] as a track's fetch, asked
-//! at every node of the grid and every time: the wind and waves at a node
-//! and whole hour are the archive's own values (the stencil lands on the
-//! node); the current comes from the same tier chain as sampling (spec.md
-//! 7.5.1), regridded from its own grid (1/15° to 1/4°) to the 0.25° nodes
-//! by bilinear interpolation, land corners left out. A node with no value
-//! — land for waves and current, an hour an archive does not have — is
-//! written as missing (a GRIB bitmap), never as zero. Only the blocks of
-//! each hour's field holding the area's rows are downloaded (spec.md 7.5),
-//! into the session's memory, and nothing is cached on disk (D27).
+//! at every node of the grid and every time: at a node and whole hour the
+//! values are the archive's own (the stencil lands on the node). A node
+//! with no value — land for waves and current, an hour the archive does not
+//! have — is written as missing (a GRIB bitmap), never as zero. Only the
+//! inner chunks holding the area are downloaded (spec.md 7.5), into the
+//! session's memory and the bounded disk cache.
 //!
-//! **In what order.** The current's geoChunks hold months of a small box
-//! each, so it is read box by box (a tile of 16 × 16 nodes over every
-//! time) and spooled to a temporary file beside the export; then the wind
-//! and waves hour by hour, a few hours per read, each hour's messages
-//! written as soon as its values are in. Neither the file nor the current
-//! is ever held whole in memory, and a large area's current blocks are
-//! read once rather than once per hour.
+//! **In what order.** The current is read first, tile by tile (16 × 16
+//! nodes over every time), and spooled to a temporary file beside the
+//! export; then the wind and waves hour by hour, a few hours per read, each
+//! hour's messages written as soon as its values are in. Neither the file
+//! nor the current is ever held whole in memory.
 //!
 //! **Atomic and reproducible.** The file is written to `<name>.tmp` and
 //! renamed into place when complete; a cancel or a failure removes it and
@@ -53,9 +48,8 @@ use crate::error::{AppError, Context, Result};
 /// advances or ends.
 pub const PROGRESS_EVENT: &str = "grib://progress";
 
-/// Nodes per side of a current tile: 4° at 0.25°, whose current blocks
-/// fit the session's memory (about 40 MB on the NW Shelf, where the
-/// chunks are smallest).
+/// Nodes per side of a current tile: 4° at 0.25°, so a tile's reads over
+/// every time stay small.
 const TILE: u32 = 16;
 
 /// The most positions one read asks for (about 16 MB of answers); a
@@ -80,8 +74,7 @@ pub struct Plan {
     pub parts: Parts,
     /// The spacing of the times.
     pub interval: Interval,
-    /// Whether the global merged current includes Stokes drift (the
-    /// project's choice, as for a fetch).
+    /// The project's Stokes drift choice, passed on as for a fetch.
     pub stokes_drift: bool,
 }
 
@@ -178,13 +171,14 @@ pub struct GribPreview {
     pub last: i64,
     /// Messages in the file.
     pub messages: u32,
-    /// Bytes to download for the wind.
+    /// Bytes to download. The archive keeps wind, waves and current in one
+    /// chunk, so this is every part's download.
     pub wind_bytes: u64,
-    /// Bytes to download for the waves (counted whether or not ticked).
+    /// Always 0: the waves come in the wind's chunks.
     pub waves_bytes: u64,
-    /// Bytes to download for the current (counted whether or not ticked).
+    /// Always 0: the current comes in the wind's chunks.
     pub current_bytes: u64,
-    /// Bytes of the parts ticked already downloaded this session.
+    /// Bytes already held in memory or on disk.
     pub cached_bytes: u64,
     /// About the file's size with the parts ticked.
     pub file_bytes: u64,
@@ -204,22 +198,84 @@ pub fn spool_bytes(plan: &Plan) -> u64 {
 /// The temporary file size above which the dialog warns about disk space.
 pub const SPOOL_WARNING_BYTES: u64 = 1_000_000_000;
 
-/// The dialog's figures for `plan`; `memory` is what this session holds.
+/// The longest gap between the nodes [`preview_points`] keeps, in nodes:
+/// 1° at 0.25°, well under an archive inner chunk's 20 cells.
+const PREVIEW_NODE_STRIDE: usize = 4;
+
+/// The longest gap between the times [`preview_points`] keeps, in hours:
+/// an archive inner chunk's 72.
+const PREVIEW_TIME_STRIDE: usize = 72;
+
+/// `0, stride, 2 × stride, …` below `n`, and `n − 1`: no gap wider than
+/// `stride`, both ends kept.
+fn strided(n: usize, stride: usize) -> Vec<usize> {
+    let mut kept: Vec<usize> = (0..n).step_by(stride.max(1)).collect();
+    if n > 0 && kept.last() != Some(&(n - 1)) {
+        kept.push(n - 1);
+    }
+    kept
+}
+
+/// The positions the preview estimates: the plan's nodes and times, thinned
+/// to at most [`MAX_POINTS`] where that can be done structurally. Rows and
+/// columns are kept at most [`PREVIEW_NODE_STRIDE`] apart and times at most
+/// [`PREVIEW_TIME_STRIDE`] apart, ends included, so every archive inner
+/// chunk the full plan touches still has a position in it and the
+/// estimate counts it. The finest node stride that fits is used; a plan too
+/// large for even the coarsest is estimated over more positions rather
+/// than fewer chunks.
+fn preview_points(plan: &Plan) -> Vec<Point> {
+    let g = plan.grid;
+    let (ni, nj, nt) = (g.ni as usize, g.nj as usize, plan.times.len());
+    let fits = |s: usize, k: usize| {
+        strided(nj, s).len() * strided(ni, s).len() * strided(nt, k).len() <= MAX_POINTS
+    };
+    let (s, k) = (1..=PREVIEW_NODE_STRIDE)
+        .find_map(|s| {
+            (1..=PREVIEW_TIME_STRIDE)
+                .find(|&k| fits(s, k))
+                .map(|k| (s, k))
+        })
+        .unwrap_or((PREVIEW_NODE_STRIDE, PREVIEW_TIME_STRIDE));
+    let (rows, cols) = (strided(nj, s), strided(ni, s));
+    strided(nt, k)
+        .into_iter()
+        .flat_map(|t| {
+            let t = plan.times[t];
+            let cols = &cols;
+            rows.iter().flat_map(move |&j| {
+                let lat = g.lat(j as u32).clamp(-90.0, 90.0);
+                cols.iter().map(move |&i| Point {
+                    t,
+                    lat,
+                    lon: g.lon(i as u32),
+                })
+            })
+        })
+        .collect()
+}
+
+/// The dialog's figures for `plan`. The download is `provider`'s exact
+/// accounting of the archive chunks the plan's grid nodes need at its
+/// times, from [`preview_points`] so a large area costs no more to
+/// estimate than one read; what the provider already holds is not counted.
+///
+/// # Errors
+/// The archive's metadata or indexes cannot be read.
 pub fn preview_of(
     source_id: u64,
     label: &str,
     plan: &Plan,
-    memory: Option<&pe_env::BlockCache>,
-) -> GribPreview {
+    provider: &pe_env::Reanalysis,
+) -> Result<GribPreview> {
     let g = plan.grid;
-    let area = pe_env::Area {
-        north: g.lat(0),
-        south: g.lat(g.nj - 1),
-        west: f64::from(g.lo1) / 1e6,
-        width: f64::from(g.ni - 1) * f64::from(g.step) / 1e6,
-    };
-    let e = pe_env::estimate_export(&area, &plan.times, memory);
-    GribPreview {
+    let points = preview_points(plan);
+    let e = provider.estimate(&points).map_err(|err| AppError::Doing {
+        doing: "estimate the reanalysis download for",
+        what: label.to_owned(),
+        why: err.to_string(),
+    })?;
+    Ok(GribPreview {
         source_id,
         label: label.to_owned(),
         north: g.lat(0),
@@ -232,15 +288,10 @@ pub fn preview_of(
         first: plan.times.first().copied().unwrap_or_default(),
         last: plan.times.last().copied().unwrap_or_default(),
         messages: u32::try_from(plan.messages()).unwrap_or(u32::MAX),
-        wind_bytes: e.wind_bytes,
-        waves_bytes: e.waves_bytes,
-        current_bytes: e.current_bytes,
-        cached_bytes: e.wind_cached_bytes
-            + if plan.parts.waves {
-                e.waves_cached_bytes
-            } else {
-                0
-            },
+        wind_bytes: e.hourly_bytes,
+        waves_bytes: 0,
+        current_bytes: 0,
+        cached_bytes: e.hourly_cached_bytes,
         file_bytes: plan.file_bytes(),
         spool_bytes: if plan.parts.current {
             spool_bytes(plan)
@@ -248,7 +299,7 @@ pub fn preview_of(
             0
         },
         spool_warning_bytes: SPOOL_WARNING_BYTES,
-    }
+    })
 }
 
 fn count(n: usize) -> u32 {
@@ -498,20 +549,10 @@ pub fn export(
         ReferenceTime::from_epoch(reference).map_err(|e| AppError::Internal(e.to_string()))?;
     let mut file = GribFile::create(path).doing("write the GRIB file", path.display())?;
 
-    // The current first, box by box; it is weighted in the progress by
-    // how much of the download it is expected to be.
-    let weight = if plan.parts.current {
-        let e = preview_of(0, "", plan, None);
-        let era5 = e.wind_bytes + if plan.parts.waves { e.waves_bytes } else { 0 };
-        let total = era5 + e.current_bytes;
-        if total == 0 {
-            0.5
-        } else {
-            e.current_bytes as f64 / total as f64
-        }
-    } else {
-        0.0
-    };
+    // The current first, box by box. It downloads the archive's combined
+    // chunks, which the wind and waves then read again from memory, so it
+    // counts as half the progress.
+    let weight = if plan.parts.current { 0.5 } else { 0.0 };
     let mut spool = if plan.parts.current {
         let mut step = |f: f64| progress(weight * f);
         match spool_current(provider, plan, path, cancel, &mut step)? {
@@ -842,53 +883,17 @@ pub fn grib_preview(
 ) -> Result<GribPreview> {
     let (plan, label) = plan_for(&state, source_id, &interval, waves, current)?;
     let provider = crate::env::provider(&state)?;
-    Ok(preview_of(
-        source_id,
-        &label,
-        &plan,
-        Some(provider.memory()),
-    ))
+    preview_of(source_id, &label, &plan, &provider)
 }
 
 /// A provider and how to read the bytes it has downloaded.
 type Reader = (Arc<dyn Provider>, Arc<dyn Fn() -> u64 + Send + Sync>);
 
-/// The provider an export reads through: the session's, or in a UX run
-/// the suite's local archive server.
+/// The provider an export reads through: the session's.
 fn export_provider(state: &AppState) -> Result<Reader> {
-    #[cfg(feature = "webdriver")]
-    if let Some(local) = automation_provider() {
-        let local = Arc::new(local);
-        let counter = Arc::clone(&local);
-        return Ok((local, Arc::new(move || counter.net_totals().1)));
-    }
     let provider = crate::env::provider(state)?;
     let counter = Arc::clone(&provider);
     Ok((provider, Arc::new(move || counter.net_totals().1)))
-}
-
-/// The UX suite's local archive server (D25): every dataset at
-/// `<origin>/<dataset id>`. Only with the WebDriver feature and only for a
-/// loopback `http://127.0.0.1:<port>` origin, so even a test build cannot
-/// be pointed at a host invariant 4 does not allow.
-#[cfg(feature = "webdriver")]
-fn automation_provider() -> Option<pe_env::Reanalysis> {
-    let origin = std::env::var("PE_DRIVER_REANALYSIS").ok()?;
-    let port = origin.strip_prefix("http://127.0.0.1:")?;
-    if port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    let urls = pe_env::dataset::Dataset::ALL
-        .into_iter()
-        .map(|d| (d, format!("{origin}/{}", d.id())))
-        .collect();
-    Some(pe_env::Reanalysis::new(
-        pe_env::Access::Urls {
-            timeout: std::time::Duration::from_secs(10),
-            urls,
-        },
-        4,
-    ))
 }
 
 /// The frontend, as a [`GribSink`].
@@ -961,6 +966,87 @@ pub fn grib_export_status(state: tauri::State<'_, AppState>) -> Result<GribExpor
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The largest gap between consecutive values of `kept` (sorted,
+    /// distinct), and whether it starts at `first` and ends at `last`.
+    fn widest_gap<T: Copy + PartialOrd + std::ops::Sub<Output = T>>(
+        kept: &[T],
+        first: T,
+        last: T,
+    ) -> Option<T> {
+        assert!(kept.first() == Some(&first) && kept.last() == Some(&last));
+        kept.windows(2)
+            .map(|w| w[1] - w[0])
+            .fold(None, |a, d| match a {
+                Some(a) if a >= d => Some(a),
+                _ => Some(d),
+            })
+    }
+
+    /// Review round 1: 200 × 200 nodes over 200 hours is 8,000,000
+    /// positions. A flat stride of 40 kept only columns 0, 40, 80, …, so
+    /// 20-cell chunks between were never counted. The structural thinning
+    /// keeps every row and column (no gap over 4 nodes, under a chunk's
+    /// 20) and a time at least every 72 hours, ends included, within the
+    /// point budget.
+    #[test]
+    fn preview_thinning_keeps_a_position_in_every_chunk() {
+        let t0 = 946_684_800;
+        let plan = Plan {
+            grid: GridSpec {
+                ni: 200,
+                nj: 200,
+                la1: 50_000_000,
+                lo1: 300_000_000,
+                step: 250_000,
+            },
+            times: (0..200).map(|h| t0 + 3600 * h).collect(),
+            parts: Parts::ALL,
+            interval: Interval::Hourly,
+            stokes_drift: false,
+        };
+        let points = preview_points(&plan);
+        assert!(points.len() <= MAX_POINTS, "{}", points.len());
+        let mut times: Vec<i64> = points.iter().map(|p| p.t).collect();
+        times.sort_unstable();
+        times.dedup();
+        let hours = widest_gap(&times, t0, t0 + 3600 * 199).unwrap() / 3600;
+        assert!(hours <= 72, "{hours} h");
+        // Every time keeps the same nodes; their rows and columns as indices.
+        let at_first: Vec<&Point> = points.iter().filter(|p| p.t == t0).collect();
+        let mut rows: Vec<i64> = at_first
+            .iter()
+            .map(|p| ((50.0 - p.lat) / 0.25).round() as i64)
+            .collect();
+        let mut cols: Vec<i64> = at_first
+            .iter()
+            .map(|p| ((p.lon.rem_euclid(360.0) - 300.0) / 0.25).round() as i64)
+            .collect();
+        for v in [&mut rows, &mut cols] {
+            v.sort_unstable();
+            v.dedup();
+        }
+        assert!(widest_gap(&rows, 0, 199).unwrap() <= 4);
+        assert!(widest_gap(&cols, 0, 199).unwrap() <= 4);
+        assert_eq!(at_first.len(), rows.len() * cols.len());
+    }
+
+    /// A plan within the budget is estimated over every node and time.
+    #[test]
+    fn a_small_preview_is_not_thinned() {
+        let plan = Plan::of(
+            &[(0, 50.0, -5.0), (7200, 50.6, -4.2)],
+            true,
+            true,
+            Interval::Hourly,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            preview_points(&plan).len() as u64,
+            plan.grid.point_count() * plan.times.len() as u64
+        );
+    }
 
     /// Hand-computed: a 20 × 10 grid has two tiles along (16 + 4) and one
     /// down; every node is in exactly one tile.

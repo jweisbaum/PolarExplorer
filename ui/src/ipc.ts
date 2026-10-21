@@ -97,6 +97,7 @@ const LONG_RUNNING: Readonly<Record<string, string>> = {
   import_tracker_boats: msg("Importing tracks"),
   export_polar: msg("Exporting the polar"),
   orc_catalogue_info: msg("Loading the ORC catalogue"),
+  reanalysis_scan: msg("Looking for Hindsight Sync"),
 };
 
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -450,9 +451,18 @@ export function boatApi(boatContext?: number) {
   setWeatherMemory: (megabytes: number) => call<AppSettings>("set_weather_memory", { megabytes }),
   /** Sets the reanalysis fetcher's concurrency and timeout. */
   setWeatherCache: (directory: string, maxSizeGb: number) => call<AppSettings>("set_weather_cache", { directory, maxSizeGb }),
+  /** Opens Hindsight Sync's product page in the system browser. */
+  openHindsightSyncSite: () => call<void>("open_hindsight_sync_site"),
+  /** Looks for Hindsight Sync: the saved port, 8765, then its own settings file's port. */
+  reanalysisScan: () => call<import("./generated/ScanResult").ScanResult>("reanalysis_scan"),
+  /** Asks Hindsight Sync on the saved port only for its archives. */
+  reanalysisProbe: () => call<import("./generated/ScanResult").ScanResult>("reanalysis_probe"),
+  /** Sets the port Hindsight Sync's archive API is looked for on; Rust probes it. */
+  setReanalysisPort: (port: number) => call<AppSettings>("set_reanalysis_port", { port }),
+  /** Chooses the archive fetches read, or none. */
+  setReanalysisArchive: (id: string | null) => call<AppSettings>("set_reanalysis_archive", { id }),
   weatherCacheStatus: () => call<WeatherCacheStatus>("weather_cache_status"),
   clearWeatherCache: () => call<WeatherCacheStatus>("clear_weather_cache"),
-  setDataSource: (source: AppSettings["data_source"]) => call<AppSettings>("set_data_source", { source }),
   setNetwork: (network: NetworkSettings) => call<AppSettings>("set_network", { network }),
   /** Sets the map projection. */
   setProjection: (projection: MapProjection) => call<AppSettings>("set_projection", { projection }),
@@ -511,6 +521,8 @@ export const LIBRARY_METADATA = "library://metadata";
 export const ENV_PROGRESS = "env://progress";
 /** The event saying a fetch wrote into the open project. */
 export const ENV_CHANGED = "env://changed";
+/** A probe found Hindsight Sync: the settings it saved changed, and the payload is its `ScanResult`. */
+export const REANALYSIS_CHANGED = "reanalysis://changed";
 
 /** The event carrying a tracker download's progress. */
 export const TRACKER_PROGRESS = "tracker://progress";

@@ -110,6 +110,7 @@ const catalogue: Record<string, string> = {
   "That value is not accepted.": "Dieser Wert wird nicht angenommen.",
   "The operation could not be completed.": "Der Vorgang konnte nicht abgeschlossen werden.",
   "Something went wrong inside PolarExplorer.": "In PolarExplorer ist ein interner Fehler aufgetreten.",
+  "No reanalysis archive can be read. Choose one in Settings, or press Scan there.": "Kein Reanalyse-Archiv kann gelesen werden. Wählen Sie eines in den Einstellungen oder drücken Sie dort auf Suchen.",
   "Something went wrong.": "Etwas ist schiefgegangen.",
   "Undone: {action}": "Widerrufen: {action}",
   "Redone: {action}": "Wiederholt: {action}",
@@ -136,6 +137,12 @@ const catalogue: Record<string, string> = {
   "Show the polar plot in the centre: boat speed against wind angle, one wind speed or all.": "Zeigt das Polardiagramm in der Mitte: Bootsgeschwindigkeit über dem Windwinkel, für eine Windgeschwindigkeit oder alle.",
   "polar plot": "Polardiagramm",
   "The polar plot: boat speed against wind angle": "Das Polardiagramm: Bootsgeschwindigkeit über dem Windwinkel",
+  "This tab or project is read only and cannot be changed.": "Dieses Register oder Projekt ist schreibgeschützt und kann nicht geändert werden.",
+  "Choosing a tab to import": "Register zum Importieren auswählen",
+  "PolarExplorer tabs": "PolarExplorer-Register",
+  "Choosing where to export the tab": "Exportziel für das Register auswählen",
+  "Choosing where to export the project": "Exportziel für das Projekt auswählen",
+  "Export read-only project": "Schreibgeschütztes Projekt exportieren",
 };
 
 export default catalogue;

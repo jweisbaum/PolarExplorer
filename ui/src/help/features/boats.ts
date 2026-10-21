@@ -11,7 +11,7 @@ const features: Feature[] = [
   { id: "boats:add", label: msg("Add Tab"), description: tabs, keywords: ["boat", "tabs"], topic: "projects" },
   { id: "boats:import-tab", label: msg("Import Tab"), description: petab, keywords: ["boat", "tabs", "petab", "read only", "import"], topic: "projects", landing: "boats:add" },
   { id: "boats:export-tab", label: msg("Export Tab"), description: petab, keywords: ["boat", "tabs", "petab", "export"], topic: "projects", landing: "boats:add" },
-  { id: "boats:read-only", label: msg("Read only"), description: petab, keywords: ["boat", "tabs", "locked"], topic: "projects", reveal: ["boats:tabs"] },
+  { id: "boats:read-only", label: msg("Read only"), description: petab, keywords: ["boat", "tabs", "locked"], topic: "projects", reveal: ["boats:tabs"], landing: "boats:tab" },
   { id: "boats:name", label: msg("Boat name"), description: tabs, keywords: ["boat", "tabs", "rename"], topic: "projects", reveal: ["boats:tabs"], landing: "boats:tab" },
   { id: "boats:delete", label: msg("Delete Polar"), description: deletion, keywords: ["boat", "remove", "delete", "close"], topic: "projects", reveal: ["boats:tabs"] },
   { id: "boats:restore", label: msg("Undo Delete Polar"), description: deletion, keywords: ["boat", "restore", "undo"], topic: "projects", reveal: ["boats:tabs"], landing: "boats:delete" },

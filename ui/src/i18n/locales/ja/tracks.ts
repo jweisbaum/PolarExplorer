@@ -10,7 +10,6 @@ const catalogue: Record<string, string> = {
   "How far from the polar plot's wind speed a track sample may be and still be drawn.": "航跡のサンプル点がポーラー図の風速からどれだけ離れていても描かれるかを指定します。",
   "samples": "サンプル点",
   "Import track files": "航跡ファイルを読み込む",
-  "Import GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "GeoJSON と CSV の航跡を複数ファイル同時に読み込みます。艇を選び、列を対応付けます。",
   "positions": "位置",
   "YellowBrick import": "YellowBrick から読み込む",
   "Geovoile import": "Geovoile から読み込む",
@@ -87,7 +86,6 @@ const catalogue: Record<string, string> = {
   "YellowBrick…": "YellowBrick…",
   "Geovoile…": "Geovoile…",
   "Blue Water…": "Blue Water…",
-  "Import GeoJSON and CSV tracks; several files at once": "GeoJSON と CSV の航跡を読み込みます。複数ファイルを同時に読み込めます",
   "File…": "ファイル…",
   "Last import": "前回の読み込み",
   "{used} of {count} samples used": "{count} 個中 {used} 個のサンプル点を使用",
@@ -422,6 +420,9 @@ const catalogue: Record<string, string> = {
   "This race is sailed in legs; choose a leg to load its boat list": "このレースは複数のレグで行われます。レグを選んで艇の一覧を読み込みます",
   "Reload the boat list; newer tracks download when you click Import tracks": "艇の一覧を再読み込みします。最新の航跡は「航跡をインポート」を押した時にダウンロードします",
   "Refresh boat list": "艇の一覧を更新",
+  "Import GPX, GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "GPX、GeoJSON、CSV の航跡を複数ファイルから一度にインポートし、艇と列の対応を選択します。",
+  "Import GPX, GeoJSON and CSV tracks; several files at once": "GPX、GeoJSON、CSV の航跡をインポート（複数ファイル可）",
+  "this is not a usable GPX track": "使用できる GPX 航跡ではありません",
 };
 
 export default catalogue;

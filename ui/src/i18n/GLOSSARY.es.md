@@ -108,3 +108,6 @@ GeoJSON, CSV, GRIB, ERA5, WebGL2, file extensions (.wpsproj), unit symbols
 | derive / derived | calcular / calculado | Heading and speed from positions. ⚑ |
 | given (value from the file) | proporcionado | |
 | Shift / Esc | Mayús / Esc | |
+| Hindsight Sync | Hindsight Sync | Product name; never translated. |
+| reanalysis archive | archivo de reanálisis | |
+| Scan (button) | Buscar | |

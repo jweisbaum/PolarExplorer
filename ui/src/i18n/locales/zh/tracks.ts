@@ -10,7 +10,6 @@ const catalogue: Record<string, string> = {
   "How far from the polar plot's wind speed a track sample may be and still be drawn.": "航迹样本点与极曲线图风速相差多少以内仍会被绘制。",
   "samples": "样本点",
   "Import track files": "导入航迹文件",
-  "Import GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "导入 GeoJSON 和 CSV 航迹，可一次导入多个文件，并选择船只、映射列。",
   "positions": "位置",
   "YellowBrick import": "YellowBrick 导入",
   "Geovoile import": "Geovoile 导入",
@@ -87,7 +86,6 @@ const catalogue: Record<string, string> = {
   "YellowBrick…": "YellowBrick…",
   "Geovoile…": "Geovoile…",
   "Blue Water…": "Blue Water…",
-  "Import GeoJSON and CSV tracks; several files at once": "导入 GeoJSON 和 CSV 航迹；可一次导入多个文件",
   "File…": "文件…",
   "Last import": "上次导入",
   "{used} of {count} samples used": "已使用 {used} / {count} 个样本点",
@@ -422,6 +420,9 @@ const catalogue: Record<string, string> = {
   "This race is sailed in legs; choose a leg to load its boat list": "此赛事分赛段进行；选择赛段以加载船只列表",
   "Reload the boat list; newer tracks download when you click Import tracks": "重新加载船只列表；点击“导入航迹”时下载最新航迹",
   "Refresh boat list": "刷新船只列表",
+  "Import GPX, GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "一次导入多个 GPX、GeoJSON 和 CSV 轨迹文件，选择船只并映射数据列。",
+  "Import GPX, GeoJSON and CSV tracks; several files at once": "导入 GPX、GeoJSON 和 CSV 轨迹；可同时导入多个文件",
+  "this is not a usable GPX track": "这不是可用的 GPX 轨迹",
 };
 
 export default catalogue;

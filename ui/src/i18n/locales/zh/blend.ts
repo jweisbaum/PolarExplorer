@@ -149,6 +149,21 @@ const catalogue: Record<string, string> = {
   "Maximum": "最大值",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "按单元格组合可见的极坐标曲线。平均值使用来源权重；中位数和p90对排序后的速度进行插值。航迹设置不影响仅含极坐标曲线的视图。",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "与航迹混合时，极坐标曲线结果保留其总权重。航迹单元格按权重和样本置信度计算。空单元格在已知值之间填充；0°行的速度为0节。",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "导出为 qtVlm",
+  "Export as OpenCPN": "导出为 OpenCPN",
+  "Export as LuckGrib": "导出为 LuckGrib",
+  "Export as WhirlwindMatrixPolar": "导出为 WhirlwindMatrixPolar",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "在导出对话框中：用于 qtVlm 的分号分隔 TWA × TWS 表格（.csv）。",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "在导出对话框中：用于 OpenCPN 的分号分隔 TWA × TWS 表格（.pol）。",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "在导出对话框中：用于 LuckGrib 的制表符分隔 TWA × TWS 表格（.tsv）。",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "在导出对话框中：紧凑的自描述二进制 SOG 矩阵（.wmpolar）。",
 };
 
 export default catalogue;

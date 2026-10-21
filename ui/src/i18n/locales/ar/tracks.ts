@@ -10,7 +10,6 @@ const catalogue: Record<string, string> = {
   "How far from the polar plot's wind speed a track sample may be and still be drawn.": "المدى الذي قد تبعده نقطة المسار عن سرعة ريح المخطط القطبي وتظل تُرسم.",
   "samples": "النقاط",
   "Import track files": "استيراد ملفات المسارات",
-  "Import GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "استيراد مسارات GeoJSON وCSV، عدة ملفات دفعة واحدة، مع اختيار القوارب وربط الأعمدة.",
   "positions": "المواقع",
   "YellowBrick import": "الاستيراد من YellowBrick",
   "Geovoile import": "الاستيراد من Geovoile",
@@ -87,7 +86,6 @@ const catalogue: Record<string, string> = {
   "YellowBrick…": "YellowBrick…",
   "Geovoile…": "Geovoile…",
   "Blue Water…": "Blue Water…",
-  "Import GeoJSON and CSV tracks; several files at once": "استيراد مسارات GeoJSON وCSV؛ عدة ملفات دفعة واحدة",
   "File…": "ملف…",
   "Last import": "آخر استيراد",
   "{used} of {count} samples used": "استُخدمت {used} من {count} نقطة",
@@ -422,6 +420,9 @@ const catalogue: Record<string, string> = {
   "This race is sailed in legs; choose a leg to load its boat list": "يتألف هذا السباق من مراحل؛ اختر مرحلة لتحميل قائمة قواربها",
   "Reload the boat list; newer tracks download when you click Import tracks": "إعادة تحميل قائمة القوارب؛ تُنزّل المسارات الأحدث عند النقر على استيراد المسارات",
   "Refresh boat list": "تحديث قائمة القوارب",
+  "Import GPX, GeoJSON and CSV tracks, several files at once, choosing the boats and mapping the columns.": "استيراد مسارات GPX وGeoJSON وCSV من عدة ملفات دفعة واحدة، مع اختيار القوارب وتعيين الأعمدة.",
+  "Import GPX, GeoJSON and CSV tracks; several files at once": "استيراد مسارات GPX وGeoJSON وCSV؛ عدة ملفات دفعة واحدة",
+  "this is not a usable GPX track": "هذا ليس مسار GPX صالحًا للاستخدام",
 };
 
 export default catalogue;

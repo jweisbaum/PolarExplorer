@@ -72,7 +72,6 @@ const catalogue: Record<string, string> = {
   "Importing polar files": "Import des fichiers de polaires",
   "Imported 1 polar file.": "1 fichier de polaire importé.",
   "Imported {count} polar files.": "{count} fichiers de polaires importés.",
-  "Import Expedition (.txt) and Adrena or grid (.pol, .csv) polars; several files at once": "Importer des polaires Expedition (.txt) et Adrena ou en grille (.pol, .csv) ; plusieurs fichiers à la fois",
   "Import…": "Importer…",
   "Files that were not imported": "Fichiers non importés",
   "Remove this polar file from the project (undoable)": "Retirer ce fichier de polaire du projet (annulable)",
@@ -224,6 +223,19 @@ const catalogue: Record<string, string> = {
   "all": "tous",
   "wind speed": "vitesse du vent",
   "map": "carte",
+  "Wind speed range": "Plage de vitesse du vent",
+  "Show the polar over a selected range of true wind speeds.": "Afficher la polaire sur une plage choisie de vitesses du vent réel.",
+  "Plot display": "Affichage du graphique",
+  "Show data within a wind speed range": "Afficher les données dans une plage de vitesse du vent",
+  "Range": "Plage",
+  "Minimum wind speed": "Vitesse minimale du vent",
+  "Maximum wind speed": "Vitesse maximale du vent",
+  "Density is probability per knot of boat speed": "La densité est la probabilité par nœud de vitesse du bateau",
+  "Probability density": "Densité de probabilité",
+  "Low": "Faible",
+  "High": "Élevée",
+  "Import Expedition, Adrena, qtVlm, OpenCPN, LuckGrib and WhirlwindMatrixPolar files; several files at once": "Importer des fichiers Expedition, Adrena, qtVlm, OpenCPN, LuckGrib et WhirlwindMatrixPolar ; plusieurs fichiers à la fois",
+  "the WhirlwindMatrixPolar data is invalid or contains no boat-speed mode": "les données WhirlwindMatrixPolar sont invalides ou ne contiennent aucun mode de vitesse du bateau",
 };
 
 export default catalogue;

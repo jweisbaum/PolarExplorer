@@ -149,6 +149,21 @@ const catalogue: Record<string, string> = {
   "Maximum": "最大値",
   "Combine visible polars per cell. Mean uses source weights; median and p90 interpolate sorted speeds. Track settings do not affect polar-only views.": "表示中のポーラーをセルごとに合成します。平均はソースの重みを使用し、中央値とp90は並べ替えた速度を補間します。ポーラーのみの表示には航跡設定は影響しません。",
   "The polar result carries the combined polar weight when blended with tracks. Track cells count by weight and sample confidence. Empty cells are filled between known values; the 0° row is 0 kn.": "航跡との合成では、ポーラーの結果にポーラー全体の重みを適用します。航跡セルは重みとサンプルの信頼度に応じて計算します。空のセルは既知の値の間で補間し、0°の行は0ノットです。",
+  "WhirlwindMatrixPolar (.wmpolar)": "WhirlwindMatrixPolar (.wmpolar)",
+  "qtVlm": "qtVlm",
+  "OpenCPN": "OpenCPN",
+  "LuckGrib": "LuckGrib",
+  "qtVlm (.csv)": "qtVlm (.csv)",
+  "OpenCPN (.pol)": "OpenCPN (.pol)",
+  "LuckGrib (.tsv)": "LuckGrib (.tsv)",
+  "Export as qtVlm": "qtVlm としてエクスポート",
+  "Export as OpenCPN": "OpenCPN としてエクスポート",
+  "Export as LuckGrib": "LuckGrib としてエクスポート",
+  "Export as WhirlwindMatrixPolar": "WhirlwindMatrixPolar としてエクスポート",
+  "In the export dialog: a semicolon-separated TWA × TWS table for qtVlm (.csv).": "エクスポートダイアログ：qtVlm 用のセミコロン区切り TWA × TWS 表（.csv）。",
+  "In the export dialog: a semicolon-separated TWA × TWS table for OpenCPN (.pol).": "エクスポートダイアログ：OpenCPN 用のセミコロン区切り TWA × TWS 表（.pol）。",
+  "In the export dialog: a tab-separated TWA × TWS table for LuckGrib (.tsv).": "エクスポートダイアログ：LuckGrib 用のタブ区切り TWA × TWS 表（.tsv）。",
+  "In the export dialog: a compact, self-describing binary SOG matrix (.wmpolar).": "エクスポートダイアログ：形式情報を含むコンパクトなバイナリ SOG 行列（.wmpolar）。",
 };
 
 export default catalogue;

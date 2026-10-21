@@ -114,3 +114,6 @@ Escape, Enter, Ctrl, F1, F2, Home, End; ⌘ on a Mac).
 | equirectangular / orthographic | متساوي المستطيلات / عمودي | Projections. |
 | token (MCP) | رمز مميّز | |
 | knots / nautical miles | عقدة / ميل بحري | Symbols stay "kn", "nm". |
+| Hindsight Sync | Hindsight Sync | اسم منتج، لا يُترجم. |
+| reanalysis archive | أرشيف إعادة التحليل | |
+| Scan (button) | بحث | |

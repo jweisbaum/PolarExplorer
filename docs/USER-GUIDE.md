@@ -204,6 +204,17 @@ to retry.
 
 ## Fetch weather for tracks
 
+Weather is read through Hindsight Sync, a separate app that downloads the
+reanalysis (hindsight-sync.whirlwindai.com). Until PolarExplorer finds it,
+**Settings → Reanalysis** shows a warning with a link; press **Scan** there
+and, once it connects, the warning disappears. **Reanalysis archive** then
+lists what Hindsight Sync offers, grouped **Cloud** and **This computer**,
+each row showing the name, the place, the chunk size in degrees and hours and
+the products; an unavailable archive is greyed with its reason. Choose one:
+fetching weather is refused until you do. PolarExplorer remembers the chosen
+archive's location and credentials, so fetches keep working while Hindsight
+Sync is closed.
+
 When a track provides its own wind, its filters offer **Use** under **Wind,
 waves and current**: the wind the track provides (where it gives both speed
 and direction), or downloaded weather. When it provides headings or speeds,

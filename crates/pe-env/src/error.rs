@@ -9,18 +9,17 @@ pub enum EnvError {
     #[error("could not open the archive: {0}")]
     Open(String),
 
-    /// A read against the store failed.
-    #[error("reading {what} failed: {source}")]
-    Read {
-        /// What was being read, for the message.
-        what: String,
-        /// The underlying error.
-        source: Box<dyn std::error::Error + Send + Sync>,
+    /// The archive refused the read for want of valid credentials: a 401 or
+    /// 403, or a 400 whose body names an expired or unknown key or a bad
+    /// signature. Its own variant so the application can say "Scan to
+    /// refresh the credentials" without reading the message.
+    #[error("the archive refused the read of {key} ({status})")]
+    Auth {
+        /// The HTTP status the archive answered.
+        status: u16,
+        /// The object key that was refused.
+        key: String,
     },
-
-    /// A blosc chunk could not be decoded.
-    #[error("blosc decode failed: {0}")]
-    Blosc(String),
 
     /// The store is not shaped the way this crate requires.
     #[error("unexpected archive layout: {0}")]
