@@ -28,7 +28,9 @@ jobs:
         with:
           node-version: 22
       - name: Verify the shared source
-        run: python vendor/whirlwind-mcp/verify_snapshot.py
+        run: |
+          python -m unittest discover -s vendor/whirlwind-mcp -p 'test_*.py'
+          python vendor/whirlwind-mcp/verify_snapshot.py
       - name: Shared transport, policy, installer, job and grant tests
         run: cargo test --locked -p whirlwind-mcp
       - name: Build native plugin fixture

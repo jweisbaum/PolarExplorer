@@ -6,6 +6,17 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-21: Windows MCP release failures — fixed.**
+Backported the Windows fixes from canonical shared-crate commit `874a747`,
+retaining this release's existing MCP contract. Recoverable export overwrites
+now flush their backup through a writable handle, as Windows requires. The
+snapshot verifier sorts POSIX relative names explicitly so Windows case folding
+does not change the source checksum. A fixture test checks mixed-case file order,
+ignored generated files and detection of modified source; all contract CI hosts
+run it before verifying the snapshot. Shared Rust tests, the snapshot regression,
+provenance verification, formatting, Clippy and the failing overwrite regression
+pass locally. GitHub's Windows test and installer gates validate the platform fix.
+
 **2026-10-21: v0.3.14 release preflight — complete.**
 Workspace, npm, Tauri and lockfile versions now name 0.3.14 for Hindsight Sync
 integration and the regression fixes validated below. The existing v0.3.13
