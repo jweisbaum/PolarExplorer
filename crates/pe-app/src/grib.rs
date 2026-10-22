@@ -15,7 +15,7 @@
 //! with no value — land for waves and current, an hour the archive does not
 //! have — is written as missing (a GRIB bitmap), never as zero. Only the
 //! inner chunks holding the area are downloaded (spec.md 7.5), into the
-//! session's memory and the bounded disk cache.
+//! session's memory, without a persistent disk cache.
 //!
 //! **In what order.** The current is read first, tile by tile (16 × 16
 //! nodes over every time), and spooled to a temporary file beside the
@@ -178,7 +178,7 @@ pub struct GribPreview {
     pub waves_bytes: u64,
     /// Always 0: the current comes in the wind's chunks.
     pub current_bytes: u64,
-    /// Bytes already held in memory or on disk.
+    /// Bytes already held in session memory.
     pub cached_bytes: u64,
     /// About the file's size with the parts ticked.
     pub file_bytes: u64,

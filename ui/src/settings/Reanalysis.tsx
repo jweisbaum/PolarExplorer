@@ -20,9 +20,14 @@ import IntegerField from "./IntegerField";
 const SITE = "hindsight-sync.whirlwindai.com";
 const STORAGES: ArchiveStorage[] = ["cloud", "local"];
 
-/** A row of the list: what it is, where, how it is chunked, what it holds. Built here, not translated. */
+/** Also understands remembered endpoint labels from older settings files. */
+const provider = (place: string) => /(\bR2\b|\.r2\.cloudflarestorage\.)/i.test(place) ? "R2"
+  : /(\bTigris\b|\.tigris\.dev)/i.test(place) ? "Tigris" : "S3";
+const basename = (name: string) => name.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? name;
+
+/** Provider names and archive metadata read the same in every language. */
 const row = (a: RememberedArchive) =>
-  [a.name, a.place, `${a.chunk_degrees}° × ${a.chunk_hours} h`, a.products.join(", ")].join(" — ");
+  [a.storage === "cloud" ? provider(a.place) : basename(a.name || a.place), `${a.chunk_degrees}° × ${a.chunk_hours} h`, a.products.join(", ")].join(" — ");
 
 /** The date part of an RFC 3339 time, as the range shows it. */
 const day = (time: string) => time.slice(0, 10);
@@ -45,10 +50,9 @@ export default function Reanalysis({ settings, onSettings, onError, pushed }: {
    * it answered on, that it connected, the chosen archive's fresh copy), so
    * the settings are read again: what is shown is what is on disk.
    */
-  const adopt = (found: ScanResult) => {
+  const adopt = async (found: ScanResult) => {
+    if (found.detected) onSettings(await api.appSettings());
     setResult(found);
-    if (found.detected) return api.appSettings().then(onSettings);
-    return undefined;
   };
 
   useEffect(() => {
@@ -131,7 +135,7 @@ export default function Reanalysis({ settings, onSettings, onError, pushed }: {
           if (archives.length === 0 && unavailable.length === 0 && gone === null) return null;
           return <optgroup key={storage} label={storage === "cloud" ? t("Cloud") : t("This computer")}>
             {archives.map(a => <option key={a.id} value={a.id}>{row(a)}</option>)}
-            {unavailable.map(u => <option key={`unavailable:${u.id}`} value={`unavailable:${u.id}`} disabled title={u.reason}>{u.name ?? u.id}</option>)}
+            {unavailable.map(u => <option key={`unavailable:${u.id}`} value={`unavailable:${u.id}`} disabled title={u.reason}>{u.storage === "cloud" ? provider(u.name ?? u.id) : basename(u.name ?? u.id)}</option>)}
             {gone && <option value={gone.id}>{`${row(gone)} ${t("(no longer listed)")}`}</option>}
           </optgroup>;
         })}

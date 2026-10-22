@@ -407,7 +407,7 @@ fn read_event(
     if !refresh && let Some(cached) = state.trackers.cached(event.tracker, &event.key) {
         return Ok(TrackerEventView::of(&cached, true));
     }
-    let timeout = state.with_session(|s| Ok(s.settings.network.timeout_s))?;
+    let timeout = crate::settings::DEFAULT_TIMEOUT_S;
     let cancel = Arc::new(AtomicBool::new(false));
     if let Ok(mut slot) = state.trackers.cancel.lock() {
         // A new download replaces (and stops) any earlier one.

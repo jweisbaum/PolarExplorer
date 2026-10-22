@@ -572,7 +572,7 @@ pub fn start_orc_scrape<R: tauri::Runtime>(
     // not wait behind it for the first decode.
     catalogue(&state)?;
     let cancel = Arc::new(AtomicBool::new(false));
-    let timeout = state.with_session(|s| Ok(s.settings.network.timeout_s))?;
+    let timeout = crate::settings::DEFAULT_TIMEOUT_S;
     {
         let mut store = lock(&state.orc)?;
         if store.progress.running {

@@ -555,10 +555,7 @@ fn base_url_follows_the_provider_rules() {
         s3(None, "us-east-1", false).base_url().unwrap(),
         format!("https://{bucket}.s3.{region}.amazonaws.com/{prefix}")
     );
-    assert_eq!(
-        s3(None, "us-east-1", false).place(),
-        format!("{bucket}.s3.{region}.amazonaws.com")
-    );
+    assert_eq!(s3(None, "us-east-1", false).place(), "S3");
     // `.invalid` (RFC 2606) stands for an R2 account host: never resolved.
     let r2 = s3(
         Some("https://acct.r2.cloudflarestorage.invalid"),
@@ -569,7 +566,11 @@ fn base_url_follows_the_provider_rules() {
         r2.base_url().unwrap(),
         "https://acct.r2.cloudflarestorage.invalid/whirlwind-hindsight/hindsight-routing"
     );
-    assert_eq!(r2.place(), "acct.r2.cloudflarestorage.invalid");
+    assert_eq!(r2.place(), "R2");
+    assert_eq!(
+        s3(Some("https://store.example.invalid"), "auto", true).place(),
+        "S3"
+    );
     // Trailing slashes on the endpoint and the prefix are dropped.
     let mut slashed = s3(
         Some("https://acct.r2.cloudflarestorage.invalid/"),
@@ -591,7 +592,7 @@ fn base_url_follows_the_provider_rules() {
         path: "/data/hindsight".into(),
     };
     assert!(matches!(folder.base_url(), Err(EnvError::Open(_))));
-    assert_eq!(folder.place(), "/data/hindsight");
+    assert_eq!(folder.place(), "hindsight");
     assert!(
         s3(Some("ftp://host.invalid"), "auto", true)
             .base_url()

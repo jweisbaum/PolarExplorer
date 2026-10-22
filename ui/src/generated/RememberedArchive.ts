@@ -55,6 +55,6 @@ chunk_hours: number,
  */
 products: Array<string>,
 /**
- * The endpoint host, or the folder, a row shows.
+ * The cloud provider (S3, R2 or Tigris), or local folder name.
  */
 place: string, };

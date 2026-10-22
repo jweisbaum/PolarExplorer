@@ -39,6 +39,8 @@ pub struct ListedArchive {
     pub chunk_degrees: u32,
     pub chunk_hours: u32,
     pub products: Vec<String>,
+    /// Hindsight Sync's provider identifier, when present.
+    pub provider: Option<String>,
     pub location: ArchiveLocation,
 }
 
@@ -49,8 +51,16 @@ impl ListedArchive {
         self.source_uri.as_deref().unwrap_or(&self.uri)
     }
 
-    /// The host or folder a row shows.
+    /// The provider or folder name a row shows, without an address.
     pub fn place(&self) -> String {
+        if self.storage == Storage::Cloud {
+            match self.provider.as_deref() {
+                Some("r2") => return "R2".to_owned(),
+                Some("tigris") => return "Tigris".to_owned(),
+                Some("aws" | "s3") => return "S3".to_owned(),
+                _ => {}
+            }
+        }
         self.location.place()
     }
 }
@@ -106,6 +116,7 @@ fn read(body: &Value, storage: Storage, into: &mut Listing) {
         let id = text(entry, "id").unwrap_or_default();
         let name = text(entry, "name").unwrap_or_default();
         let location_json = entry.get("location").cloned().unwrap_or(Value::Null);
+        let provider = text(&location_json, "provider");
         if storage == Storage::Cloud && location_json.get("credentials").is_none_or(Value::is_null)
         {
             let reason = location_json
@@ -149,6 +160,7 @@ fn read(body: &Value, storage: Storage, into: &mut Listing) {
                 .flatten()
                 .filter_map(|p| p.as_str().map(str::to_owned))
                 .collect(),
+            provider,
             location,
         });
     }
@@ -293,7 +305,7 @@ mod tests {
         let ids: Vec<_> = listing.archives.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids, ["aws", "r2", "copy"]);
         assert_eq!(listing.archives[2].storage, Storage::Local);
-        assert_eq!(listing.archives[1].place(), "acct.r2.cloudflarestorage.com");
+        assert_eq!(listing.archives[1].place(), "R2");
         assert_eq!(
             listing.archives[0].stop.as_deref(),
             Some("2020-01-01T00:00:00Z")

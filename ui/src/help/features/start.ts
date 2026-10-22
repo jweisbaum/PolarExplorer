@@ -7,7 +7,7 @@ const features: Feature[] = [
     keywords: [msg("translation"), msg("French"), msg("German"), msg("English"), msg("Spanish"), msg("Italian"), msg("Dutch"), msg("Chinese"), msg("Japanese"), msg("Arabic")], topic: "settings" },
   { id: "start:help", label: msg("Help"), description: msg("Open the help reference."),
     keywords: [msg("manual"), msg("documentation")], topic: "search" },
-  { id: "start:settings", label: msg("Settings"), description: msg("Language, theme, units, autosave, cache and network."),
+  { id: "start:settings", label: msg("Settings"), description: msg("Language, theme, units, autosave and reanalysis."),
     keywords: [msg("preferences"), msg("options")], topic: "settings" },
   { id: "start:new", label: msg("New project"), description: msg("Name the project, then create it."),
     keywords: [msg("create"), msg("start")], topic: "projects" },

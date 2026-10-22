@@ -67,8 +67,8 @@ fn listing(secret: &str) -> Vec<(&'static str, u16, String)> {
     no_key["credential_error"] = json!("no key for this bucket");
     let cloud_body = json!({"api_version": 1,
         "archives": [
-            cloud("r2", s3("https://acct.r2.cloudflarestorage.invalid", keys(secret))),
-            cloud("nokey", no_key)],
+            cloud("nokey", no_key),
+            cloud("r2", s3("https://acct.r2.cloudflarestorage.invalid", keys(secret)))],
         "errors": [{"id": "broken", "storage": "cloud", "error": "bad metadata"}]});
     let mut local = cloud("copy", json!({"protocol": "file", "path": "/data/copy"}));
     local["storage"] = json!("local");
@@ -194,9 +194,9 @@ fn a_probe_lists_archives_marks_connected_and_remembers_the_port() {
     let ids: Vec<_> = found.archives.iter().map(|a| a.id.as_str()).collect();
     assert_eq!(ids, ["r2", "copy"], "cloud first, then this computer's");
     assert_eq!(found.archives[0].storage, ArchiveStorage::Cloud);
-    assert_eq!(found.archives[0].place, "acct.r2.cloudflarestorage.invalid");
+    assert_eq!(found.archives[0].place, "R2");
     assert_eq!(found.archives[1].storage, ArchiveStorage::Local);
-    assert_eq!(found.archives[1].place, "/data/copy");
+    assert_eq!(found.archives[1].place, "copy");
     let unavailable: Vec<_> = found
         .unavailable
         .iter()
@@ -213,7 +213,36 @@ fn a_probe_lists_archives_marks_connected_and_remembers_the_port() {
     let saved = Settings::load(&app.paths.settings_file()).reanalysis;
     assert!(saved.connected_once);
     assert_eq!(saved.port, server.port);
-    assert_eq!(saved.archive, None, "a probe chooses nothing");
+    assert_eq!(
+        saved.archive.unwrap().id,
+        "r2",
+        "the first usable cloud is saved"
+    );
+    assert_eq!(
+        reanalysis::captured(&root.state()).unwrap().archive.id,
+        "r2"
+    );
+}
+
+#[test]
+fn a_local_only_listing_requires_a_choice_and_a_saved_local_choice_is_preserved() {
+    let root = TempRoot::new("reanalysis-local-choice");
+    let mut routes = listing("first-secret");
+    routes[0].2 = json!({"api_version": 1, "archives": [], "errors": []}).to_string();
+    let local_server = stub(routes);
+    let app = probed(&root, &local_server);
+    assert!(
+        settings::current(&app)
+            .unwrap()
+            .reanalysis
+            .archive
+            .is_none()
+    );
+    reanalysis::archive_set(&app, Some("copy".to_owned())).unwrap();
+
+    let cloud_server = stub(listing("new-secret"));
+    reanalysis::port_set(&app, cloud_server.port).unwrap();
+    assert_eq!(reanalysis::captured(&app).unwrap().archive.id, "copy");
 }
 
 #[test]
@@ -225,7 +254,7 @@ fn choosing_writes_display_details_to_settings_and_the_location_to_its_own_file(
     let archive = chosen.reanalysis.archive.clone().unwrap();
     assert_eq!(archive.id, "r2");
     assert_eq!(archive.name, "r2 archive");
-    assert_eq!(archive.place, "acct.r2.cloudflarestorage.invalid");
+    assert_eq!(archive.place, "R2");
     assert_eq!((archive.chunk_degrees, archive.chunk_hours), (5, 72));
     assert_eq!(archive.products, ["wind10m", "waves"]);
     assert_eq!(archive.stop.as_deref(), Some("2025-12-31T23:00:00Z"));
@@ -234,7 +263,7 @@ fn choosing_writes_display_details_to_settings_and_the_location_to_its_own_file(
     for wanted in [
         r#""id": "r2""#,
         r#""name": "r2 archive""#,
-        r#""place": "acct.r2.cloudflarestorage.invalid""#,
+        r#""place": "R2""#,
         r#""chunk_degrees": 5"#,
         r#""chunk_hours": 72"#,
     ] {
@@ -295,6 +324,8 @@ fn an_unlisted_or_credential_less_archive_is_refused() {
 
     let server = stub(listing("first-secret"));
     let app = probed(&root, &server);
+    let chosen = settings::current(&app).unwrap().reanalysis.archive;
+    let location = location_text(&app);
     let ghost = reanalysis::archive_set(&app, Some("ghost".to_owned())).unwrap_err();
     assert_eq!(ghost.kind(), "bad-option");
     assert_eq!(
@@ -309,9 +340,9 @@ fn an_unlisted_or_credential_less_archive_is_refused() {
     );
     let broken = reanalysis::archive_set(&app, Some("broken".to_owned())).unwrap_err();
     assert_eq!(broken.to_string(), "Could not choose broken: bad metadata");
-    // Nothing was chosen or written.
-    assert_eq!(settings::current(&app).unwrap().reanalysis.archive, None);
-    assert!(!reanalysis::location_path(&app.paths).exists());
+    // Failed choices leave the automatically selected cloud archive intact.
+    assert_eq!(settings::current(&app).unwrap().reanalysis.archive, chosen);
+    assert_eq!(location_text(&app), location);
 }
 
 #[test]

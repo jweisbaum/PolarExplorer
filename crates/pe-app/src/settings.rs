@@ -30,22 +30,8 @@ pub const LANGUAGES: &[&str] = &["en", "fr", "de", "es", "it", "nl", "zh", "ja",
 /// The theme a new install, or an unknown theme id, gets (spec.md 3.1).
 pub const DEFAULT_THEME: &str = "harbour";
 
-/// How much downloaded weather is kept in memory for the session by
-/// default, in megabytes (spec.md 3.4): a 5-day race sampled hourly is
-/// about 150 MB of blocks, so the second boat of a race downloads nothing.
-pub const DEFAULT_WEATHER_MEMORY_MB: u32 = 256;
-/// The smallest and largest amounts offered, megabytes.
-pub const WEATHER_MEMORY_RANGE_MB: (u32, u32) = (16, 4096);
-
-/// Default number of archive requests in flight at once (spec.md 3.4).
-pub const DEFAULT_CONCURRENCY: u32 = 8;
-/// The most requests allowed in flight: the archives are shared public
-/// buckets, and more than this is hammering them, not speeding up.
-pub const MAX_CONCURRENCY: u32 = 32;
-/// Default time allowed for one request, in seconds.
+/// Built-in timeout for remote requests; no user preference overrides it.
 pub const DEFAULT_TIMEOUT_S: u32 = 60;
-/// The shortest and longest request timeouts offered, in seconds.
-pub const TIMEOUT_RANGE_S: (u32, u32) = (5, 600);
 
 /// The narrowest and widest TWS band the 2D polar plot offers for its
 /// sample dots, knots either side of the slice (spec.md 9.2).
@@ -117,26 +103,6 @@ pub struct Units {
     pub distance: DistanceUnit,
 }
 
-/// How the reanalysis fetcher uses the network (spec.md 3.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export_to = "NetworkSettings.ts")]
-#[serde(default)]
-pub struct NetworkSettings {
-    /// Requests in flight at once.
-    pub concurrency: u32,
-    /// Time allowed for one request, in seconds.
-    pub timeout_s: u32,
-}
-
-impl Default for NetworkSettings {
-    fn default() -> Self {
-        Self {
-            concurrency: DEFAULT_CONCURRENCY,
-            timeout_s: DEFAULT_TIMEOUT_S,
-        }
-    }
-}
-
 /// The world map's projection (spec.md 9.1).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export_to = "MapProjection.ts")]
@@ -200,13 +166,6 @@ pub struct Settings {
     pub theme: String,
     /// Display units.
     pub units: Units,
-    /// Downloaded weather kept in memory for the session, megabytes
-    /// (spec.md 3.4). Whirlwind can also keep compressed chunks on disk.
-    pub weather_memory_mb: u32,
-    /// Persistent Whirlwind compressed chunk cache.
-    pub weather_cache: crate::weather_cache::WeatherCacheSettings,
-    /// Network use by the reanalysis fetcher.
-    pub network: NetworkSettings,
     /// Hindsight Sync's port and the reanalysis archive chosen among those
     /// it lists (spec.md 3.4). Its location, credentials included, is kept
     /// in `reanalysis-archive.json`, never here: this crosses IPC.
@@ -233,9 +192,6 @@ impl Default for Settings {
             language: LANGUAGES[0].to_owned(),
             theme: DEFAULT_THEME.to_owned(),
             units: Units::default(),
-            weather_memory_mb: DEFAULT_WEATHER_MEMORY_MB,
-            weather_cache: crate::weather_cache::WeatherCacheSettings::default(),
-            network: NetworkSettings::default(),
             reanalysis: crate::reanalysis::ReanalysisSettings::default(),
             projection: MapProjection::default(),
             plot_tws_band_kn: crate::polar_plot::DEFAULT_TWS_BAND_KN,
@@ -295,22 +251,6 @@ impl Settings {
                     "metadata_directory",
                     &mut settings.library.metadata_directory,
                 );
-                read_field(
-                    library,
-                    "scrape_schedule",
-                    &mut settings.library.scrape_schedule,
-                );
-                read_field(library, "scrape_urls", &mut settings.library.scrape_urls);
-                read_field(
-                    library,
-                    "yellowbrick_user_key",
-                    &mut settings.library.yellowbrick_user_key,
-                );
-                read_field(
-                    library,
-                    "yellowbrick_device_id",
-                    &mut settings.library.yellowbrick_device_id,
-                );
                 // Before 2026-10-04 the connection was the `database`
                 // section's own fields; since 2026-10-06 it is `library`'s
                 // `database`.
@@ -337,18 +277,6 @@ impl Settings {
                 read_field(units, "wave_height", &mut settings.units.wave_height);
                 read_field(units, "distance", &mut settings.units.distance);
             }
-            // An earlier build's `chunk_cache` (a folder and a size limit on
-            // disk) is not read. The new Whirlwind cache has its own format
-            // and directory, separate from `remove_legacy_cache`.
-            read_field(
-                &object,
-                "weather_memory_mb",
-                &mut settings.weather_memory_mb,
-            );
-            if let Some(serde_json::Value::Object(network)) = object.get("network") {
-                read_field(network, "concurrency", &mut settings.network.concurrency);
-                read_field(network, "timeout_s", &mut settings.network.timeout_s);
-            }
             // An earlier build's choice among three fixed archives is not
             // read: an archive is now chosen among Hindsight Sync's.
             if let Some(serde_json::Value::Object(reanalysis)) = object.get("reanalysis") {
@@ -356,14 +284,6 @@ impl Settings {
                 read_field(reanalysis, "port", &mut slot.port);
                 read_field(reanalysis, "connected_once", &mut slot.connected_once);
                 read_field(reanalysis, "archive", &mut slot.archive);
-            }
-            if let Some(serde_json::Value::Object(cache)) = object.get("weather_cache") {
-                read_field(cache, "directory", &mut settings.weather_cache.directory);
-                read_field(
-                    cache,
-                    "max_size_gb",
-                    &mut settings.weather_cache.max_size_gb,
-                );
             }
             read_field(&object, "projection", &mut settings.projection);
             read_field(&object, "plot_tws_band_kn", &mut settings.plot_tws_band_kn);
@@ -398,24 +318,12 @@ impl Settings {
     /// is for.
     pub fn normalised(mut self) -> Self {
         let defaults = Self::default();
-        self.weather_cache.normalise();
         self.recent_projects.truncate(MAX_RECENT);
         if !LANGUAGES.contains(&self.language.as_str()) {
             self.language = defaults.language;
         }
         if !known_themes().contains(&self.theme) {
             self.theme = defaults.theme;
-        }
-        if !(WEATHER_MEMORY_RANGE_MB.0..=WEATHER_MEMORY_RANGE_MB.1)
-            .contains(&self.weather_memory_mb)
-        {
-            self.weather_memory_mb = defaults.weather_memory_mb;
-        }
-        if !(1..=MAX_CONCURRENCY).contains(&self.network.concurrency) {
-            self.network.concurrency = defaults.network.concurrency;
-        }
-        if !(TIMEOUT_RANGE_S.0..=TIMEOUT_RANGE_S.1).contains(&self.network.timeout_s) {
-            self.network.timeout_s = defaults.network.timeout_s;
         }
         if !(PLOT_BAND_RANGE_KN.0..=PLOT_BAND_RANGE_KN.1).contains(&self.plot_tws_band_kn) {
             self.plot_tws_band_kn = defaults.plot_tws_band_kn;
@@ -462,11 +370,6 @@ impl Settings {
         self.recent_projects.retain(|existing| existing != path);
         self.recent_projects.insert(0, path.to_path_buf());
         self.recent_projects.truncate(MAX_RECENT);
-    }
-
-    /// The weather memory limit, bytes.
-    pub fn weather_memory_bytes(&self) -> u64 {
-        u64::from(self.weather_memory_mb) << 20
     }
 }
 
@@ -572,58 +475,6 @@ pub fn set_autosave_mode(
 pub fn autosave_mode_set(state: &AppState, mode: AutosaveMode) -> Result<Settings> {
     update(state, |settings| {
         settings.autosave = mode;
-        Ok(())
-    })
-}
-
-/// Changes how much downloaded weather is kept in memory for the session.
-#[tauri::command]
-pub fn set_weather_memory(state: tauri::State<'_, AppState>, megabytes: u32) -> Result<Settings> {
-    weather_memory_set(&state, megabytes)
-}
-
-/// [`set_weather_memory`] without a Tauri handle. An out-of-range amount
-/// is refused rather than clamped: the user typed it and should see why it
-/// did not take. The next fetch starts with an empty memory of the new
-/// size.
-pub fn weather_memory_set(state: &AppState, megabytes: u32) -> Result<Settings> {
-    update(state, |settings| {
-        if !(WEATHER_MEMORY_RANGE_MB.0..=WEATHER_MEMORY_RANGE_MB.1).contains(&megabytes) {
-            return Err(AppError::BadOption {
-                field: "Weather kept in memory",
-                value: megabytes.to_string(),
-            });
-        }
-        settings.weather_memory_mb = megabytes;
-        Ok(())
-    })
-}
-
-/// Changes the network settings.
-#[tauri::command]
-pub fn set_network(
-    state: tauri::State<'_, AppState>,
-    network: NetworkSettings,
-) -> Result<Settings> {
-    network_set(&state, network)
-}
-
-/// [`set_network`] without a Tauri handle.
-pub fn network_set(state: &AppState, network: NetworkSettings) -> Result<Settings> {
-    update(state, |settings| {
-        if !(1..=MAX_CONCURRENCY).contains(&network.concurrency) {
-            return Err(AppError::BadOption {
-                field: "Concurrent requests",
-                value: network.concurrency.to_string(),
-            });
-        }
-        if !(TIMEOUT_RANGE_S.0..=TIMEOUT_RANGE_S.1).contains(&network.timeout_s) {
-            return Err(AppError::BadOption {
-                field: "Request timeout",
-                value: network.timeout_s.to_string(),
-            });
-        }
-        settings.network = network;
         Ok(())
     })
 }
@@ -994,8 +845,6 @@ mod tests {
         assert_eq!(s.units.wave_height, WaveHeightUnit::M);
         assert_eq!(s.units.distance, DistanceUnit::Nm);
         assert_eq!(s.autosave, AutosaveMode::Recovery);
-        assert_eq!(s.weather_memory_mb, 256);
-        assert_eq!(s.network.concurrency, 8);
         assert_eq!(s.projection, MapProjection::Equirectangular);
         assert!(known_themes().contains(&s.theme));
         for id in ["harbour", "midnight", "ocean", "plum", "ember", "paper"] {
@@ -1080,10 +929,6 @@ mod tests {
         assert_eq!(s.units, Units::default());
         assert_eq!(s.language, "en");
         assert_eq!(s.theme, DEFAULT_THEME);
-        // Out of range is the default, not the nearest allowed value.
-        assert_eq!(s.network.concurrency, DEFAULT_CONCURRENCY);
-        assert_eq!(s.network.timeout_s, DEFAULT_TIMEOUT_S);
-        assert_eq!(s.weather_memory_mb, DEFAULT_WEATHER_MEMORY_MB);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1098,7 +943,7 @@ mod tests {
             r#"{ "units": { "speed": "furlongs", "wave_height": "ft", "distance": "km" },
                  "network": { "concurrency": 12, "timeout_s": "soon" },
                  "chunk_cache": { "location": "/old", "size_limit_gb": 55 },
-                 "weather_memory_mb": 512 }"#,
+                 "weather_memory_mb": 512, "weather_cache": { "directory": "/old", "max_size_gb": 1 } }"#,
         )
         .unwrap();
         let s = Settings::load(&file);
@@ -1110,40 +955,18 @@ mod tests {
                 distance: DistanceUnit::Km,
             }
         );
-        assert_eq!(s.network.concurrency, 12);
-        assert_eq!(s.network.timeout_s, DEFAULT_TIMEOUT_S);
-        assert_eq!(s.weather_memory_mb, 512);
         // An earlier build's chunk cache settings are not carried: the
         // next save writes none.
         let json = serde_json::to_string(&s).unwrap();
-        assert!(!json.contains("chunk_cache"), "{json}");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// The edges of each range are in range; one past them is the default.
-    #[test]
-    fn range_edges_are_kept_and_one_past_is_the_default() {
-        let at_edges = Settings {
-            weather_memory_mb: WEATHER_MEMORY_RANGE_MB.1,
-            network: NetworkSettings {
-                concurrency: 1,
-                timeout_s: TIMEOUT_RANGE_S.1,
-            },
-            ..Settings::default()
-        };
-        assert_eq!(at_edges.clone().normalised(), at_edges);
-        let past = Settings {
-            weather_memory_mb: WEATHER_MEMORY_RANGE_MB.0 - 1,
-            network: NetworkSettings {
-                concurrency: MAX_CONCURRENCY + 1,
-                timeout_s: TIMEOUT_RANGE_S.0 - 1,
-            },
-            ..Settings::default()
+        for retired in [
+            "chunk_cache",
+            "weather_memory_mb",
+            "weather_cache",
+            "network",
+        ] {
+            assert!(!json.contains(retired), "{retired} in {json}");
         }
-        .normalised();
-        assert_eq!(past.weather_memory_mb, DEFAULT_WEATHER_MEMORY_MB);
-        assert_eq!(past.network.concurrency, DEFAULT_CONCURRENCY);
-        assert_eq!(past.network.timeout_s, DEFAULT_TIMEOUT_S);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// An earlier version's chunks were in `chunks` inside the location

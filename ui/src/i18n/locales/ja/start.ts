@@ -26,7 +26,7 @@ const catalogue: Record<string, string> = {
   "Open the help reference.": "ヘルプリファレンスを開きます。",
   "manual": "マニュアル",
   "documentation": "ドキュメント",
-  "Language, theme, units, autosave, cache and network.": "言語、テーマ、単位、自動保存、キャッシュ、ネットワーク。",
+  "Language, theme, units, autosave and reanalysis.": "言語、テーマ、単位、自動保存、再解析。",
   "preferences": "環境設定",
   "options": "オプション",
   "New project": "新規プロジェクト",

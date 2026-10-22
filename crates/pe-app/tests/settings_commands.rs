@@ -10,9 +10,7 @@ mod common;
 
 use common::TempRoot;
 use pe_app::error::AppError;
-use pe_app::settings::{
-    self, DistanceUnit, MapProjection, NetworkSettings, Settings, SpeedUnit, Units, WaveHeightUnit,
-};
+use pe_app::settings::{self, DistanceUnit, MapProjection, SpeedUnit, Units, WaveHeightUnit};
 
 #[test]
 fn every_setting_is_saved_and_read_back_after_a_restart() {
@@ -27,15 +25,6 @@ fn every_setting_is_saved_and_read_back_after_a_restart() {
     };
     settings::units_set(&app, units).unwrap();
     settings::autosave_mode_set(&app, settings::AutosaveMode::Off).unwrap();
-    settings::weather_memory_set(&app, 1024).unwrap();
-    settings::network_set(
-        &app,
-        NetworkSettings {
-            concurrency: 4,
-            timeout_s: 120,
-        },
-    )
-    .unwrap();
     let last = settings::projection_set(&app, MapProjection::Orthographic).unwrap();
 
     let restarted = root.state();
@@ -44,8 +33,6 @@ fn every_setting_is_saved_and_read_back_after_a_restart() {
     assert_eq!(read.language, "fr");
     assert_eq!(read.theme, "paper");
     assert_eq!(read.units, units);
-    assert_eq!(read.weather_memory_mb, 1024);
-    assert_eq!(read.network.concurrency, 4);
     assert_eq!(read.projection, MapProjection::Orthographic);
 }
 
@@ -83,22 +70,6 @@ fn a_refused_value_changes_nothing() {
     for result in [
         settings::language_set(&app, "tlh".to_owned()),
         settings::theme_set(&app, "neon".to_owned()),
-        settings::weather_memory_set(&app, 0),
-        settings::weather_memory_set(&app, 100_000),
-        settings::network_set(
-            &app,
-            NetworkSettings {
-                concurrency: 0,
-                timeout_s: 60,
-            },
-        ),
-        settings::network_set(
-            &app,
-            NetworkSettings {
-                concurrency: 8,
-                timeout_s: 1,
-            },
-        ),
     ] {
         assert!(
             matches!(result, Err(AppError::BadOption { .. })),
@@ -116,6 +87,35 @@ fn a_failed_write_puts_the_previous_value_back() {
     std::fs::create_dir_all(app.paths.settings_file()).unwrap();
     assert!(settings::language_set(&app, "de".to_owned()).is_err());
     assert_eq!(settings::current(&app).unwrap().language, "en");
+}
+
+#[test]
+fn retired_weather_preferences_do_not_limit_memory_or_open_a_disk_cache() {
+    let root = TempRoot::new("retired-weather-preferences");
+    let blocked = root.0.join("old-cache-file");
+    std::fs::write(&blocked, b"keep this file").unwrap();
+    let paths = root.state().paths.clone();
+    std::fs::create_dir_all(&paths.config_dir).unwrap();
+    std::fs::write(
+        paths.settings_file(),
+        serde_json::json!({
+            "weather_memory_mb": 16,
+            "weather_cache": { "directory": blocked, "max_size_gb": 1 },
+            "network": { "timeout_s": 1, "concurrency": 1 }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let app = root.state();
+    common::remember_archive(&app, None);
+    let provider = pe_app::env::provider(&app).unwrap();
+    assert_eq!(provider.memory().limit(), u64::MAX);
+    assert_eq!(std::fs::read(blocked).unwrap(), b"keep this file");
+    assert!(!app.paths.cache_dir.join("whirlwind-hindsight-v1").exists());
+    let saved = serde_json::to_value(settings::current(&app).unwrap()).unwrap();
+    for retired in ["weather_memory_mb", "weather_cache", "network"] {
+        assert!(saved.get(retired).is_none());
+    }
 }
 
 /// An earlier version's on-disk chunk cache is announced once, then
@@ -177,43 +177,4 @@ fn an_earlier_versions_chunk_cache_is_announced_then_removed_once() {
     // Said once a session, removed once.
     assert!(settings::legacy_cache_found(&app).is_none());
     assert!(settings::remove_legacy_cache(&app).is_none());
-    assert_eq!(Settings::default().weather_memory_mb, 256);
-}
-
-#[test]
-fn whirlwind_disk_cache_settings_persist_and_clear_preserves_other_files() {
-    let root = TempRoot::new("weather-disk-cache");
-    let app = root.state();
-    let directory = root.file("chosen-cache");
-    let saved = pe_app::weather_cache::configure(&app, directory.clone(), 2).unwrap();
-    assert_eq!(
-        root.state()
-            .with_session(|s| Ok(s.settings.weather_cache.clone()))
-            .unwrap(),
-        saved.weather_cache
-    );
-    let cache = pe_app::weather_cache::open(&app, &saved.weather_cache).unwrap();
-    let key = pe_env::whirlwind::DiskCache::key(
-        "s3://whirlwind-hindsight/hindsight-routing",
-        "data/c/0/0/0/0",
-        "version",
-        0,
-        100,
-    );
-    cache.put(&key, &vec![1; 100].into(), 0).unwrap();
-    std::fs::write(std::path::Path::new(&directory).join("keep"), b"project").unwrap();
-    assert!(pe_app::weather_cache::status(&app, false).unwrap().bytes > 0);
-    assert_eq!(pe_app::weather_cache::status(&app, true).unwrap().bytes, 0);
-    assert_eq!(
-        std::fs::read(std::path::Path::new(&directory).join("keep")).unwrap(),
-        b"project"
-    );
-    for (path, size) in [
-        ("relative".to_owned(), 2),
-        (directory.clone(), 0),
-        (directory, 4097),
-    ] {
-        assert!(pe_app::weather_cache::configure(&app, path, size).is_err());
-    }
-    assert_eq!(settings::current(&app).unwrap(), saved);
 }

@@ -1,4 +1,3 @@
-import type { WeatherCacheStatus } from "./generated/WeatherCacheStatus";
 /**
  * The typed command surface.
  *
@@ -37,7 +36,6 @@ import type { ExportPreview } from "./generated/ExportPreview";
 import type { ExportResult } from "./generated/ExportResult";
 import type { LegacyCacheNotice } from "./generated/LegacyCacheNotice";
 import type { MapProjection } from "./generated/MapProjection";
-import type { NetworkSettings } from "./generated/NetworkSettings";
 import type { OrrCatalogueInfo } from "./generated/OrrCatalogueInfo";
 import type { OrrSearchResult } from "./generated/OrrSearchResult";
 import type { OrrProgress } from "./generated/OrrProgress";
@@ -448,9 +446,7 @@ export function boatApi(boatContext?: number) {
   /** Sets what autosave does. */
   setAutosaveMode: (mode: AutosaveMode) => call<AppSettings>("set_autosave_mode", { mode }),
   /** Sets how much downloaded weather is kept in memory for the session, megabytes. */
-  setWeatherMemory: (megabytes: number) => call<AppSettings>("set_weather_memory", { megabytes }),
   /** Sets the reanalysis fetcher's concurrency and timeout. */
-  setWeatherCache: (directory: string, maxSizeGb: number) => call<AppSettings>("set_weather_cache", { directory, maxSizeGb }),
   /** Opens Hindsight Sync's product page in the system browser. */
   openHindsightSyncSite: () => call<void>("open_hindsight_sync_site"),
   /** Looks for Hindsight Sync: the saved port, 8765, then its own settings file's port. */
@@ -461,9 +457,6 @@ export function boatApi(boatContext?: number) {
   setReanalysisPort: (port: number) => call<AppSettings>("set_reanalysis_port", { port }),
   /** Chooses the archive fetches read, or none. */
   setReanalysisArchive: (id: string | null) => call<AppSettings>("set_reanalysis_archive", { id }),
-  weatherCacheStatus: () => call<WeatherCacheStatus>("weather_cache_status"),
-  clearWeatherCache: () => call<WeatherCacheStatus>("clear_weather_cache"),
-  setNetwork: (network: NetworkSettings) => call<AppSettings>("set_network", { network }),
   /** Sets the map projection. */
   setProjection: (projection: MapProjection) => call<AppSettings>("set_projection", { projection }),
   /** Sets how far from the 2D plot's wind speed a sample dot may be, knots either side. */

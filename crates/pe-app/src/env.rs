@@ -718,10 +718,6 @@ fn run_tasks(
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderKey {
     archive: CapturedArchive,
-    weather_cache: crate::weather_cache::WeatherCacheSettings,
-    memory_bytes: u64,
-    timeout_s: u64,
-    concurrency: u32,
 }
 
 /// The reanalysis provider for the chosen archive and the current settings,
@@ -732,16 +728,9 @@ pub fn provider(state: &AppState) -> Result<Arc<Reanalysis>> {
 }
 
 fn provider_for(state: &AppState, archive: &CapturedArchive) -> Result<Arc<Reanalysis>> {
-    let key = state.with_session(|session| {
-        let s = &session.settings;
-        Ok(ProviderKey {
-            archive: archive.clone(),
-            weather_cache: s.weather_cache.clone(),
-            memory_bytes: s.weather_memory_bytes(),
-            timeout_s: u64::from(s.network.timeout_s),
-            concurrency: s.network.concurrency,
-        })
-    })?;
+    let key = ProviderKey {
+        archive: archive.clone(),
+    };
     let mut slot = state
         .env_provider
         .lock()
@@ -751,18 +740,12 @@ fn provider_for(state: &AppState, archive: &CapturedArchive) -> Result<Arc<Reana
     {
         return Ok(Arc::clone(p));
     }
-    let timeout = std::time::Duration::from_secs(key.timeout_s);
-    let memory = pe_env::BlockCache::new(key.memory_bytes);
-    let opened = Reanalysis::open(key.archive.archive_ref(), timeout, memory)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-    // A folder on this computer is read in place: copying its chunks into
-    // a disk cache would only double them.
-    let reanalysis = Arc::new(match key.archive.location {
-        pe_env::whirlwind::ArchiveLocation::File { .. } => opened,
-        pe_env::whirlwind::ArchiveLocation::S3 { .. } => {
-            opened.with_whirlwind_cache(crate::weather_cache::open(state, &key.weather_cache)?)
-        }
-    });
+    let timeout = std::time::Duration::from_secs(u64::from(crate::settings::DEFAULT_TIMEOUT_S));
+    let memory = pe_env::BlockCache::unbounded();
+    let reanalysis = Arc::new(
+        Reanalysis::open(key.archive.archive_ref(), timeout, memory)
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+    );
     *slot = Some((key, Arc::clone(&reanalysis)));
     Ok(reanalysis)
 }

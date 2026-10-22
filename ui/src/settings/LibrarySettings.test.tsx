@@ -32,8 +32,8 @@ vi.mock("../ipc", () => ({
 import LibrarySettings from "./LibrarySettings";
 
 const library: Preferences = {
-  geojson_directory: "/old", metadata_directory: "", scrape_schedule: "on_demand", scrape_urls: "",
-  yellowbrick_user_key: "", yellowbrick_device_id: "",
+  geojson_directory: "/old", metadata_directory: "",
+
   database: { host: "localhost", port: 5432, name: "syrfbackendprod", user: "postgres", password: "", tls: false },
 };
 let root: Root;

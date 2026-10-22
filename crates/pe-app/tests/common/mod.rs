@@ -169,6 +169,7 @@ pub fn listed_archive(
         chunk_degrees: 5,
         chunk_hours: 72,
         products: vec!["wind10m".to_owned()],
+        provider: None,
         location,
     }
 }

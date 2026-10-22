@@ -1,26 +1,10 @@
-import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
-import { createServer } from "node:http";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { assert, newProject, blockWeatherDownloads } from "./harness.mjs";
-const base = new URL("../../../crates/pe-trackers/tests/fixtures/yellowbrick/", import.meta.url);
-
-const requests = [];
+import { assert, newProject } from "./harness.mjs";
 export default {
   name: "track library",
-  // A recorded YellowBrick race for the scraper, served on loopback.
-  async setup() {
-    const routes = new Map([
-      ["/JSON/rmsr2024/RaceSetup", await readFile(new URL("rmsr2024-RaceSetup.json", base))],
-      ["/BIN/rmsr2024/AllPositions3", await readFile(new URL("rmsr2024-AllPositions3-first3.bin", base))],
-    ]);
-    const server = createServer((req, res) => { const path = req.url.split("?")[0]; const body = routes.get(path); requests.push(path);
-      setTimeout(() => { res.writeHead(body ? 200 : 404); res.end(body); }, path.startsWith("/BIN/") ? 3000 : 0); });
-    await new Promise(done => server.listen(0, "127.0.0.1", done));
-    return { env: { PE_DRIVER_YELLOWBRICK: `http://127.0.0.1:${server.address().port}` }, teardown: () => new Promise(done => server.close(done)) };
-  },
   async run(t) {
     const d = t.driver;
-    await blockWeatherDownloads(d);
     const geo = join(d.automationRoot, "geojson");
     const metadata = join(d.automationRoot, "metadata");
     await mkdir(geo, { recursive: true }); await mkdir(metadata, { recursive: true });
@@ -35,16 +19,14 @@ export default {
     assert.equal(await d.exists('[data-feature="tracks:boat-search"]'), false);
     await t.shot("no-metadata-search-hidden");
     await d.click('[data-feature="shell:settings"]');
-    await d.type('[data-feature="settings:data-source"]', "whirlwind");
-    // Scraping is back, into files only (asked 2026-10-04): nothing about a database.
+    // Track scraping controls have been retired; library folders remain.
     await d.waitFor('[data-feature="settings:library-geojson"]');
     for (const gone of ["settings:db-host", "settings:db-test", "settings:db-scrape", "settings:db-export", "settings:db-download"]) {
       assert.equal(await d.exists(`[data-feature="${gone}"]`), false, `${gone} is gone`);
     }
     for (const control of ["settings:library-schedule", "settings:library-yb-user-key", "settings:library-yb-device-id", "settings:library-urls", "settings:library-scrape"]) {
-      assert.ok(await d.exists(`[data-feature="${control}"]`), `${control} is there`);
+      assert.ok(!(await d.exists(`[data-feature="${control}"]`)), `${control} is removed`);
     }
-    assert.ok((await d.text('.library-settings')).includes("Only finished races are scraped."));
     // The SYRF database's read-only metadata download (asked 2026-10-06).
     // Pointed at a closed port, so no test ever reaches a real database.
     for (const control of ["settings:library-db-host", "settings:library-db-port", "settings:library-db-name", "settings:library-db-user",
@@ -114,36 +96,8 @@ export default {
     await d.run(`document.querySelector('[data-feature="tracks:select-all"]').scrollIntoView({block: "center"}); done(true);`);
     await t.shot("all-imported-tracks-selected");
     await d.click('[data-feature="tracks:fetch-weather-selected"]');
-    assert.equal(await d.exists('[role="dialog"]'), false);
-    await d.waitFor('.statusbar', { text: "Whirlwind cache path is not a regular directory" });
-    await d.waitGone('.busy-spinner.on');
-    assert.equal(await d.count('[data-feature="tracks:select"]:checked'), 0, "queuing weather clears the selection");
-    await t.shot("weather-for-all-imported-tracks");
-    await d.click('[data-feature="shell:settings"]');
-    await d.waitFor('[data-feature="settings:library-urls"]');
-    await d.run(`document.querySelector('[data-feature="settings:library-urls"]').scrollIntoView({block: "center"}); done(true);`);
-    // A manual scrape of one finished race: the status bar follows it, and
-    // the race lands in the folders and the metadata.
-    await d.type('[data-feature="settings:library-urls"]', "https://yb.tl/rmsr2024");
-    await d.click('[data-feature="settings:library-scrape"]');
-    // The fixture server holds the positions back, so the scrape is seen running.
-    await d.waitFor('[data-feature="shell:scrape-status"]', { timeoutMs: 15000 });
-    await t.shot("scrape-status-bar");
-    await d.waitFor(".library-scrape-status", { text: "Scrape finished", timeoutMs: 60000 });
-    await t.shot("scrape-finished");
-    const status = await d.text(".library-scrape-status");
-    assert.ok(/Tracks: [1-9]/.test(status), `tracks were saved: ${status}`);
-    const after = JSON.parse(await readFile(join(metadata, "boat-metadata.json"), "utf8"));
-    assert.ok(after.tracks.length > 2, "the scraped boats are searchable");
-    assert.ok(after.tables.CompetitionUnits.some(u => u.approximateStartLocation), "the race has a start");
-    assert.ok((await readdir(join(geo, "individual-tracks"))).length > 0, "the tracks are files");
-    // Scraped again: the library has it, so nothing is fetched (asked 2026-10-05).
-    const fetched = requests.length;
-    await d.click('[data-feature="settings:library-scrape"]');
-    await d.waitFor(".library-scrape-status", { text: "already in the library: 1", timeoutMs: 30000 });
-    await d.waitFor(".library-scrape-status", { text: "Scrape finished", timeoutMs: 30000 });
-    assert.ok((await d.text(".library-scrape-status")).includes("Tracks: 0"));
-    assert.equal(requests.length, fetched, "no request for a race the library holds");
-    await t.shot("scrape-again-skips-held");
+    await d.waitFor('.statusbar', { text: "No reanalysis archive can be read. Choose one in Settings, or press Scan there." });
+    assert.equal((await d.invoke("env_jobs", {})).tracks.length, 0);
+    await t.shot("weather-needs-an-archive");
   },
 };

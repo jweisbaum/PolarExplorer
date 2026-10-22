@@ -25,7 +25,7 @@ const features: Feature[] = [
     keywords: [msg("find"), msg("feature search")], topic: "search" },
   { id: "shell:help", label: msg("Help"), description: msg("Open the help reference."),
     keywords: [msg("manual"), msg("documentation")], topic: "search" },
-  { id: "shell:settings", label: msg("Settings"), description: msg("Language, theme, units, autosave, cache and network."),
+  { id: "shell:settings", label: msg("Settings"), description: msg("Language, theme, units, autosave and reanalysis."),
     keywords: [msg("preferences"), msg("options"), msg("gear")], topic: "settings" },
 
   { id: "stage:map", label: msg("Map"), description: msg("Show the world map in the centre."),

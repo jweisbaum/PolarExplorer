@@ -4,10 +4,8 @@ import type { CatalogueSettings } from "./CatalogueSettings";
 import type { LibrarySettings } from "./LibrarySettings";
 import type { MapProjection } from "./MapProjection";
 import type { McpSettings } from "./McpSettings";
-import type { NetworkSettings } from "./NetworkSettings";
 import type { ReanalysisSettings } from "./ReanalysisSettings";
 import type { Units } from "./Units";
-import type { WeatherCacheSettings } from "./WeatherCacheSettings";
 
 /**
  * The settings file.
@@ -39,19 +37,6 @@ theme: string,
  * Display units.
  */
 units: Units,
-/**
- * Downloaded weather kept in memory for the session, megabytes
- * (spec.md 3.4). Whirlwind can also keep compressed chunks on disk.
- */
-weather_memory_mb: number,
-/**
- * Persistent Whirlwind compressed chunk cache.
- */
-weather_cache: WeatherCacheSettings,
-/**
- * Network use by the reanalysis fetcher.
- */
-network: NetworkSettings,
 /**
  * Hindsight Sync's port and the reanalysis archive chosen among those
  * it lists (spec.md 3.4). Its location, credentials included, is kept

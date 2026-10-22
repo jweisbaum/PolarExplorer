@@ -26,7 +26,7 @@ const catalogue: Record<string, string> = {
   "Open the help reference.": "Die Hilfe öffnen.",
   "manual": "Handbuch",
   "documentation": "Dokumentation",
-  "Language, theme, units, autosave, cache and network.": "Sprache, Design, Einheiten, automatisches Speichern, Cache und Netzwerk.",
+  "Language, theme, units, autosave and reanalysis.": "Sprache, Design, Einheiten, automatisches Speichern und Reanalyse.",
   "preferences": "Voreinstellungen",
   "options": "Optionen",
   "New project": "Neues Projekt",

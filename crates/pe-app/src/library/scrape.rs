@@ -6,12 +6,11 @@
 //!
 //! Discovery, the finished-race check and Geovoile's legs are the trackers'
 //! own (`pe_trackers::library`); an ongoing, future or unverified race is
-//! skipped. Runs by hand from Settings, or at startup or shutdown when the
-//! person has chosen that schedule.
+//! skipped. Retained for internal callers; Settings has no scraper controls
+//! and neither startup nor shutdown schedules a scrape.
 
 use super::LibrarySettings;
 use super::catalogue::{BoatTrackHit, Metadata};
-use crate::catalogues::ScrapeSchedule;
 use crate::{
     commands::AppState,
     error::{AppError, Context, Result},
@@ -289,7 +288,7 @@ fn scrape<R: tauri::Runtime>(
     cancel: &Arc<AtomicBool>,
 ) -> Result<()> {
     let state = app.state::<AppState>();
-    let timeout = state.with_session(|s| Ok(s.settings.network.timeout_s))?;
+    let timeout = crate::settings::DEFAULT_TIMEOUT_S;
     // Patient with a tracker that answers a burst with 503s (asked
     // 2026-10-05): requests a second apart, and a busy answer tried again
     // after 5, 10, 20, 40, 80 and 120 s, longer when the server asks.
@@ -820,28 +819,15 @@ fn discover_yellowbrick<R: tauri::Runtime>(
     Ok(report.urls())
 }
 
-/// The startup schedule: a scrape once the application is up, if chosen.
-pub fn on_startup<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
-    if super::settings(&app.state::<AppState>())
-        .is_ok_and(|s| s.scrape_schedule == ScrapeSchedule::Startup)
-        && let Err(e) = start(app.clone(), false)
-    {
-        update(&app, |p| p.error = Some(e.to_string()));
-    }
-}
-
-/// Quitting waits for a running scrape, and with the shutdown schedule runs
-/// one first. Answers whether quitting has to wait.
+/// Quitting waits for an already running scrape; it never starts one.
 pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
     let state = app.state::<AppState>();
     let scrape = &state.library.scrape;
     if scrape.shutdown_finished.load(Ordering::SeqCst) {
         return false;
     }
-    let scheduled =
-        super::settings(&state).is_ok_and(|s| s.scrape_schedule == ScrapeSchedule::Shutdown);
     let running = scrape.running();
-    if !scheduled && !running {
+    if !running {
         return false;
     }
     if scrape.shutdown_started.swap(true, Ordering::SeqCst) {
@@ -851,11 +837,6 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
         .with_session(|s| Ok(s.open.as_ref().map(|o| (o.project.id, o.revision))))
         .ok()
         .flatten();
-    if !running && let Err(e) = start(app.clone(), false) {
-        update(app, |p| p.error = Some(e.to_string()));
-        scrape.shutdown_finished.store(true, Ordering::SeqCst);
-        return false;
-    }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         while app.state::<AppState>().library.scrape.running() {

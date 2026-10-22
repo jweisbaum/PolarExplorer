@@ -5,10 +5,8 @@
  * - an earlier version's on-disk chunk cache (seeded in the run's data
  *   root) is announced on the status line and removed, and nothing else;
  * - a five-day track starts weather immediately with no estimate dialog;
- *   a deliberately invalid cache path fails before HTTP and leave retry available;
- * - Settings has "Keep downloaded weather in memory for this session (MB)"
- *   in place of the chunk cache's folder and size, saved to settings.json
- *   without the old `chunk_cache` group.
+ *   a deliberately missing local archive fails before HTTP and leave retry available;
+ * - Settings omits memory limits, the disk cache and request timeouts.
  */
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -85,7 +83,7 @@ export default {
     assert.ok(gone, "no file is left under the old chunk cache");
     assert.ok((await stat(join(root, "cache"))).isDirectory(), "only chunks/ went");
 
-    // A five-day track starts directly; cache validation fails before HTTP.
+    // A five-day track starts directly; a missing local archive fails before HTTP.
     await d.queueDialog([join(root, "race.geojson")]);
     await d.click('[data-feature="tracks:import-file"]');
     await d.waitFor(".modal-actions button.primary");
@@ -93,31 +91,21 @@ export default {
     await d.waitFor('[data-feature="tracks:fetch-weather"]', { timeoutMs: 30_000 });
     await d.click('[data-feature="tracks:fetch-weather"]');
     assert.equal(await d.exists('[role="dialog"]'), false);
-    await d.waitFor('.statusbar', { text: "Whirlwind cache path is not a regular directory" });
+    await d.waitFor('.statusbar', { text: "missing-weather-archive" });
     assert.ok((await d.text('.track-list')).includes("Weather: not fetched"));
     await d.waitGone('.busy-spinner.on');
     await d.waitFor('[data-feature="tracks:fetch-weather"]:not(:disabled)');
     const jobs = await d.invoke('env_jobs', {});
     assert.equal(jobs.tracks.length, 0);
-    assert.ok(jobs.failure?.[1]?.includes("Whirlwind cache path is not a regular directory"), JSON.stringify(jobs));
+    assert.ok(jobs.failure?.[1]?.includes("missing-weather-archive"), JSON.stringify(jobs));
     await t.shot("weather-starts-without-estimate");
 
-    // Settings: the memory for this session, where the chunk cache was.
+    // Retired weather controls are absent.
     await d.click('[data-feature="shell:settings"]');
     await d.waitFor(".modal.settings");
-    assert.ok(!(await d.exists('[data-feature="settings:cache-limit"]')), "no chunk cache setting");
-    await d.run(`document.querySelector('[data-section="settings:weather"]').scrollIntoView({ block: "start" }); done(true);`);
-    await d.waitFor('[data-feature="settings:weather-memory"]', { visible: true });
-    assert.equal(await d.run(`done(document.querySelector('[data-feature="settings:weather-memory"]').value);`), "256");
-    await d.type('[data-feature="settings:weather-memory"]', "512");
-    await d.key("Enter", '[data-feature="settings:weather-memory"]');
-    let saved = null;
-    for (let i = 0; i < 50 && saved?.weather_memory_mb !== 512; i += 1) {
-      saved = JSON.parse(await readFile(join(root, "config", "settings.json"), "utf8"));
-      if (saved.weather_memory_mb !== 512) await new Promise((r) => setTimeout(r, 100));
+    for (const id of ["weather-memory", "cache-directory", "cache-size", "cache-clear", "timeout"]) {
+      assert.ok(!(await d.exists(`[data-feature="settings:${id}"]`)), `${id} is removed`);
     }
-    assert.equal(saved.weather_memory_mb, 512);
-    assert.ok(!("chunk_cache" in saved), "the old group is not written back");
-    await t.shot("settings-weather-memory");
+    await t.shot("simplified-settings");
   },
 };

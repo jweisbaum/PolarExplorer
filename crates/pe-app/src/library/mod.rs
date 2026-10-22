@@ -12,8 +12,7 @@ mod tests;
 
 pub use catalogue::{BoatTrackHit, BoatTrackSearch, import_database_track, search_database_boats};
 pub use scrape::{
-    ScrapeProgress, cancel_library_scrape, library_scrape_status, on_startup, shutdown,
-    start_library_scrape,
+    ScrapeProgress, cancel_library_scrape, library_scrape_status, shutdown, start_library_scrape,
 };
 
 use crate::{
@@ -36,13 +35,17 @@ pub struct LibrarySettings {
     pub geojson_directory: String,
     /// The folder holding `boat-metadata.json`; empty for the application's own.
     pub metadata_directory: String,
-    /// When races are scraped by themselves: on demand, at startup or at shutdown.
-    pub scrape_schedule: crate::catalogues::ScrapeSchedule,
     /// Race addresses to scrape, one per line; empty discovers public races.
+    #[serde(skip)]
+    #[ts(skip)]
     pub scrape_urls: String,
     /// YellowBrick's app user key, to list its catalogue; local only, never logged.
+    #[serde(skip)]
+    #[ts(skip)]
     pub yellowbrick_user_key: String,
     /// YellowBrick's app device id (UDID), with the key; local only, never logged.
+    #[serde(skip)]
+    #[ts(skip)]
     pub yellowbrick_device_id: String,
     /// The SYRF PostgreSQL database the metadata download reads, read-only.
     pub database: database::DatabaseConnection,
@@ -54,7 +57,6 @@ impl std::fmt::Debug for LibrarySettings {
         f.debug_struct("LibrarySettings")
             .field("geojson_directory", &self.geojson_directory)
             .field("metadata_directory", &self.metadata_directory)
-            .field("scrape_schedule", &self.scrape_schedule)
             .field("database", &self.database)
             .finish_non_exhaustive()
     }
@@ -70,7 +72,6 @@ impl Default for LibrarySettings {
                 String::new()
             },
             metadata_directory: String::new(),
-            scrape_schedule: crate::catalogues::ScrapeSchedule::OnDemand,
             scrape_urls: String::new(),
             yellowbrick_user_key: String::new(),
             yellowbrick_device_id: String::new(),

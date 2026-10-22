@@ -57,7 +57,10 @@ function backend() {
   invoke.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
       case "app_settings": return settings;
-      case "reanalysis_probe": return probe;
+      case "reanalysis_probe":
+        if (probe.detected) settings = reanalysis(probe.port, true,
+          settings.reanalysis.archive ?? probe.archives.find(a => a.storage === "cloud") ?? null);
+        return probe;
       case "reanalysis_scan": return scan();
       case "set_reanalysis_port":
         settings = reanalysis(args?.port as number, settings.reanalysis.connected_once, settings.reanalysis.archive);
@@ -135,23 +138,23 @@ describe("the Reanalysis section", () => {
     expect(host.textContent).toContain("Hindsight Sync is not running. No archive is chosen.");
   });
 
-  it("detected lists cloud then local, each row name — place — chunking — products, unavailable rows disabled with their reason", async () => {
+  it("detected defaults to the first cloud and shows providers without paths, with unavailable rows disabled", async () => {
     probe = LISTING;
     await mount();
     expect(q(".reanalysis-warning")).toBeNull();
     const select = feature<HTMLSelectElement>("settings:reanalysis-archive")!;
-    expect(select.value).toBe("");
-    expect(select.options[0]!.textContent).toBe("Choose an archive…");
+    expect(select.value).toBe("c1");
+    expect(host.textContent).not.toContain("Choose an archive…");
     const groups = [...select.querySelectorAll("optgroup")];
     expect(groups.map(g => g.getAttribute("label"))).toEqual(["Cloud", "This computer"]);
     const rows = (group: Element) => [...group.querySelectorAll("option")].map(o =>
       [o.textContent, o.disabled, o.getAttribute("title")]);
     expect(rows(groups[0]!)).toEqual([
-      ["ERA5 global — bucket.s3.eu-west-1.amazonaws.com — 10° × 24 h — wind10m, waves", false, null],
-      ["Locked bucket", true, "No credentials for this bucket"],
+      ["S3 — 10° × 24 h — wind10m, waves", false, null],
+      ["S3", true, "No credentials for this bucket"],
     ]);
     expect(rows(groups[1]!)).toEqual([
-      ["Atlantic copy — /data/atl — 5° × 12 h — wind10m", false, null],
+      ["Atlantic copy — 5° × 12 h — wind10m", false, null],
       ["u2", true, "Folder missing"],
     ]);
     expect(host.textContent).toContain("Connected to Hindsight Sync on port 8765");
@@ -159,6 +162,7 @@ describe("the Reanalysis section", () => {
 
   it("choosing an archive calls set_reanalysis_archive with its id and the muted line shows its range", async () => {
     probe = LISTING;
+    settings = reanalysis(8765, true, LOCAL);
     await mount();
     const select = feature<HTMLSelectElement>("settings:reanalysis-archive")!;
     await act(async () => {
@@ -182,6 +186,22 @@ describe("the Reanalysis section", () => {
     expect(host.textContent).toContain("from 2020-01-01, ongoing · region");
   });
 
+  it("shows only provider labels and metadata even when saved names and places are full paths", async () => {
+    probe = { ...LISTING, unavailable: [], archives: [
+      { ...CLOUD, name: "s3://private-bucket/weather", place: "bucket.s3.eu-west-1.amazonaws.com" },
+      { ...CLOUD, id: "r2", name: "r2://private-bucket/weather", place: "account.r2.cloudflarestorage.com" },
+      { ...CLOUD, id: "tigris", name: "tigris://private-bucket/weather", place: "fly.storage.tigris.dev" },
+    ] };
+    await mount();
+    const select = feature<HTMLSelectElement>("settings:reanalysis-archive")!;
+    expect([...select.options].map(option => option.textContent)).toEqual([
+      "S3 — 10° × 24 h — wind10m, waves",
+      "R2 — 10° × 24 h — wind10m, waves",
+      "Tigris — 10° × 24 h — wind10m, waves",
+    ]);
+    expect(select.value).toBe("c1");
+  });
+
   it("a remembered archive missing from the list is appended as (no longer listed) and stays selected", async () => {
     probe = LISTING;
     settings = reanalysis(8765, true, GONE);
@@ -190,7 +210,7 @@ describe("the Reanalysis section", () => {
     expect(select.value).toBe("old");
     const cloud = select.querySelector("optgroup")!;
     const last = cloud.querySelector("option:last-child")!;
-    expect(last.textContent).toBe("Retired archive — old.example.com — 10° × 24 h — wind10m, waves (no longer listed)");
+    expect(last.textContent).toBe("S3 — 10° × 24 h — wind10m, waves (no longer listed)");
     expect((last as HTMLOptionElement).selected).toBe(true);
     expect(commands()).not.toContain("set_reanalysis_archive");
   });

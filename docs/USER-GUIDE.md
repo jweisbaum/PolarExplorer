@@ -177,17 +177,9 @@ name, user and password under **SYRF database (read only)**. Press **Test
 connection**, then **Download boat metadata**. The download only reads,
 runs only when you press the button, and keeps the races you scraped.
 
-To fill the library, press **Scrape tracks now**, or set **Run track scraper**
-to *On startup* or *On shutdown*. Only finished YellowBrick, Geovoile and Blue
-Water races are saved; ongoing and future races are skipped. List race links,
-one per line, to scrape only those; leave the list empty to rescrape the
-library's races and discover new ones (a YellowBrick user key and device ID
-add its catalogue). A race already in the library is never downloaded again,
-even when listed; the status counts it as "already in the library". The
-scraper paces itself and waits out a busy tracker, so a long scrape is slow
-on purpose. A manual scrape shows its progress in the status bar,
-where **Cancel scrape** stops it; races already saved stay. The
-metadata covers vessels from YellowBrick, Geovoile, Blue Water, old Geovoile,
+Track scraping is no longer offered in Settings and does not run at startup
+or shutdown. Existing library files and previously scraped records remain
+available. The metadata covers YellowBrick, Geovoile, Blue Water, old Geovoile,
 Regadata and America's Cup.
 
 Use **Search tracks by vessel details** in the Tracks panel. Search by any
@@ -209,11 +201,13 @@ reanalysis (hindsight-sync.whirlwindai.com). Until PolarExplorer finds it,
 **Settings → Reanalysis** shows a warning with a link; press **Scan** there
 and, once it connects, the warning disappears. **Reanalysis archive** then
 lists what Hindsight Sync offers, grouped **Cloud** and **This computer**,
-each row showing the name, the place, the chunk size in degrees and hours and
-the products; an unavailable archive is greyed with its reason. Choose one:
-fetching weather is refused until you do. PolarExplorer remembers the chosen
+cloud rows showing S3, R2 or Tigris, chunk sizes and products instead of full
+paths. An unavailable archive is greyed with its reason. With no saved choice,
+the first usable cloud archive is selected automatically. A previous choice
+is preserved; a local-only list requires you to choose an archive. PolarExplorer remembers the chosen
 archive's location and credentials, so fetches keep working while Hindsight
-Sync is closed.
+Sync is closed. Downloaded weather is reused in session memory as needed,
+without a fixed memory limit or a disk cache.
 
 When a track provides its own wind, its filters offer **Use** under **Wind,
 waves and current**: the wind the track provides (where it gives both speed

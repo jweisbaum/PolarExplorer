@@ -370,10 +370,9 @@ fn older_database_settings_keep_the_library_and_the_connection() {
     let expected = LibrarySettings {
         geojson_directory: "/tracks".into(),
         metadata_directory: "/meta".into(),
-        scrape_schedule: crate::catalogues::ScrapeSchedule::Startup,
-        scrape_urls: "https://yb.tl/race".into(),
-        yellowbrick_user_key: "yb-key".into(),
-        yellowbrick_device_id: "yb-device".into(),
+        scrape_urls: String::new(),
+        yellowbrick_user_key: String::new(),
+        yellowbrick_device_id: String::new(),
         database: database::DatabaseConnection {
             host: "db".into(),
             port: 6543,
@@ -384,6 +383,15 @@ fn older_database_settings_keep_the_library_and_the_connection() {
         },
     };
     assert_eq!(restored.library, expected);
+    let json = serde_json::to_string(&restored.library).unwrap();
+    for retired in [
+        "scrape_schedule",
+        "scrape_urls",
+        "yellowbrick_user_key",
+        "yellowbrick_device_id",
+    ] {
+        assert!(!json.contains(retired), "{retired} in {json}");
+    }
     // Saved under `library`, and read back from there the same.
     restored.save(&state.paths.settings_file()).unwrap();
     let again = crate::settings::Settings::load(&state.paths.settings_file());

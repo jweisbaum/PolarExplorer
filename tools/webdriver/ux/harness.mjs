@@ -24,11 +24,15 @@ import { ROOT, safeName } from "../client.mjs";
 
 export { assert };
 
-/** Fail before HTTP without relying on credentials for the public S3 archive. */
+/** Fail before HTTP using a missing folder in this driven run's data root. */
 export async function blockWeatherDownloads(driver) {
-  const cache = join(driver.automationRoot, "cache");
-  await mkdir(cache, { recursive: true });
-  await writeFile(join(cache, "whirlwind-hindsight-v1"), "offline weather fixture");
+  const settings = await driver.invoke("app_settings", {});
+  const archive = settings.reanalysis.archive;
+  if (!archive) return;
+  await writeFile(join(driver.automationRoot, "config", "reanalysis-archive.json"), JSON.stringify({
+    id: archive.id,
+    location: { protocol: "file", path: join(driver.automationRoot, "missing-weather-archive") },
+  }));
 }
 
 /** Where a test's pictures go. Under `target/`, which git ignores. */

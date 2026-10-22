@@ -76,6 +76,16 @@ fn endpoint(url: &str) -> Result<reqwest::Url> {
         .ok_or_else(|| EnvError::Open("the archive's S3 endpoint is not an http(s) address".into()))
 }
 
+fn provider_name(host: &str) -> &'static str {
+    if host.contains(".r2.cloudflarestorage.") {
+        "R2"
+    } else if host == "tigris.dev" || host.ends_with(".tigris.dev") {
+        "Tigris"
+    } else {
+        "S3"
+    }
+}
+
 impl ArchiveLocation {
     /// The object root: no endpoint → `https://{bucket}.s3.{region}.amazonaws.com/{prefix}`;
     /// endpoint + path style → `{endpoint}/{bucket}/{prefix}`; endpoint without path style →
@@ -120,23 +130,25 @@ impl ArchiveLocation {
         }
     }
 
-    /// The place a row shows: the endpoint host (or the AWS host), or the folder path.
+    /// A short display label, without bucket, endpoint or folder paths.
     pub fn place(&self) -> String {
         match self {
             Self::S3 {
-                bucket,
-                endpoint_url: None,
-                region,
-                ..
-            } => format!("{bucket}.s3.{region}.amazonaws.com"),
-            Self::S3 {
                 endpoint_url: Some(url),
                 ..
-            } => endpoint(url)
-                .ok()
-                .and_then(|u| u.host_str().map(str::to_owned))
-                .unwrap_or_else(|| url.clone()),
-            Self::File { path } => path.display().to_string(),
+            } => {
+                let host = endpoint(url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_owned))
+                    .unwrap_or_default();
+                provider_name(&host).to_owned()
+            }
+            Self::S3 { .. } => "S3".to_owned(),
+            Self::File { path } => path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
         }
     }
 }
@@ -152,4 +164,20 @@ impl ArchiveLocation {
 pub struct ArchiveRef {
     pub identity: String,
     pub location: ArchiveLocation,
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn cloud_hostnames_have_short_provider_labels() {
+        for (host, label) in [
+            ("acct.r2.cloudflarestorage.com", "R2"),
+            ("fly.storage.tigris.dev", "Tigris"),
+            ("tigris.dev", "Tigris"),
+            ("bucket.s3.us-east-1.amazonaws.com", "S3"),
+            ("store.example.invalid", "S3"),
+        ] {
+            assert_eq!(super::provider_name(host), label);
+        }
+    }
 }

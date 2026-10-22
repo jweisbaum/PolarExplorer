@@ -100,9 +100,6 @@ function backend() {
     switch (command) {
       case "app_settings": return settings;
       case "library_metadata_available": return true;
-      case "weather_cache_status": return { directory: "/cache/whirlwind-hindsight-v1", bytes: 0, max_bytes: 1e10 };
-      case "clear_weather_cache": return { directory: "/cache/whirlwind-hindsight-v1", bytes: 0, max_bytes: 1e10 };
-      case "set_weather_cache": settings = { ...settings, weather_cache: { directory: args?.directory as string, max_size_gb: args?.maxSizeGb as number } }; return settings;
       case "database_job_status": return { running: false, operation: "", failures: [], done: 0, total: 0, tracks: 0, skipped: 0, failed: 0, current: "", cancelled: false, error: null };
       case "app_info": return { name: "PolarExplorer", version: "0.1.0" };
       // Hindsight Sync, never found: the Reanalysis section shows its warning.
@@ -263,11 +260,11 @@ beforeEach(() => {
   legacyNotice = null;
   compareAnswer = "fixture";
   settings = {
-    library: { geojson_directory: "", metadata_directory: "", scrape_schedule: "on_demand", scrape_urls: "", yellowbrick_user_key: "", yellowbrick_device_id: "",
+    library: { geojson_directory: "", metadata_directory: "",
       database: { host: "localhost", port: 5432, name: "syrfbackendprod", user: "postgres", password: "", tls: false } },
     recent_projects: [], autosave: "recovery", language: "en", theme: "harbour",
     units: { speed: "kn", wave_height: "m", distance: "nm" },
-    weather_cache: { directory: "", max_size_gb: 10 }, reanalysis: { port: 8765, connected_once: false, archive: null }, weather_memory_mb: 256, network: { concurrency: 8, timeout_s: 60 },
+    reanalysis: { port: 8765, connected_once: false, archive: null },
     projection: "equirectangular", plot_tws_band_kn: 1,
     mcp: { enabled: false, port: 47392, token: "" },
     catalogues: { orc_schedule: "on_demand", orr_schedule: "on_demand" },

@@ -101,8 +101,8 @@ describe("feature registry", () => {
     expect(searchFeatures("langu").map(m => m.feature.id)).toContain("settings:language");
     setLanguage("fr");
     expect(searchFeatures("langue").map(m => m.feature.id)).toContain("settings:language");
-    // « Délai d'attente », typed without its accent.
-    expect(searchFeatures("delai").map(m => m.feature.id)).toContain("settings:timeout");
+    // « Thème », typed without its accent.
+    expect(searchFeatures("theme").map(m => m.feature.id)).toContain("settings:theme");
     setLanguage("de");
     expect(searchFeatures("SPRACHE").map(m => m.feature.id)).toContain("settings:language");
     // „Größenbegrenzung“ and „Öffnen…“, typed without umlauts.

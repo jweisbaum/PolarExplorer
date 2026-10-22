@@ -339,12 +339,17 @@ or a failed write leaves the previous setting in place.
   the remembered details and location (credentials rotate in Hindsight
   Sync). A probe that does not answer changes nothing.
   **Reanalysis archive** lists the archives cloud first, then this
-  computer's; one Hindsight Sync lists in `errors`, or a cloud archive whose
+  computer's. Cloud rows show S3, R2 or Tigris instead of full paths or
+  endpoints, followed by chunk sizes and products. With no saved choice,
+  the first usable cloud archive is selected and persisted automatically;
+  an existing choice is preserved, even when temporarily unlisted. A local-only
+  list requires an explicit choice. An archive Hindsight Sync lists in
+  `errors`, or a cloud archive whose
   credentials are null, cannot be chosen, and its reason is given. Choosing
   stores the archive's display details in `settings.json` under
   `reanalysis` (`port`, `connected_once`, `archive`: id, name, storage, uri,
   source uri, mode, start, stop, layout version, chunk degrees and hours,
-  products, and the host or folder shown) and its location, credentials
+  products, and the provider or folder name shown) and its location, credentials
   included, in `reanalysis-archive.json` beside it, written atomically and
   owner-only; that file never crosses IPC or reaches a project. Clearing the
   choice removes it. A remembered archive is read whether Hindsight Sync is
@@ -354,31 +359,16 @@ or a failed write leaves the previous setting in place.
   does not change a queued request. Existing project values stay unchanged
   until a fetch is requested; fetching a track whose values came from
   another archive replaces its weather, so a track never mixes archives.
-- **Downloaded weather**: "Keep downloaded weather in memory for this
-  session (MB)" (default 256, 16–4096). The blocks a fetch downloads (§7.5)
-  are kept in memory, least recently used first to go, so other boats of the
-  same race reuse them; quitting forgets them (D27). The compressed inner
-  chunks also use the disk cache below (asked 2026-10-07). An earlier version's on-disk chunk cache (the
-  `chunks` folder in its settings' `chunk_cache.location`, or in the platform
-  cache directory) is announced on the status line the first time a project
-  window opens, then removed in the background — only that folder, and only
-  when it holds nothing but the dataset folders the cache wrote; its
-  settings are no longer read or written.
-- **Reanalysis cache**: cache directory (empty for the platform cache folder),
-  maximum size in decimal GB (default 10, range 1–4096), and **Clear cache**.
-  A dedicated `whirlwind-hindsight-v1` child holds only validated compressed
-  inner chunks; metadata and shard indexes are read anew each provider session.
-  Chunks are reused across routes and app restarts. Cache keys include the
-  archive identity, shard ETag and byte range; changed shard versions cannot
-  reuse older data. Files have integrity checks and atomic publication;
-  damaged or incomplete entries are downloaded again. Least recently used
-  entries are evicted before writes to stay under the limit, and lowering the
-  limit prunes immediately. Clearing removes owned cache entries only and
-  invalidates in-flight writes and memory chunk reuse. Weather saved in projects
-  is unchanged. Changing directory applies to later fetches; older cache files
-  remain in their original directory.
-- **Network**: timeout (default 60 s, 5–600 s). Reanalysis downloads up
-  to 64 chunks at once, which is not a setting.
+
+  Downloaded weather is kept in session memory as needed, without an
+  application-imposed size limit. Routes reuse downloaded indexes and chunks;
+  quitting releases them. There is no persistent reanalysis cache. The former
+  `weather_memory_mb`, `weather_cache` and `network` preferences are ignored and
+  omitted when settings are saved; existing cache files are left alone. Network
+  requests use the built-in 60-second timeout and reanalysis downloads up to
+  64 chunks at once. None of these are Settings controls. The legacy `chunks`
+  cleanup from D27 still removes only the old owned dataset folders.
+
 - **Map projection** (§9.1), remembered here rather than in the project.
 - **Polar plot dot band** (§9.2): how far from the plot's wind speed a
   sample may be and still be drawn, ±0.25 to ±5 kn (default ±1 kn). A display
@@ -430,37 +420,13 @@ database's track count and the scraped tracks kept. The password stays in
 the local settings file and is never logged; MCP clients cannot reach these
 commands.
 
-**Scraping** (restored 2026-10-04) fills the library from YellowBrick, Geovoile
-and Blue Water Tracks through `pe-trackers`. It runs when the person presses
-**Scrape tracks now**, or on startup or shutdown once they choose that schedule
-(*Only on demand* is the default). The race URLs field, one per line, limits a
-scrape to those races; empty, it rescrapes the races the library knows and
-whatever each tracker lists (YellowBrick's catalogue through the optional user
-key and device ID, kept only in local settings and never logged). **Only
-finished races are saved**: every boat must have a terminal status and no
-position may lie in the future; an ongoing, future or unverifiable race is
-counted as skipped, also when listed explicitly. **A race the library
-already holds is never fetched again** (asked 2026-10-05), listed or not:
-any search record whose race address resolves to the race's key holds it,
-whatever its files (a snapshot boat that never had positions has none). A
-Geovoile address without a leg holds the leg its record's name gives ("Leg
-2", "(2/2)"), and any leg holds the race's own address. A race the scraper
-saved beside a copy the library already held is removed, records and files,
-at the next scrape's start. Races download Blue Water Tracks first, then YellowBrick, then Geovoile
-(asked 2026-10-05), discovery in the same order. Requests start at least 1 s apart, 2 s pass
-between races, and a busy answer (5xx, 429, a dropped connection) is tried
-again after 5, 10, 20, 40, 80 and 120 s, longer when the server's
-`Retry-After` asks; races still turned away are tried once more after a
-60 s pause at the end. Errors name the tracker. Each boat's track is written to
-`individual-tracks/<race id>/vessel/provided/<participant id>.geojson`, and the
-race's `CalendarEvents`, `CompetitionUnits` (with `approximateStartLocation`
-and `approximateEndLocation`), `Vessels` rows and search records are upserted
-into `boat-metadata.json` under ids derived from the race and boat, so a
-second scrape replaces its own records. The metadata is written atomically
-every ten races and at the end, so a cancelled scrape keeps what it saved.
-Progress (`library://scrape`) shows in Settings and, for a manual scrape, in
-the status bar with **Cancel scrape**; a shutdown scrape keeps the app open
-until it finishes or is cancelled.
+**Track scraping controls were removed from Settings on 2026-10-21.**
+The track library exposes its folders and the read-only database metadata
+connection. It does not start a track scrape at startup or shutdown. Older
+scrape schedules, URL lists and YellowBrick scraper credentials are ignored
+and omitted on save. Existing library files and previously scraped metadata
+remain readable. The internal scraper remains available to application code;
+it has no Settings controls or automatic schedule.
 
 The GeoJSON directory is the root of the metadata's relative storage keys. On
 the development machine the verified root is
@@ -1518,17 +1484,15 @@ spatial and temporal interpolation stencil are downloaded. It reads each
 required shard's checksummed index using a suffix Range request, then each
 required inner chunk using its exact byte range. It never downloads a complete
 shard or scans the bucket. Duplicate chunk requests are coalesced across
-positions and selected tracks, and the bounded session memory cache reuses
+positions and selected tracks, and session memory reuses
 indexes, compressed chunks and decoded chunks across routes, including
 when a later request needs different parameters
-from the same chunk. A cloud archive's validated compressed chunks are also
-kept in the bounded disk cache in Settings (§3.4), including across restarts.
-A local archive is read from its folder with the same byte ranges and no disk
-cache.
+from the same chunk, without a fixed memory cap. No downloaded chunks are
+written to a disk cache. A local archive is read from its folder with the same
+byte ranges.
 S3 reads use an async runtime with up to 64 requests in flight across tracks
 and parameters. Each shard's chunks can download as soon as its index arrives,
-without waiting for unrelated indexes. Decoding uses at most eight CPU workers;
-disk-cache reads, checksums and writes run concurrently under the cache limit.
+without waiting for unrelated indexes. Decoding uses at most eight CPU workers.
 Up to 128 queued tracks using the same archive share time-ordered batches of up
 to 72 hours per track and 10,000 total samples, planning and decoding each required chunk
 once per batch. Different Stokes choices are sampled separately. Progress and
@@ -1550,7 +1514,7 @@ lands in a shared project) and its own `uri` otherwise; the version is
 `hindsight-layout-<layout_version>`; the archive's current includes tide
 (`has_tide = Some(true)`).
 A track whose recorded archive differs (including one fetched before this
-naming) is fetched again from the start. Memory and disk cache entries are
+naming) is fetched again from the start. Memory entries are
 keyed by the same identity.
 
 For every sample:
@@ -2547,7 +2511,7 @@ immediately without a size-estimate modal (requested 2026-10-07).
 Wind, waves and currents are always sampled hourly
 (requested 2026-10-07); there is no coarser interval or size-based fallback.
 The optional MCP estimate counts the exact compressed inner chunks absent
-from the reader's memory and disk caches. Existing projects retain the recorded
+from the reader's session memory. Existing projects retain the recorded
 interval of older fetched weather; a new fetch uses hourly sampling and
 starts over if the old interval differs. GRIB weather reads also use hourly
 sampling.

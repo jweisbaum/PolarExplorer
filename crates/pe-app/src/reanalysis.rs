@@ -88,7 +88,7 @@ pub struct RememberedArchive {
     pub chunk_hours: u32,
     /// What it stores (`wind10m`, …).
     pub products: Vec<String>,
-    /// The endpoint host, or the folder, a row shows.
+    /// The cloud provider (S3, R2 or Tigris), or local folder name.
     pub place: String,
 }
 
@@ -334,8 +334,16 @@ fn probe_port(state: &AppState, port: u16) -> Result<Option<ScanResult>> {
     settings::update(state, |s| {
         s.reanalysis.port = port;
         s.reanalysis.connected_once = true;
-        let chosen = s.reanalysis.archive.as_ref().map(|a| a.id.clone());
-        if let Some(listed) = chosen.and_then(|id| listing.archives.iter().find(|a| a.id == id)) {
+        // Preserve a saved choice, including one temporarily absent from
+        // the listing. Only a new choice defaults to the first usable cloud.
+        let listed = match s.reanalysis.archive.as_ref() {
+            Some(chosen) => listing.archives.iter().find(|a| a.id == chosen.id),
+            None => listing
+                .archives
+                .iter()
+                .find(|a| a.storage == Storage::Cloud),
+        };
+        if let Some(listed) = listed {
             write_location(
                 &file,
                 &LocationFile {

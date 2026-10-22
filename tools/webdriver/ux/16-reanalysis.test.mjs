@@ -108,8 +108,14 @@ export default {
       await d.click(f("reanalysis-scan"));
       await d.waitFor(f("reanalysis-archive"), { timeoutMs: 15_000 });
       const options = `${f("reanalysis-archive")} option`;
-      const count = await until(() => d.count(options), (n) => n === 1 + listed.length);
-      assert.equal(count, 1 + listed.length, "the placeholder and every listed archive");
+      const count = await until(() => d.count(options), (n) => n === listed.length);
+      assert.equal(count, listed.length, "every listed archive, without a placeholder");
+      assert.equal(await d.text(f("reanalysis-archive")), "cloud-ux", "the first cloud archive is selected");
+      const labels = await d.run(`done([...document.querySelectorAll(arguments[0])].map(o => o.textContent));`, [options]);
+      assert.equal(labels[0], "S3 — 5° × 72 h — wind10m, waves");
+      assert.ok(labels.every(label => !label.includes("s3://") && !label.includes("127.0.0.1") && !label.includes(localFolder)));
+      const initial = JSON.parse(await readFile(settingsFile, "utf8"));
+      assert.equal(initial.reanalysis.archive.id, "cloud-ux");
       const groups = await d.run(`done([...document.querySelectorAll(arguments[0])].map(g => g.label));`, [`${f("reanalysis-archive")} optgroup`]);
       assert.deepEqual(groups, ["Cloud", "This computer"]);
       assert.ok(!(await d.exists(`${SECTION} img[alt="Hindsight Sync logo"]`)), "no warning once detected");

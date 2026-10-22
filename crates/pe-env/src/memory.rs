@@ -1,8 +1,8 @@
 //! What has been downloaded this session, kept in memory (spec.md 3.4, 13).
 //!
 //! Several boats of one race need the same reanalysis blocks, so the blocks a
-//! fetch downloads are kept, least recently used first to go, up to the size
-//! the settings allow. **Nothing here reaches the disk**: a project keeps
+//! fetch downloads are kept for reuse. The app uses an unbounded store;
+//! callers can also request a bounded store. **Nothing here reaches the disk**: a project keeps
 //! only the values interpolated at its samples (invariant 3), and quitting
 //! the application forgets the rest.
 //!
@@ -16,9 +16,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-
-/// The default in-memory limit when no setting is given, bytes.
-pub const DEFAULT_LIMIT: u64 = 256 << 20;
 
 /// Which part of a chunk an entry holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -98,6 +95,12 @@ pub struct BlockCache {
 }
 
 impl BlockCache {
+    /// Keeps the session's downloaded blocks without an application-imposed
+    /// memory cap. Allocation follows the weather actually requested.
+    pub fn unbounded() -> Arc<Self> {
+        Self::new(u64::MAX)
+    }
+
     /// An empty store holding at most `limit_bytes`.
     pub fn new(limit_bytes: u64) -> Arc<Self> {
         Arc::new(Self {

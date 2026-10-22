@@ -40,11 +40,9 @@ stop and raise it rather than working around it.
    Wind, wave and current values interpolated at each track position are
    saved in the project with the dataset name and version they came from —
    only those values, kilobytes per track. What a fetch reads is kept in
-   memory for the session (D27); for a cloud archive, validated compressed
-   Zarr inner chunks are also kept in a bounded disk cache in the selected
-   cache directory (asked 2026-10-07), and a folder archive has none. The
-   cache is disposable: clearing it never removes project weather, and only
-   owned cache files may be deleted.
+   memory for the session as needed, without a fixed cap (asked 2026-10-21).
+   Reanalysis does not write downloaded chunks to a disk cache. Existing
+   cache files are left alone, and saved project weather is unchanged.
 4. **Nothing is fetched that the user did not ask for, and nothing reaches
    in.** No CDN fonts, no map tiles, no telemetry, no remote schema fetches.
    The webview's CSP stays `'self'`-only. Only two crates may use the network:
@@ -57,10 +55,9 @@ stop and raise it rather than working around it.
    person starts it, or at startup or shutdown once they have chosen that
    schedule for it in Settings, and then at most once a day (spec §5.4).
    The SYRF track library is files the person points Settings at (asked
-   2026-10-04). Its race scraper, through `pe-trackers`, saves finished
-   races only, into those files, when the person starts it or on the
-   startup or shutdown schedule they chose. The one database connection
-   (D34, asked 2026-10-06) is `pe-app`'s `library::database`: it reads the
+   2026-10-04). Track-scraping controls and automatic schedules were removed
+   from Settings on 2026-10-21; older scraper preferences are ignored. The
+   one database connection (D34, asked 2026-10-06) is `pe-app`'s `library::database`: it reads the
    person's SYRF PostgreSQL server into `boat-metadata.json` only when they
    press **Download boat metadata**. It has no schedule, and its session and
    transaction are read-only on the server's side. It never writes, and no
@@ -128,7 +125,7 @@ crates/
                 scrapers
   pe-env/       Network: the Hindsight Sync client (loopback API); the
                 sharded-Zarr reader for the archives it lists (signed S3
-                byte ranges or a folder), memory and disk chunk caches;
+                byte ranges or a folder), session memory for downloaded chunks;
                 space-time sampling
   pe-grib/      GRIB2 writer (fixed-layout message template, as in
                 VectorEffects' ve-grib), regional grids

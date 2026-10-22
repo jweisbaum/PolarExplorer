@@ -2556,6 +2556,24 @@ Validation: workspace fmt, clippy and tests (hand-computed min, median, max
 and p90 cells, polars mixed with a track, export), UI typecheck and tests,
 and the offline check pass.
 
+### Follow-up: simplify weather and track-library settings · complete (2026-10-21)
+
+- [x] Remove downloaded-weather memory, reanalysis disk-cache and request-timeout
+  controls. Weather reuses session memory without a fixed cap and does not open
+  a disk cache; requests use the built-in timeout. Older preferences are ignored.
+- [x] Show cloud providers as S3, R2 or Tigris instead of paths. Select and save
+  the first usable cloud archive when no choice exists, preserving saved choices.
+- [x] Remove manual track-scraping controls and startup/shutdown schedules.
+  Ignore older scraper settings while retaining library folders, search, import
+  and the read-only metadata download.
+- [x] Update generated bindings, feature search, help and all eight translations.
+- [x] Native tests, formatting, Clippy, UI typecheck, all 535 UI tests,
+  production UI build, offline check and driver-tool tests pass.
+- [x] All five performance checks pass without build contention. Desktop
+  walkthroughs 05, 06, 10, 16 and 17 pass, with settings and archive screenshots
+  inspected. The library walkthrough was rerun alone after correcting its
+  translated-error assertion; all library settings, search and import checks pass.
+
 ## Native MCP integration implementation
 
 The [versioned Whirlwind MCP contract](vendor/whirlwind-mcp/README.md) is the current authority for assistant transport, installation, permission policy and job lifecycle. It supersedes earlier direct-HTTP registration, shell launchers, token-copy reinstall steps, permission-by-annotation guidance and cancellation-on-disconnect behavior. Domain tool behavior and existing file formats remain governed by the sections above.

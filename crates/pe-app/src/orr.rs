@@ -507,7 +507,7 @@ pub fn start_orr_scrape<R: tauri::Runtime>(
     }
     records(&state)?;
     let cancel = Arc::new(AtomicBool::new(false));
-    let timeout = state.with_session(|s| Ok(s.settings.network.timeout_s))?;
+    let timeout = crate::settings::DEFAULT_TIMEOUT_S;
     {
         let mut store = lock(&state.orr)?;
         if store.progress.running {

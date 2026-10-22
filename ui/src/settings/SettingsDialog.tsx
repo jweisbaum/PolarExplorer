@@ -18,8 +18,6 @@ import { describeError } from "../errors";
 import { api } from "../ipc";
 import ThemePicker from "./ThemePicker";
 import LibrarySettings from "./LibrarySettings";
-import IntegerField from "./IntegerField";
-import WeatherCache from "./WeatherCache";
 import McpSection from "./McpSection";
 import Reanalysis from "./Reanalysis";
 import OrcScraper from "./OrcScraper";
@@ -51,10 +49,9 @@ export default function SettingsDialog({ settings, onSettings, onClose, reanalys
    * draft first; a draft Rust refuses keeps the dialog open with the reason.
    */
   const flushLibrary = useRef<(() => Promise<void>) | null>(null);
-  const flushCache = useRef<(() => Promise<void>) | null>(null);
   const close = useCallback(() => {
     setError(null);
-    (flushCache.current?.() ?? Promise.resolve()).then(() => flushLibrary.current?.()).then(onClose, report);
+    (flushLibrary.current?.() ?? Promise.resolve()).then(onClose, report);
   }, [onClose]);
 
   useEffect(() => {
@@ -82,9 +79,6 @@ export default function SettingsDialog({ settings, onSettings, onClose, reanalys
       onReveal("settings:units", show),
       onReveal("settings:autosave", show),
       onReveal("settings:reanalysis", show),
-      onReveal("settings:weather", show),
-      onReveal("settings:cache", show),
-      onReveal("settings:network", show),
       onReveal("settings:mcp", show),
       onReveal("settings:orc", show),
       onReveal("settings:orr", show),
@@ -170,37 +164,6 @@ export default function SettingsDialog({ settings, onSettings, onClose, reanalys
         <section data-section="settings:reanalysis">
           <h3>{t("Reanalysis")}</h3>
           <Reanalysis settings={settings} onSettings={onSettings} onError={report} pushed={reanalysisScan} />
-        </section>
-
-        <section data-section="settings:weather">
-          <h3>{t("Downloaded weather")}</h3>
-          <p className="muted">
-            {t("A fetch downloads only the parts of the archives that hold a track's positions, and the project keeps only the wind, waves and current at each position: kilobytes per track.")}
-          </p>
-          <label className="settings-field">
-            {t("Keep downloaded weather in memory for this session (MB)")}
-            <IntegerField data-feature="settings:weather-memory" aria-label={t("Keep downloaded weather in memory for this session (MB)")}
-              title={t("Other boats of the same race reuse it instead of downloading it again. It is forgotten when PolarExplorer quits (16–4096 MB).")}
-              value={settings.weather_memory_mb} min={16} max={4096}
-              onCommit={(value) => save(api.setWeatherMemory(value))} />
-          </label>
-        </section>
-
-        <section data-section="settings:cache">
-          <h3>{t("Reanalysis cache")}</h3>
-          <WeatherCache settings={settings} onSettings={onSettings} flush={flushCache} />
-        </section>
-
-        <section data-section="settings:network">
-          <h3>{t("Network")}</h3>
-          <p className="muted">{t("Reanalysis downloads up to 64 chunks at once.")}</p>
-          <label className="settings-field">
-            {t("Request timeout (s)")}
-            <IntegerField data-feature="settings:timeout" aria-label={t("Request timeout (s)")}
-              title={t("How long one download may take before it is abandoned (5–600 s)")}
-              value={settings.network.timeout_s} min={5} max={600}
-              onCommit={(value) => save(api.setNetwork({ ...settings.network, timeout_s: value }))} />
-          </label>
         </section>
 
         <McpSection onError={setError} />

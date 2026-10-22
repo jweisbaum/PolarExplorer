@@ -305,12 +305,9 @@ pub fn open_with_mode(
     match_mode: BoatMatchMode,
     classes: &[String],
 ) -> Result<TrackerProjectResult> {
-    let (previous, settings) = state.with_session(|s| {
+    let previous = state.with_session(|s| {
         s.refuse_to_discard(discard_unsaved)?;
-        Ok((
-            s.open.as_ref().map(|o| (o.project.id.raw(), o.revision)),
-            s.settings.clone(),
-        ))
+        Ok(s.open.as_ref().map(|o| (o.project.id.raw(), o.revision)))
     })?;
     let cancel = state.boat_import.start()?;
     let _running = RunningImport(&state.boat_import);
@@ -321,7 +318,7 @@ pub fn open_with_mode(
         } else {
             let fetcher = Fetcher::new(
                 pe_trackers::event::name(reference.tracker),
-                Duration::from_secs(u64::from(settings.network.timeout_s.max(1))),
+                Duration::from_secs(u64::from(crate::settings::DEFAULT_TIMEOUT_S)),
                 cancel.clone(),
             )?;
             let event = Arc::new(client.fetch(&reference, &fetcher, &mut |p| {
