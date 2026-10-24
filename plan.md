@@ -6,6 +6,19 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-24: v0.3.15 release preflight — complete.**
+Workspace, npm, Tauri and lockfile versions now name 0.3.15 for simplified
+weather and track-library settings and the Windows MCP fixes. Regenerated
+the GRIB preview binding's stale cache comment, resolving the latest CI
+binding-drift failure. Validation: 862 Rust tests and 535 UI tests pass,
+with 23 Rust tests ignored; all five performance checks pass. Workspace
+formatting, Clippy with warnings denied, TypeScript, the production UI build,
+offline policy, release-version checks, signing-configuration tests, installer
+validation tests and driver-tool tests pass. Desktop walkthroughs and packaged
+install/signing reviews were not repeated for this version-only preflight.
+The tagged workflow builds all five platforms and publishes the beta only
+after all builds and installer checks pass.
+
 **2026-10-21: Windows MCP release failures — fixed.**
 Backported the Windows fixes from canonical shared-crate commit `874a747`,
 retaining this release's existing MCP contract. Recoverable export overwrites

@@ -2541,7 +2541,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orc-catalogue-builder"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "pe-core",
  "pe-orc",
@@ -2604,7 +2604,7 @@ checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pe-app"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2651,7 +2651,7 @@ dependencies = [
 
 [[package]]
 name = "pe-core"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "proptest",
  "serde",
@@ -2662,7 +2662,7 @@ dependencies = [
 
 [[package]]
 name = "pe-env"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "bytes",
  "crc32c",
@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "pe-grib"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "pe-core",
  "pe-grib",
@@ -2692,7 +2692,7 @@ dependencies = [
 
 [[package]]
 name = "pe-orc"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "lz4_flex",
  "pe-core",
@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "pe-polar"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "lz4_flex",
  "pe-core",
@@ -2713,7 +2713,7 @@ dependencies = [
 
 [[package]]
 name = "pe-trackers"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "base64 0.22.1",
  "dom_query",
@@ -2732,7 +2732,7 @@ dependencies = [
 
 [[package]]
 name = "pe-tracks"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "pe-core",
  "proptest",

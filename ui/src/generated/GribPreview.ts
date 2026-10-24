@@ -67,7 +67,7 @@ waves_bytes: number,
  */
 current_bytes: number,
 /**
- * Bytes already held in memory or on disk.
+ * Bytes already held in session memory.
  */
 cached_bytes: number,
 /**
