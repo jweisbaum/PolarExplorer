@@ -366,6 +366,76 @@ fn a_later_probe_refreshes_the_chosen_locations_credentials() {
 }
 
 #[test]
+fn a_new_listing_replaces_missing_or_unavailable_choices_with_the_first_usable_cloud() {
+    for reason in ["omitted", "credentials", "error", "local-only", "empty"] {
+        let root = TempRoot::new(&format!("reanalysis-removed-{reason}"));
+        let server = stub(listing("first-secret"));
+        let app = probed(&root, &server);
+        assert_eq!(reanalysis::captured(&app).unwrap().archive.id, "r2");
+
+        let mut routes = listing("replacement-secret");
+        let mut body = json!({"api_version": 1, "archives": [
+            cloud("nokey", s3("https://unavailable.invalid", Value::Null)),
+            cloud("replacement", s3("https://other.invalid", keys("replacement-secret"))),
+            cloud("second", s3("https://second.invalid", keys("second-secret")))
+        ], "errors": []});
+        match reason {
+            "credentials" => body["archives"].as_array_mut().unwrap().push(cloud(
+                "r2",
+                s3("https://acct.r2.cloudflarestorage.invalid", Value::Null),
+            )),
+            "error" => body["errors"] = json!([{"id": "r2", "error": "archive unavailable"}]),
+            "local-only" => body["archives"] = json!([]),
+            "empty" => {
+                body["archives"] = json!([]);
+                routes[1].2 = json!({"api_version": 1, "archives": [], "errors": []}).to_string();
+            }
+            _ => {}
+        }
+        routes[0].2 = body.to_string();
+        *server.routes.lock().unwrap() = routes;
+
+        let found = reanalysis::probe_now(&app).unwrap();
+        assert!(found.detected);
+        assert!(found.archives.iter().all(|a| a.id != "r2"));
+        assert!(reanalysis::archive_set(&app, Some("r2".to_owned())).is_err());
+        let restarted = root.state();
+        assert!(reanalysis::probe_now(&restarted).unwrap().detected);
+        if matches!(reason, "local-only" | "empty") {
+            assert!(
+                settings::current(&app)
+                    .unwrap()
+                    .reanalysis
+                    .archive
+                    .is_none()
+            );
+            assert!(!reanalysis::location_path(&app.paths).exists());
+            assert_eq!(
+                reanalysis::captured(&app).unwrap_err().to_string(),
+                NO_ARCHIVE
+            );
+            assert!(
+                settings::current(&restarted)
+                    .unwrap()
+                    .reanalysis
+                    .archive
+                    .is_none()
+            );
+        } else {
+            for state in [&app, &restarted] {
+                assert_eq!(
+                    reanalysis::captured(state).unwrap().archive.id,
+                    "replacement"
+                );
+            }
+            let location = location_text(&app);
+            assert!(location.contains("replacement-secret"));
+            assert!(!location.contains("first-secret"));
+        }
+    }
+}
+
+#[test]
 fn scan_tries_the_saved_port_then_the_default_then_the_sibling() {
     let root = TempRoot::new("reanalysis-scan");
     // On the saved port something answers, but not Hindsight Sync.

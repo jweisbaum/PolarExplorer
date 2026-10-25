@@ -337,15 +337,18 @@ or a failed write leaves the previous setting in place.
   `connected_once` (never cleared), replaces the list of archives kept in
   memory for the session, and, when it lists the chosen archive, refreshes
   the remembered details and location (credentials rotate in Hindsight
-  Sync). A probe that does not answer changes nothing.
-  **Reanalysis archive** lists the archives cloud first, then this
-  computer's. Cloud rows show S3, R2 or Tigris instead of full paths or
-  endpoints, followed by chunk sizes and products. With no saved choice,
+  Sync). If the chosen archive is missing or unavailable in that response,
+  the first usable cloud archive replaces it; with none, the choice and its
+  remembered location and credentials are cleared. A probe that does not
+  answer changes nothing.
+  **Reanalysis archive** lists only usable archives from the latest response,
+  cloud first, then this computer's. Cloud rows show S3, R2 or Tigris instead
+  of full paths or endpoints, followed by chunk sizes and products. With no saved choice,
   the first usable cloud archive is selected and persisted automatically;
-  an existing choice is preserved, even when temporarily unlisted. A local-only
-  list requires an explicit choice. An archive Hindsight Sync lists in
-  `errors`, or a cloud archive whose
-  credentials are null, cannot be chosen, and its reason is given. Choosing
+  an existing choice is preserved only while still usable in the latest list.
+  A local-only list requires an explicit choice. Archives Hindsight Sync lists
+  in `errors`, cloud archives whose credentials are null, and remembered
+  archives absent from the latest list are omitted from the options. Choosing
   stores the archive's display details in `settings.json` under
   `reanalysis` (`port`, `connected_once`, `archive`: id, name, storage, uri,
   source uri, mode, start, stop, layout version, chunk degrees and hours,
@@ -501,6 +504,17 @@ The VectorEffects i18n system is copied (D10):
   screen; changing it relabels everything immediately, including the native
   menu, which Rust rebuilds from a translated table (`menu.rs`) on every
   language change.
+  When no supported language has been saved, the first launch chooses the
+  first supported language in the OS's preferred UI-language list. Regional
+  locales map to the bundled base language (`fr-CA` → `fr`, `de-AT` → `de`);
+  if no preference matches, English is used. Rust saves that initial choice
+  before creating the native menu. A saved choice, including English, always
+  wins on later launches even if the OS preferences change. An absent language
+  in an older settings file is initialised the same way while retaining the
+  other preferences. The first webview frame uses its cached choice, or the
+  OS/browser preference list until Rust's settings arrive. An unreadable file
+  is not overwritten just to save the initial language, and a save failure
+  does not prevent launch.
   Existing status messages and their translated parameters follow the new
   language too; shortcut modifiers use its keyboard names.
 - `coverage.test.ts` fails on a missing, unused or untranslated key, and on

@@ -131,7 +131,6 @@ const catalogue: Record<string, string> = {
   "Choose an archive…": "Choisir une archive…",
   "Cloud": "Cloud",
   "This computer": "Cet ordinateur",
-  "(no longer listed)": "(n’est plus listée)",
   "Hindsight Sync is not running. The remembered archive is still used for fetches.": "Hindsight Sync n’est pas lancé. L’archive mémorisée sert toujours aux téléchargements.",
   "Hindsight Sync is not running. No archive is chosen.": "Hindsight Sync n’est pas lancé. Aucune archive n’est choisie.",
   "Connected to Hindsight Sync on port {port}": "Connecté à Hindsight Sync sur le port {port}",

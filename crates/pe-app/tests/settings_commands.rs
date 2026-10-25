@@ -83,10 +83,12 @@ fn a_refused_value_changes_nothing() {
 fn a_failed_write_puts_the_previous_value_back() {
     let root = TempRoot::new("settings-write");
     let app = root.state();
+    let before = settings::current(&app).unwrap();
     // A folder where the file should be: every write fails.
+    std::fs::remove_file(app.paths.settings_file()).unwrap();
     std::fs::create_dir_all(app.paths.settings_file()).unwrap();
     assert!(settings::language_set(&app, "de".to_owned()).is_err());
-    assert_eq!(settings::current(&app).unwrap().language, "en");
+    assert_eq!(settings::current(&app).unwrap(), before);
 }
 
 #[test]

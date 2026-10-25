@@ -138,7 +138,7 @@ describe("the Reanalysis section", () => {
     expect(host.textContent).toContain("Hindsight Sync is not running. No archive is chosen.");
   });
 
-  it("detected defaults to the first cloud and shows providers without paths, with unavailable rows disabled", async () => {
+  it("detected shows only usable archives from the latest listing, grouped without paths", async () => {
     probe = LISTING;
     await mount();
     expect(q(".reanalysis-warning")).toBeNull();
@@ -151,11 +151,9 @@ describe("the Reanalysis section", () => {
       [o.textContent, o.disabled, o.getAttribute("title")]);
     expect(rows(groups[0]!)).toEqual([
       ["S3 — 10° × 24 h — wind10m, waves", false, null],
-      ["S3", true, "No credentials for this bucket"],
     ]);
     expect(rows(groups[1]!)).toEqual([
       ["Atlantic copy — 5° × 12 h — wind10m", false, null],
-      ["u2", true, "Folder missing"],
     ]);
     expect(host.textContent).toContain("Connected to Hindsight Sync on port 8765");
   });
@@ -202,17 +200,58 @@ describe("the Reanalysis section", () => {
     expect(select.value).toBe("c1");
   });
 
-  it("a remembered archive missing from the list is appended as (no longer listed) and stays selected", async () => {
+  it("never adds a remembered archive missing from the latest listing back to the options", async () => {
     probe = LISTING;
     settings = reanalysis(8765, true, GONE);
     await mount();
     const select = feature<HTMLSelectElement>("settings:reanalysis-archive")!;
-    expect(select.value).toBe("old");
-    const cloud = select.querySelector("optgroup")!;
-    const last = cloud.querySelector("option:last-child")!;
-    expect(last.textContent).toBe("S3 — 10° × 24 h — wind10m, waves (no longer listed)");
-    expect((last as HTMLOptionElement).selected).toBe(true);
+    expect(select.value).toBe("");
+    expect([...select.options].map(option => option.value)).toEqual(["", "c1", "l1"]);
+    expect(host.textContent).not.toContain("1990-01-01 to 2025-12-31");
     expect(commands()).not.toContain("set_reanalysis_archive");
+  });
+
+  it("a new scan replaces the previous options and removes an unavailable selected archive", async () => {
+    probe = LISTING;
+    await mount();
+    scan = async () => {
+      settings = reanalysis(8765, true, null);
+      return { ...LISTING, archives: [LOCAL], unavailable: [
+        { id: CLOUD.id, name: "S3", storage: "cloud", reason: "Archive removed" },
+      ] };
+    };
+    await act(async () => { feature<HTMLButtonElement>("settings:reanalysis-scan")!.click(); });
+    await settle();
+    const select = feature<HTMLSelectElement>("settings:reanalysis-archive")!;
+    expect([...select.options].map(option => option.value)).toEqual(["", "l1"]);
+    expect(select.value).toBe("");
+    expect([...select.querySelectorAll("optgroup")].map(group => group.label)).toEqual(["This computer"]);
+    expect(host.textContent).not.toContain("S3");
+    expect(host.textContent).not.toContain("1990-01-01 to 2025-12-31");
+  });
+
+  it("a refreshed listing shows the replacement cloud archive selected by the backend", async () => {
+    probe = LISTING;
+    await mount();
+    const replacement = { ...CLOUD, id: "r2", place: "R2" };
+    scan = async () => {
+      settings = reanalysis(8765, true, replacement);
+      return { ...LISTING, archives: [replacement, LOCAL], unavailable: [] };
+    };
+    await act(async () => { feature<HTMLButtonElement>("settings:reanalysis-scan")!.click(); });
+    await settle();
+    const select = feature<HTMLSelectElement>("settings:reanalysis-archive")!;
+    expect([...select.options].map(option => option.value)).toEqual(["r2", "l1"]);
+    expect(select.value).toBe("r2");
+    expect(host.textContent).not.toContain("S3");
+  });
+
+  it("an empty usable listing does not resurrect a remembered or unavailable archive", async () => {
+    probe = { ...LISTING, archives: [] };
+    settings = reanalysis(8765, true, GONE);
+    await mount();
+    expect(host.textContent).toContain("Hindsight Sync lists no reanalysis archives.");
+    expect(feature("settings:reanalysis-archive")).toBeNull();
   });
 
   it("an empty listing shows the no-archives line", async () => {

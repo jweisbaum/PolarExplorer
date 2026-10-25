@@ -26,6 +26,7 @@ const SECTION = '[data-section="settings:reanalysis"]';
 
 let root = null;
 let fake = null;
+let listed = [];
 
 /** Polls `read` until `ok` holds of its value, for at most `ms`. */
 async function until(read, ok, ms = 10_000) {
@@ -73,7 +74,8 @@ export default {
     // A first run on a closed port; the fake's port is learnt now and closed until wanted.
     await writeFile(join(root, "config", "settings.json"),
       JSON.stringify({ reanalysis: { port: 9, connected_once: false, archive: null } }));
-    fake = await fakeHindsightSync(archives(join(root, "hindsight-local-copy")));
+    listed = archives(join(root, "hindsight-local-copy"));
+    fake = await fakeHindsightSync(listed);
     await fake.close();
     return {
       env: { PE_AUTOMATION_ROOT: root, PE_DRIVER_HINDSIGHT_PORT: String(fake.port) },
@@ -88,7 +90,6 @@ export default {
     const settingsFile = join(root, "config", "settings.json");
     const locationFile = join(root, "config", "reanalysis-archive.json");
     const localFolder = join(root, "hindsight-local-copy");
-    const listed = archives(localFolder);
     await newProject(d, "Reanalysis");
 
     // 1. The first-run warning.
@@ -121,6 +122,31 @@ export default {
       assert.ok(!(await d.exists(`${SECTION} img[alt="Hindsight Sync logo"]`)), "no warning once detected");
       await d.run(`document.querySelector(arguments[0]).scrollIntoView({ block: "center" }); done(true);`, [SECTION]);
       await t.shot("detected");
+
+      // A fresh listing replaces S3 with R2: only the newest options remain,
+      // and the first usable cloud archive becomes the saved selection.
+      const removed = listed.shift();
+      listed.unshift({ ...removed, id: "r2-ux", name: "UX R2", uri: "r2://ux-bucket/hindsight",
+        location: { ...removed.location, provider: "r2" } });
+      await d.click(f("reanalysis-scan"));
+      await d.waitFor(f("reanalysis-archive"), { text: "R2" });
+      assert.equal(await d.text(f("reanalysis-archive")), "r2-ux");
+      assert.deepEqual(await d.run(`done([...document.querySelectorAll(arguments[0])].map(o => o.value));`, [options]), ["r2-ux", "local-ux"]);
+      assert.ok(!(await d.text(SECTION)).includes("S3"));
+      assert.equal(JSON.parse(await readFile(settingsFile, "utf8")).reanalysis.archive.id, "r2-ux");
+      assert.equal(JSON.parse(await readFile(locationFile, "utf8")).id, "r2-ux");
+      await t.shot("replaced-source");
+
+      // With no cloud replacement, clear the choice and remembered credentials.
+      listed.shift();
+      await d.click(f("reanalysis-scan"));
+      await d.waitFor(f("reanalysis-archive"), { text: "Choose an archive…" });
+      const refreshed = await d.run(`done([...document.querySelectorAll(arguments[0])].map(o => o.value));`, [options]);
+      assert.deepEqual(refreshed, ["", "local-ux"]);
+      assert.ok(!(await d.text(SECTION)).includes("S3"));
+      assert.equal(JSON.parse(await readFile(settingsFile, "utf8")).reanalysis.archive, null);
+      await assert.rejects(access(locationFile), { code: "ENOENT" });
+      await t.shot("removed-source");
 
       // Choose the local copy.
       await d.type(f("reanalysis-archive"), "local-ux");

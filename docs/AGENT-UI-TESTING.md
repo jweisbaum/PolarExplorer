@@ -145,6 +145,7 @@ matching model evidence.
 | Seam | Where | Only in | Why |
 |---|---|---|---|
 | `PE_AUTOMATION_ROOT` | `pe-app/src/paths.rs` | `webdriver` feature | A run must not write the person's settings or recovery files |
+| `PE_DRIVER_LOCALES=fr-CA:en-US` | `pe-app/src/settings.rs` | `webdriver` feature, with `PE_AUTOMATION_ROOT` | Tests initial language selection without changing the person's OS preferences; the driver defaults to `en-US` |
 | `PE_DRIVER_YELLOWBRICK=http://127.0.0.1:<port>` | `pe-app/src/trackers.rs` | `webdriver` feature, loopback only | The tracker dialog end to end without the network |
 | `window.__peDialogAnswers` | `ui/src/automation.ts`, `project/dialogs.ts` | dev builds | A native file picker is outside the webview |
 | `window.__peOpen(path)` | `ui/src/App.tsx` | dev builds | Opening through the app's own path, not a bare `open_project` |

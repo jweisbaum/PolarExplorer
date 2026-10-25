@@ -6,6 +6,42 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-25: Initial language from OS preferences — complete.**
+Before building the native menu, a launch without a saved supported language
+chooses the first supported OS preference, matches regional tags to bundled
+languages, and persists the choice. English is the fallback. Existing choices
+win on later launches, including explicitly saved English. Other settings are
+retained, unreadable files are not overwritten, and save failures do not block
+launch. The first UI frame also matches browser/OS preferences until the saved
+backend settings arrive. The small `sys-locale` dependency reads native OS
+preferences; isolated desktop tests can supply a language list without changing
+the person's OS settings.
+Validation: 869 Rust tests, 544 UI tests, ten driver-tool tests and all five
+performance checks pass; 23 Rust tests remain ignored. Formatting, Clippy with
+warnings denied, TypeScript, the production UI build and offline policy pass.
+Three real desktop walkthroughs pass: first-launch French from regional OS
+preferences, a saved English choice over French OS preferences, and language
+switching in Settings. All five screenshots were inspected. Initial language
+persistence retains legacy fields needed by startup migrations. Native builds
+and temporary files used the external drive; existing local release output was
+preserved there with a link at `target/release` after the internal disk filled.
+
+**2026-10-25: Latest Hindsight Sync archive choices — complete.**
+The selector shows only usable archives in Hindsight Sync's latest response.
+Missing and unavailable sources are removed, including a remembered selection.
+If the selected source disappears, the first usable cloud archive replaces it;
+with no cloud replacement, the choice and remembered credentials are cleared.
+A valid choice is preserved, and a failed connection to Hindsight Sync keeps
+the last working selection. Regression coverage includes replacement order,
+missing credentials, API errors, empty and local-only listings, persistence,
+and the desktop selector switching from S3 to R2.
+Validation: 863 Rust tests, 538 UI tests and all five performance checks pass;
+23 Rust tests remain ignored. Formatting, Clippy with warnings denied,
+TypeScript, the production UI build and offline policy pass. The real desktop
+walkthrough passes, with the replacement and empty-selection screenshots
+visually checked. Native tests and their temporary files used the external
+drive after the internal temporary directory ran out of space.
+
 **2026-10-24: v0.3.15 release preflight — complete.**
 Workspace, npm, Tauri and lockfile versions now name 0.3.15 for simplified
 weather and track-library settings and the Windows MCP fixes. Regenerated

@@ -80,7 +80,10 @@ blocked or identified as unverified by the operating system; the release notes
 should state their signing status.
 
 Press **F1**, use **?**, or choose **PolarExplorer Help** for the offline reference.
-Settings changes the interface and help language. The title-bar search finds
+On the first launch, the app uses the first supported language from your
+operating system's preferences, falling back to English if none is available.
+It remembers that choice; later OS changes do not replace a saved language.
+Settings or the start-screen language picker changes the interface and help language. The title-bar search finds
 controls by name and highlights them when selected. This guide uses English labels;
 the built-in reference provides the same instructions in French, German, Spanish,
 Italian, Dutch, Chinese, Japanese and Arabic. Arabic is laid out right to left.
@@ -202,9 +205,11 @@ reanalysis (hindsight-sync.whirlwindai.com). Until PolarExplorer finds it,
 and, once it connects, the warning disappears. **Reanalysis archive** then
 lists what Hindsight Sync offers, grouped **Cloud** and **This computer**,
 cloud rows showing S3, R2 or Tigris, chunk sizes and products instead of full
-paths. An unavailable archive is greyed with its reason. With no saved choice,
-the first usable cloud archive is selected automatically. A previous choice
-is preserved; a local-only list requires you to choose an archive. PolarExplorer remembers the chosen
+paths. Only usable archives from the latest response appear. With no saved
+choice, or if the chosen archive disappears or becomes unavailable, the first
+usable cloud archive is selected automatically. If none is available, the choice and remembered
+credentials are cleared; choose a local archive if one is listed. A choice
+still in the list is preserved. PolarExplorer remembers the chosen
 archive's location and credentials, so fetches keep working while Hindsight
 Sync is closed. Downloaded weather is reused in session memory as needed,
 without a fixed memory limit or a disk cache.

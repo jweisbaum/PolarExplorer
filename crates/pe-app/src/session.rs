@@ -192,7 +192,7 @@ impl Session {
             open: None,
             boats: Vec::new(),
             removed_boats: Vec::new(),
-            settings: Settings::load(settings_file),
+            settings: Settings::load_on_startup(settings_file),
         }
     }
 

@@ -113,30 +113,26 @@ export default function Reanalysis({ settings, onSettings, onError, pushed }: {
     </>;
   }
 
-  const listed = archive !== null && result.archives.some(a => a.id === archive.id);
-  const empty = result.archives.length === 0 && result.unavailable.length === 0;
+  const selected = result.archives.find(a => a.id === archive?.id) ?? null;
+  const empty = result.archives.length === 0;
   // The mode is Hindsight Sync's identifier (`global`, …), shown as it is.
-  const range = archive === null ? null : `${archive.stop === null
-    ? t("from {start}, ongoing", { start: day(archive.start) })
-    : t("{start} to {stop}", { start: day(archive.start), stop: day(archive.stop) })} · ${archive.mode}`;
+  const range = selected === null ? null : `${selected.stop === null
+    ? t("from {start}, ongoing", { start: day(selected.start) })
+    : t("{start} to {stop}", { start: day(selected.start), stop: day(selected.stop) })} · ${selected.mode}`;
   const status = [t("Connected to Hindsight Sync on port {port}", { port: result.port }), range].filter(Boolean).join(" — ");
 
   return <>
     {empty && <p className="muted">{t("Hindsight Sync lists no reanalysis archives.")}</p>}
-    {(!empty || archive !== null) && <label className="settings-field">
+    {!empty && <label className="settings-field">
       {t("Reanalysis archive")}
       <select data-feature="settings:reanalysis-archive" aria-label={t("Reanalysis archive")}
-        value={archive?.id ?? ""} onChange={event => choose(event.target.value)}>
-        {archive === null && <option value="">{t("Choose an archive…")}</option>}
+        value={selected?.id ?? ""} onChange={event => choose(event.target.value)}>
+        {selected === null && <option value="">{t("Choose an archive…")}</option>}
         {STORAGES.map(storage => {
           const archives = result.archives.filter(a => a.storage === storage);
-          const unavailable = result.unavailable.filter(u => u.storage === storage);
-          const gone = archive !== null && !listed && archive.storage === storage ? archive : null;
-          if (archives.length === 0 && unavailable.length === 0 && gone === null) return null;
+          if (archives.length === 0) return null;
           return <optgroup key={storage} label={storage === "cloud" ? t("Cloud") : t("This computer")}>
             {archives.map(a => <option key={a.id} value={a.id}>{row(a)}</option>)}
-            {unavailable.map(u => <option key={`unavailable:${u.id}`} value={`unavailable:${u.id}`} disabled title={u.reason}>{u.storage === "cloud" ? provider(u.name ?? u.id) : basename(u.name ?? u.id)}</option>)}
-            {gone && <option value={gone.id}>{`${row(gone)} ${t("(no longer listed)")}`}</option>}
           </optgroup>;
         })}
       </select>

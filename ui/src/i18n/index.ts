@@ -16,7 +16,8 @@
  * The language is a person's preference, saved in `settings.json` by
  * `set_language`. A copy is kept in `localStorage` only so the first frame
  * after launch is already in the right language; the settings file is the
- * authority and overwrites it when it loads.
+ * authority and overwrites it when it loads. Without a cached choice, the
+ * first frame follows the webview's OS-language preferences.
  */
 
 import { useSyncExternalStore } from "react";
@@ -67,7 +68,13 @@ function initial(): Language {
     const saved = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (known(saved)) return saved;
   } catch {
-    // Storage can be unavailable; English until the settings arrive.
+    // Storage can be unavailable; use OS preferences until settings arrive.
+  }
+  const locales = globalThis.navigator?.languages?.length
+    ? globalThis.navigator.languages : [globalThis.navigator?.language ?? ""];
+  for (const locale of locales) {
+    const base = locale.trim().split(/[-_.@]/, 1)[0]?.toLowerCase();
+    if (known(base)) return base;
   }
   return "en";
 }
@@ -93,13 +100,14 @@ export function language(): Language {
  * only changes what is shown, and is what the settings' arrival calls too.
  */
 export function setLanguage(next: string): void {
-  if (!known(next) || next === current) return;
-  current = next;
+  if (!known(next)) return;
   try {
     globalThis.localStorage?.setItem(STORAGE_KEY, next);
   } catch {
     // A convenience copy; the settings file is the authority.
   }
+  if (next === current) return;
+  current = next;
   applyDocumentLanguage();
   for (const listener of listeners) listener();
 }

@@ -319,7 +319,8 @@ fn last_listing(state: &AppState) -> Option<Listing> {
 
 /// Asks `port` once. Detected: the listing is kept for the session, the
 /// port saved, `connected_once` set, and the chosen archive's details and
-/// location refreshed when the listing names it. Not detected: nothing
+/// location refreshed when the listing names it. A missing choice falls
+/// back to the first usable cloud archive, or is cleared. Not detected: nothing
 /// changes, and the result carries the last listing heard.
 fn probe_port(state: &AppState, port: u16) -> Result<Option<ScanResult>> {
     let listing =
@@ -334,15 +335,19 @@ fn probe_port(state: &AppState, port: u16) -> Result<Option<ScanResult>> {
     settings::update(state, |s| {
         s.reanalysis.port = port;
         s.reanalysis.connected_once = true;
-        // Preserve a saved choice, including one temporarily absent from
-        // the listing. Only a new choice defaults to the first usable cloud.
-        let listed = match s.reanalysis.archive.as_ref() {
-            Some(chosen) => listing.archives.iter().find(|a| a.id == chosen.id),
-            None => listing
-                .archives
-                .iter()
-                .find(|a| a.storage == Storage::Cloud),
-        };
+        // A choice must still be usable in the latest listing. When it is
+        // gone, follow Hindsight Sync's order for a replacement cloud archive.
+        let listed = s
+            .reanalysis
+            .archive
+            .as_ref()
+            .and_then(|chosen| listing.archives.iter().find(|a| a.id == chosen.id))
+            .or_else(|| {
+                listing
+                    .archives
+                    .iter()
+                    .find(|a| a.storage == Storage::Cloud)
+            });
         if let Some(listed) = listed {
             write_location(
                 &file,
@@ -352,6 +357,9 @@ fn probe_port(state: &AppState, port: u16) -> Result<Option<ScanResult>> {
                 },
             )?;
             s.reanalysis.archive = Some(listed.into());
+        } else if s.reanalysis.archive.is_some() {
+            remove_location(&file)?;
+            s.reanalysis.archive = None;
         }
         Ok(())
     })?;
@@ -482,14 +490,9 @@ pub fn archive_set(state: &AppState, id: Option<String>) -> Result<Settings> {
     let Some(id) = id else {
         let file = location_path(&state.paths);
         return settings::update(state, |s| {
+            remove_location(&file)?;
             s.reanalysis.archive = None;
-            match std::fs::remove_file(&file) {
-                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e).doing(
-                    "remove the reanalysis archive's location at",
-                    file.display(),
-                ),
-                _ => Ok(()),
-            }
+            Ok(())
         });
     };
     let listing = last_listing(state).unwrap_or_default();
@@ -507,6 +510,16 @@ pub fn archive_set(state: &AppState, id: Option<String>) -> Result<Settings> {
         field: "Reanalysis archive",
         value: id,
     })
+}
+
+fn remove_location(file: &Path) -> Result<()> {
+    match std::fs::remove_file(file) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e).doing(
+            "remove the reanalysis archive's location at",
+            file.display(),
+        ),
+        _ => Ok(()),
+    }
 }
 
 /// Probes once at startup, off the main thread; tells the frontend what it

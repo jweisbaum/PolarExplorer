@@ -230,12 +230,89 @@ fn read_field<T: DeserializeOwned>(
     }
 }
 
+fn read_settings(file: &Path) -> Option<serde_json::Value> {
+    std::fs::read_to_string(file)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+}
+
+/// Match regional/script locales to the languages shipped with the app,
+/// respecting the person's preference order. English is the final fallback.
+fn preferred_language(locales: impl IntoIterator<Item = impl AsRef<str>>) -> &'static str {
+    locales
+        .into_iter()
+        .find_map(|locale| {
+            let base = locale.as_ref().trim().split(['-', '_', '.', '@']).next()?;
+            LANGUAGES
+                .iter()
+                .copied()
+                .find(|id| id.eq_ignore_ascii_case(base))
+        })
+        .unwrap_or(LANGUAGES[0])
+}
+
+fn preferred_locales() -> Vec<String> {
+    // Only an isolated WebDriver run may replace OS preferences. A release
+    // build always asks the native platform APIs through sys-locale.
+    #[cfg(feature = "webdriver")]
+    if std::env::var_os("PE_AUTOMATION_ROOT").is_some()
+        && let Ok(locales) = std::env::var("PE_DRIVER_LOCALES")
+    {
+        return locales.split(':').map(str::to_owned).collect();
+    }
+    sys_locale::get_locales().collect()
+}
+
 impl Settings {
     /// Reads the settings, falling back to defaults on any failure.
     pub fn load(file: &Path) -> Self {
-        let value: Option<serde_json::Value> = std::fs::read_to_string(file)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok());
+        Self::from_value(read_settings(file))
+    }
+
+    /// Chooses and remembers the initial language before the native menu and
+    /// webview read settings. An existing supported choice always wins.
+    pub(crate) fn load_on_startup(file: &Path) -> Self {
+        Self::load_with_locales(file, preferred_locales())
+    }
+
+    fn load_with_locales(file: &Path, locales: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        let value = read_settings(file);
+        let has_language = value
+            .as_ref()
+            .and_then(|value| value.get("language"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|language| LANGUAGES.contains(&language));
+        // Do not overwrite a broken or unreadable existing settings file just
+        // to remember a language. The usual load fallback still permits launch.
+        let can_save = value.as_ref().is_some_and(serde_json::Value::is_object) || !file.exists();
+        let mut settings = Self::from_value(value.clone());
+        if !has_language {
+            settings.language = preferred_language(locales).to_owned();
+            if can_save && let Err(error) = settings.save_initial_language(file, value) {
+                eprintln!("Could not remember the initial interface language: {error}");
+            }
+        }
+        settings
+    }
+
+    fn save_initial_language(
+        &self,
+        file: &Path,
+        original: Option<serde_json::Value>,
+    ) -> Result<()> {
+        let Some(serde_json::Value::Object(mut object)) = original else {
+            return self.save(file);
+        };
+        // Keep legacy and unknown fields: startup migrations (such as locating
+        // an earlier version's cache) may still need them after this load.
+        object.insert("language".to_owned(), self.language.clone().into());
+        let json = serde_json::to_vec_pretty(&object)
+            .doing("write the initial interface language to", file.display())?;
+        pe_core::io::write_atomic_private(file, &json)
+            .doing("write the initial interface language to", file.display())
+    }
+
+    fn from_value(value: Option<serde_json::Value>) -> Self {
         let mut settings = Self::default();
         if let Some(serde_json::Value::Object(object)) = value {
             if let Some(serde_json::Value::Object(library)) =
@@ -752,6 +829,110 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn os_locales_match_supported_languages_in_preference_order() {
+        for (locales, expected) in [
+            (vec!["pt-BR", "fr-CA", "de-DE"], "fr"),
+            (vec!["EN_gb.UTF-8"], "en"),
+            (vec!["de_AT@euro"], "de"),
+            (vec!["es-MX"], "es"),
+            (vec!["it-CH"], "it"),
+            (vec!["nl-BE"], "nl"),
+            (vec!["zh-Hans-CN"], "zh"),
+            (vec!["ja-JP"], "ja"),
+            (vec!["ar-EG"], "ar"),
+            (vec!["C", "POSIX", "pt-BR"], "en"),
+            (vec![], "en"),
+        ] {
+            assert_eq!(preferred_language(locales), expected);
+        }
+    }
+
+    #[test]
+    fn the_first_launch_remembers_the_os_language_across_later_os_changes() {
+        let dir = temp("initial-language");
+        let file = dir.join("settings.json");
+        let first = Settings::load_with_locales(&file, ["pt-BR", "fr-CA", "en-US"]);
+        assert_eq!(first.language, "fr");
+        assert_eq!(Settings::load(&file).language, "fr");
+        assert_eq!(Settings::load_with_locales(&file, ["de-DE"]).language, "fr");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_saved_language_including_english_is_never_replaced_by_os_preferences() {
+        let dir = temp("saved-language");
+        let file = dir.join("settings.json");
+        for language in LANGUAGES {
+            let original = format!(r#"{{ "language": "{language}", "theme": "paper" }}"#);
+            std::fs::write(&file, &original).unwrap();
+            let loaded = Settings::load_with_locales(&file, ["fr-CA", "de-DE"]);
+            assert_eq!(&loaded.language, language);
+            assert_eq!(loaded.theme, "paper");
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn initialising_an_unset_language_preserves_other_preferences() {
+        let dir = temp("unset-language");
+        let file = dir.join("settings.json");
+        for language in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!("")),
+        ] {
+            let mut value = serde_json::json!({"theme": "paper", "autosave": "off",
+                "recent_projects": ["/keep.wpsproj"], "units": {"distance": "km"},
+                "chunk_cache": {"location": "/keep-cache"}, "future_setting": {"enabled": true}});
+            if let Some(language) = language {
+                value["language"] = language;
+            }
+            std::fs::write(&file, value.to_string()).unwrap();
+            let loaded = Settings::load_with_locales(&file, ["ar-EG"]);
+            assert_eq!(loaded.language, "ar");
+            assert_eq!(loaded.theme, "paper");
+            assert_eq!(loaded.autosave, AutosaveMode::Off);
+            assert_eq!(loaded.recent_projects, [PathBuf::from("/keep.wpsproj")]);
+            assert_eq!(loaded.units.distance, DistanceUnit::Km);
+            assert_eq!(Settings::load(&file), loaded);
+            value["language"] = serde_json::json!("ar");
+            assert_eq!(
+                read_settings(&file).unwrap(),
+                value,
+                "only the language field changes"
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_unsupported_os_language_uses_and_remembers_english() {
+        let dir = temp("language-fallback");
+        let file = dir.join("settings.json");
+        assert_eq!(Settings::load_with_locales(&file, ["pt-BR"]).language, "en");
+        assert_eq!(Settings::load_with_locales(&file, ["fr-FR"]).language, "en");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn language_detection_does_not_overwrite_a_broken_settings_file_or_block_launch() {
+        let dir = temp("language-read-error");
+        let file = dir.join("settings.json");
+        std::fs::write(&file, "{ broken json").unwrap();
+        assert_eq!(Settings::load_with_locales(&file, ["fr-FR"]).language, "fr");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{ broken json");
+
+        // A file in place of the parent directory makes persistence fail.
+        let impossible = file.join("settings.json");
+        assert_eq!(
+            Settings::load_with_locales(&impossible, ["de-DE"]).language,
+            "de"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     /// A file written before the MCP service existed loads with it off,

@@ -159,6 +159,7 @@ export async function launch({ cwd = ROOT, onLog, env = {}, timeoutMs = START_TI
         ...process.env,
         FORCE_COLOR: "0",
         CARGO_INCREMENTAL: process.env.CARGO_INCREMENTAL ?? "0",
+        PE_DRIVER_LOCALES: process.env.PE_DRIVER_LOCALES ?? "en-US",
         ...env,
         PE_DEV_PORT: devPort,
         PE_AUTOMATION_ROOT: automationRoot,

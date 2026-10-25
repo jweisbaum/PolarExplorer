@@ -130,7 +130,6 @@ const catalogue: Record<string, string> = {
   "Choose an archive…": "اختر أرشيفًا…",
   "Cloud": "السحابة",
   "This computer": "هذا الحاسوب",
-  "(no longer listed)": "(لم يعد مدرجًا)",
   "Hindsight Sync is not running. The remembered archive is still used for fetches.": "Hindsight Sync لا يعمل. لا يزال الأرشيف المحفوظ يُستخدم في التنزيلات.",
   "Hindsight Sync is not running. No archive is chosen.": "Hindsight Sync لا يعمل. لم يُختر أي أرشيف.",
   "Connected to Hindsight Sync on port {port}": "متصل بـ Hindsight Sync على المنفذ {port}",
