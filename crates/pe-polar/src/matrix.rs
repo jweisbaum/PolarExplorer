@@ -6,6 +6,9 @@
 use pe_core::polar::{GaussianPdf, PolarGrid, WhirlwindMatrixPolar, validate_axis};
 use thiserror::Error;
 
+mod p90;
+pub use p90::to_p90_polar;
+
 const MAGIC: &[u8; 8] = b"WWMPOLAR";
 const VERSION: u16 = 1;
 const MODE_SOG: u16 = 1;
