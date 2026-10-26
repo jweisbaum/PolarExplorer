@@ -6,6 +6,20 @@ How PolarExplorer gets built, in order. `spec.md` says what it does;
 `CLAUDE.md` says how to work in the code. Update a milestone's status in the
 same commit that finishes it.
 
+**2026-10-26: Windows Claude Desktop setup — complete.**
+Use the shared native installer to register tools in Claude Desktop's actual
+Windows profile, including MSIX. Preserve and back up other settings, refuse
+foreign same-name entries, and support repair and removal. Show translated
+quit/connect/reopen instructions. Verify registration before reporting success.
+Validation: 869 Rust tests and 545 UI tests pass, with 23 Rust tests ignored.
+Formatting, strict Clippy, type checking, UI build, offline policy and all five
+performance checks pass. The shared installer passes 23 tests in its canonical
+crate and 24 with this app's retained legacy grants export. The isolated native
+Settings walkthrough passes; its Windows setup screenshot was inspected. Windows
+profile, conflict, backup, repair and removal fixtures run locally; the Windows
+native registration/launcher contract is added to existing CI, but Windows
+runtime validation has not run on this macOS host.
+
 **2026-10-25: Initial language from OS preferences — complete.**
 Before building the native menu, a launch without a saved supported language
 chooses the first supported OS preference, matches regional tags to bundled

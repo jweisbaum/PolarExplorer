@@ -21,11 +21,14 @@ export default {
     await d.click('[data-feature="shell:settings"]');
     await d.waitFor('[data-feature="settings:mcp"] strong', { text: 'Codex' });
     const section = '[data-feature="settings:mcp"]';
-    assert.equal(await d.count(`${section} strong`), 3);
+    assert.equal(await d.count(`${section} .settings-field strong`), 3);
     assert.equal(await d.run(`done(document.querySelector('${section} select').value)`), 'workflow');
     assert.equal(await d.run(`done(document.querySelector('${section} details').open)`), false);
     await d.run(`document.querySelector('${section}').scrollIntoView({block:'start'}); done(true);`);
     await t.shot('assistant-connections');
+    await d.waitFor('[data-claude-desktop-setup]', { text: 'quit it completely' });
+    await d.run(`document.querySelector('[data-claude-desktop-setup]').scrollIntoView({block:'center'}); done(true);`);
+    await t.shot('windows-claude-setup');
     await d.click(`${section} summary`);
     await d.type('[data-feature="settings:mcp-port"] input', String(port));
     await d.key('Enter', '[data-feature="settings:mcp-port"] input');

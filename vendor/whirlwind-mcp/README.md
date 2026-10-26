@@ -36,9 +36,26 @@ Hindsight Sync adds UI-approved grants bound to one target, allowed operations, 
 
 ## Installation and lifecycle
 
-The shared local `~/.whirlwind/marketplace` contains four independent plugin directories and both marketplace formats. Codex receives `plugin.json`, `mcp.json` and a skill; Claude Code receives `.claude-plugin/plugin.json`, `.mcp.json` and the same skill. Claude Desktop receives a native `.mcpb` for the app's build platform, opened in its own extension installer. Desktop's installation and permission dialogs belong to the host.
+The shared local `~/.whirlwind/marketplace` contains four independent plugin directories and both marketplace formats. Codex receives `plugin.json`, `mcp.json` and a skill; Claude Code receives `.claude-plugin/plugin.json`, `.mcp.json` and the same skill. On macOS, Claude Desktop receives a native `.mcpb`, opened in its extension installer.
 
-Settings reports **Not connected**, **Restart required**, **Connected**, **Needs repair** or **Unavailable**. Connected requires a successful call from that host's native bridge to the current app endpoint. Test probes the local app only and does not claim to have verified a host. Repair refreshes the package, registration and owned permissions. Disconnect removes the app's host registration and owned permissions; Desktop removal is completed in its Extensions settings.
+On Windows, Connect registers the native launcher directly under `mcpServers`
+in Claude Desktop's `claude_desktop_config.json`; Explorer is never opened.
+Open Claude once, fully quit it (including its tray icon), click Connect, then
+reopen Claude and ask it to read the app's guide. Connect/Repair/Disconnect check
+that Desktop is stopped to prevent its in-memory preferences replacing edits.
+The installer honors APPDATA/LOCALAPPDATA, prefers an initialized
+`Packages/Claude_*/LocalCache/Roaming/Claude` profile over the old classic
+`Roaming/Claude` folder, and refuses multiple MSIX profiles. It never creates a
+fake Claude installation. All writes preserve other servers and preferences,
+keep exact backups, and refuse conflicting launch commands. Repair follows an
+app that moved; Disconnect removes only its owned entry. Receipts store launch
+paths and arguments, not user environment values. A native `.mcpb` remains in
+the marketplace folder as a manual alternative; don't install both connections.
+Previously installed extensions must be removed in Claude's Extensions settings
+to avoid duplicate tools. Registration supplies tools, not separate Claude
+skills, and Claude retains control of its own tool permissions.
+
+Settings reports **Not connected**, **Restart required**, **Connected**, **Needs repair** or **Unavailable**. Connected requires a successful call from that host's native bridge to the current app endpoint after the latest registration. Windows Desktop status checks the actual config entry and launcher, so a receipt alone never proves installation. Test probes the local app only and does not claim to have verified a host. Repair refreshes the package, registration and owned permissions. Disconnect removes the app's host registration and owned permissions; macOS Desktop extension removal is completed in its Extensions settings.
 
 Installers serialize their own writers, back up edited configuration, detect concurrent changes, preserve unrelated settings and user permission overrides, and use bounded host CLI processes. Direct legacy registrations migrate only when their executable or exact local URL identifies the app. The old Hindsight Sync plugin migrates only from this app's resource directory; ambiguous or foreign same-name registrations remain untouched and report how to repair them. Installing another app preserves the other marketplace entries.
 

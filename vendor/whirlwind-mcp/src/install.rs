@@ -11,6 +11,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(any(windows, test))]
+mod desktop;
+
 #[derive(Debug, Clone)]
 pub struct App {
     pub id: String,
@@ -95,6 +98,10 @@ struct Receipt {
     rules: Vec<String>,
     #[serde(default)]
     approvals: BTreeMap<String, String>,
+    #[serde(default)]
+    desktop_config: Option<PathBuf>,
+    #[serde(default)]
+    desktop_entry: Option<Value>,
 }
 fn receipt_path(h: &Homes, app: &App, host: Host) -> PathBuf {
     h.marketplace
@@ -404,13 +411,21 @@ pub fn connect_with_legacy(
         app.executable.is_file(),
         "The installed application executable is missing"
     );
+    #[cfg(windows)]
+    if host == Host::ClaudeDesktop {
+        // A running Desktop bridge can also lock the native launcher on Windows.
+        // Explain how to close Desktop before attempting to replace that binary.
+        desktop::ensure_stopped(h)?;
+    }
     // Keep the pre-install host configuration, including before the host CLI edits it.
     let config = if host == Host::Codex {
         h.codex.join("config.toml")
     } else {
         h.claude.join("settings.json")
     };
-    if let Ok(bytes) = fs::read(&config) {
+    if host != Host::ClaudeDesktop
+        && let Ok(bytes) = fs::read(&config)
+    {
         atomic_write(
             &config.with_extension(format!("whirlwind-{}.bak", uuid::Uuid::new_v4())),
             &bytes,
@@ -418,6 +433,8 @@ pub fn connect_with_legacy(
     }
     let root = package(app, h)?;
     let old = receipt(h, app, host)?;
+    #[cfg(windows)]
+    let mut desktop_registration = None;
     let plugin = format!("{}@whirlwind", app.id);
     if host == Host::ClaudeDesktop {
         let bundle = h.marketplace.join(format!("{}.mcpb", app.id));
@@ -429,11 +446,9 @@ pub fn connect_with_legacy(
             h,
         )?;
         #[cfg(windows)]
-        run(
-            Path::new("explorer.exe"),
-            &[bundle.display().to_string()],
-            h,
-        )?;
+        {
+            desktop_registration = Some(desktop::connect(app, h, &old)?);
+        }
         #[cfg(target_os = "linux")]
         anyhow::bail!("Claude Desktop is unavailable on Linux");
     } else {
@@ -535,6 +550,11 @@ pub fn connect_with_legacy(
         policy,
         ..old.clone()
     };
+    #[cfg(windows)]
+    if let Some((path, entry)) = desktop_registration {
+        next.desktop_config = Some(path);
+        next.desktop_entry = Some(entry);
+    }
     match host {
         Host::Codex => next.approvals = codex_policy(app, h, policy, &old, legacy_url)?,
         Host::ClaudeCode => next.rules = claude_policy(app, h, policy, &old)?,
@@ -548,10 +568,14 @@ pub fn connect_with_legacy(
         host,
         state: "restart_required".into(),
         available: true,
-        detail: format!(
-            "Plugin and workflow permissions installed. Restart the assistant to load {}.",
-            root.display()
-        ),
+        detail: if cfg!(windows) && host == Host::ClaudeDesktop {
+            "Tools configured. Reopen Claude Desktop and ask it to read this app's guide. Claude manages its own tool permissions.".into()
+        } else {
+            format!(
+                "Plugin and workflow permissions installed. Restart the assistant to load {}.",
+                root.display()
+            )
+        },
         plugin,
     })
 }
@@ -564,8 +588,11 @@ pub fn status(app: &App, h: &Homes, host: Host) -> Connection {
         }
         #[cfg(windows)]
         {
-            true
-        } // The Windows extension handler is resolved by the OS when connecting.
+            // Keep Connect available for a diagnostic if discovery is ambiguous.
+            desktop::profile(h)
+                .map(|path| path.is_some())
+                .unwrap_or(true)
+        }
         #[cfg(not(any(target_os = "macos", windows)))]
         {
             false
@@ -617,6 +644,16 @@ pub fn disconnect(app: &App, h: &Homes, host: Host) -> Result<Connection> {
     let _lock = lock(h)?;
     let old = receipt(h, app, host)?;
     if host == Host::ClaudeDesktop {
+        #[cfg(windows)]
+        {
+            desktop::disconnect(app, h, &old)?;
+            let path = receipt_path(h, app, host);
+            if path.exists() {
+                fs::remove_file(path)?;
+            }
+            return Ok(status(app, h, host));
+        }
+        #[cfg(not(windows))]
         anyhow::bail!("Remove this extension in Claude Desktop > Settings > Extensions.");
     }
     let cli = locate(host, h).context("Assistant command was not found")?;
@@ -697,6 +734,15 @@ pub fn write_bundle(app: &App, path: &Path) -> Result<()> {
 pub fn verified_status(app: &App, h: &Homes, host: Host, endpoint_dir: &Path) -> Connection {
     let mut status = status(app, h, host);
     if status.state == "restart_required"
+        && fs::metadata(endpoint_dir.join(format!("client-{}.json", host.key())))
+            .and_then(|m| m.modified())
+            .ok()
+            .zip(
+                fs::metadata(receipt_path(h, app, host))
+                    .and_then(|m| m.modified())
+                    .ok(),
+            )
+            .is_some_and(|(verified, installed)| verified >= installed)
         && let Some(endpoint) = crate::endpoint::read(endpoint_dir)
         && let Ok(bytes) = fs::read(endpoint_dir.join(format!("client-{}.json", host.key())))
         && let Ok(stamp) = serde_json::from_slice::<Value>(&bytes)
@@ -842,7 +888,16 @@ fn host_registration(app: &App, h: &Homes, host: Host) -> bool {
                         })
                     })
         }
-        Host::ClaudeDesktop => true, // Completion is verified only by a successful bridge call.
+        Host::ClaudeDesktop => {
+            #[cfg(windows)]
+            {
+                desktop::registered(app, h)
+            }
+            #[cfg(not(windows))]
+            {
+                true
+            } // Completion is verified only by a successful bridge call.
+        }
     }
 }
 
@@ -909,7 +964,7 @@ fn old_sync_marketplace(app: &App, host: Host, listing: &Value) -> Result<bool> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn fixture(dir: &Path) -> (App, Homes) {
+    pub(super) fn fixture(dir: &Path) -> (App, Homes) {
         let h = Homes::isolated(dir.into());
         let app = App {
             id: "test-app".into(),
@@ -957,6 +1012,81 @@ mod tests {
         test(dir.path()).unwrap();
         server.join().unwrap();
     }
+    #[test]
+    fn connected_requires_a_call_after_the_latest_registration() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, h) = fixture(dir.path());
+        package(&app, &h).unwrap();
+        atomic_write(
+            &h.home
+                .join(".local/bin")
+                .join(if cfg!(windows) { "codex.exe" } else { "codex" }),
+            b"fixture",
+        )
+        .unwrap();
+        atomic_write(
+            &h.codex.join("config.toml"),
+            b"[plugins.'test-app@whirlwind']\nenabled = true\n",
+        )
+        .unwrap();
+        atomic_write(
+            &h.codex
+                .join("plugins/cache/whirlwind/test-app/1.0.0/mcp.json"),
+            b"{}",
+        )
+        .unwrap();
+        let saved = Receipt {
+            version: app.version.clone(),
+            executable: app.executable.clone(),
+            ..Default::default()
+        };
+        atomic_write(
+            &receipt_path(&h, &app, Host::Codex),
+            &serde_json::to_vec(&saved).unwrap(),
+        )
+        .unwrap();
+        let endpoint_dir = dir.path().join("endpoint");
+        crate::endpoint::write(
+            &endpoint_dir,
+            &crate::endpoint::Endpoint {
+                version: 1,
+                port: 12345,
+                token: "fixture".into(),
+                pid: std::process::id(),
+            },
+        )
+        .unwrap();
+        let stamp = endpoint_dir.join("client-codex.json");
+        atomic_write(
+            &stamp,
+            &serde_json::to_vec(&json!({"pid":std::process::id(),"port":12345})).unwrap(),
+        )
+        .unwrap();
+        let file = fs::OpenOptions::new().write(true).open(&stamp).unwrap();
+        file.set_times(
+            fs::FileTimes::new().set_modified(std::time::UNIX_EPOCH + Duration::from_secs(60)),
+        )
+        .unwrap();
+        assert_eq!(
+            verified_status(&app, &h, Host::Codex, &endpoint_dir).state,
+            "restart_required"
+        );
+        file.set_times(
+            fs::FileTimes::new()
+                .set_modified(std::time::SystemTime::now() + Duration::from_secs(1)),
+        )
+        .unwrap();
+        assert_eq!(
+            verified_status(&app, &h, Host::Codex, &endpoint_dir).state,
+            "connected"
+        );
+        fs::remove_file(h.codex.join("config.toml")).unwrap();
+        assert_eq!(
+            verified_status(&app, &h, Host::Codex, &endpoint_dir).state,
+            "needs_repair"
+        );
+    }
+
     #[test]
     fn packages_have_native_launchers_and_no_secrets() {
         let d = tempfile::tempdir().unwrap();

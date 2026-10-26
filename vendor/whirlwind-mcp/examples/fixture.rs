@@ -62,7 +62,8 @@ fn main() -> anyhow::Result<()> {
         let host = match args.get(4).map(String::as_str) {
             Some("codex") => whirlwind_mcp::install::Host::Codex,
             Some("claude_code") => whirlwind_mcp::install::Host::ClaudeCode,
-            _ => anyhow::bail!("Use codex or claude_code"),
+            Some("claude_desktop") => whirlwind_mcp::install::Host::ClaudeDesktop,
+            _ => anyhow::bail!("Use codex, claude_code or claude_desktop"),
         };
         let connection = match action.as_str() {
             "connect" => whirlwind_mcp::install::connect(

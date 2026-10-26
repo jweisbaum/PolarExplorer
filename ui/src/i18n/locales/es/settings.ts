@@ -142,6 +142,11 @@ const catalogue: Record<string, string> = {
   "Looking for Hindsight Sync": "Buscando Hindsight Sync",
   "The archive weather fetches read, among those Hindsight Sync lists.": "El archivo que leen las descargas meteorológicas, entre los que ofrece Hindsight Sync.",
   "Hindsight Sync website": "Sitio web de Hindsight Sync",
+  "Claude Desktop on Windows": "Claude Desktop en Windows",
+  "Open Claude Desktop once, then quit it completely, including its system tray icon, before changing this connection.": "Abra Claude Desktop una vez y después ciérrelo por completo, incluido su icono en la bandeja del sistema, antes de cambiar esta conexión.",
+  "Click Connect or Repair to configure this app's tools automatically. Existing Claude settings are preserved.": "Pulse Conectar o Reparar para configurar automáticamente las herramientas de esta aplicación. Se conservan los ajustes existentes de Claude.",
+  "Reopen Claude Desktop, start a new chat and ask it to read this app's guide. Claude manages its own tool permissions.": "Vuelva a abrir Claude Desktop, inicie un chat nuevo y pídale que lea la guía de esta aplicación. Claude gestiona sus propios permisos de herramientas.",
+  "If you previously installed this app's extension, remove it in Claude's Extensions settings to avoid duplicate tools.": "Si ya instaló la extensión de esta aplicación, elimínela en los ajustes de Extensiones de Claude para evitar herramientas duplicadas.",
 };
 
 export default catalogue;

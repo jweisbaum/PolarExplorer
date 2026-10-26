@@ -661,6 +661,19 @@ the design is `docs/superpowers/specs/2026-10-01-mcp-service-design.md`.
   Compare, or the full-size plot): its canvas, redrawn and read in one task,
   without the panels around it. Refused at once with no project open; a
   frontend with no frame says why. Nothing is written to disk.
+- **Windows Claude Desktop (2026-10-26).** This supersedes the Windows bundle
+  handoff below. Connect registers the existing native stdio bridge directly in
+  Claude's `mcpServers` configuration, preferring its initialized MSIX profile
+  over the classic profile. The person opens Claude once and fully quits it
+  before Connect/Repair/Disconnect; the installer checks for a running Desktop
+  process. Other preferences and servers survive, edited files have backups,
+  and ambiguous profiles or foreign same-name entries are refused. Repair
+  updates owned launch paths; Disconnect removes only the owned entry.
+  A saved receipt alone is insufficient: status checks the actual registration,
+  and Connected needs a successful bridge call after registration. The UI gives
+  translated steps to quit Claude, connect, reopen it and ask for this app's
+  guide. This installs tools, not separate Claude skills; Claude retains control
+  of its own tool approvals. macOS retains the extension installer.
 - **Clients.** *Add to Claude Code* runs `claude mcp add --scope user
   --transport http polarexplorer …` and writes a skill to
   `~/.claude/skills/polarexplorer/`. *Add to Codex* edits

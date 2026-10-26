@@ -71,6 +71,36 @@ def main():
                 assert archive.getinfo(entry).external_attr >> 16 & 0o111
                 assert manifest['server']['type'] == 'binary'
             print(f'{plugin}: portable plugin, Claude plugin, native stdio and MCPB passed')
+        if os.name == 'nt':
+            # No installed Claude, real profile, shell association or account needed.
+            classic = home/'AppData/Roaming/Claude/claude_desktop_config.json'
+            classic.parent.mkdir(parents=True)
+            classic.write_text('{"preferences":{"classic":"untouched"}}')
+            config = home/'AppData/Local/Packages/Claude_fixture/LocalCache/Roaming/Claude/claude_desktop_config.json'
+            config.parent.mkdir(parents=True)
+            original = {'preferences':{'theme':'keep'},'mcpServers':{'other':{'command':'keep','args':[]}}}
+            config.write_text(json.dumps(original))
+            for plugin in ids:
+                connected = json.loads(run([executable,home,plugin,'connect','claude_desktop'],env,home))
+                assert connected['state'] == 'restart_required', connected
+                value = json.loads(config.read_text())
+                assert value['preferences'] == original['preferences']
+                server = value['mcpServers'][plugin.replace('-','')]
+                assert stdio([server['command'], *server['args']],env,home) == 1
+                status = json.loads(run([executable,home,plugin,'status','claude_desktop'],env,home))
+                assert status['state'] == 'restart_required', status  # Discovery is not a tool call.
+                del value['mcpServers'][plugin.replace('-','')]
+                config.write_text(json.dumps(value))
+                status = json.loads(run([executable,home,plugin,'status','claude_desktop'],env,home))
+                assert status['state'] == 'needs_repair', status
+                run([executable,home,plugin,'connect','claude_desktop'],env,home)
+            for plugin in ids:
+                removed = json.loads(run([executable,home,plugin,'disconnect','claude_desktop'],env,home))
+                assert removed['state'] == 'disconnected', removed
+            assert json.loads(config.read_text()) == original
+            assert json.loads(classic.read_text()) == {'preferences':{'classic':'untouched'}}
+            assert list(config.parent.glob('*.bak'))
+            print('Claude Desktop: four automatic MSIX registrations, native launches, repairs and removals passed')
         if args.hosts:
             for host, cli in [('codex',shutil.which('codex')),('claude_code',shutil.which('claude'))]:
                 if not cli: raise AssertionError(f'{host} CLI is required for --hosts')

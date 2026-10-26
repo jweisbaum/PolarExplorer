@@ -38,6 +38,26 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); });
 describe("AI assistant connections", () => {
+  it("explains Windows setup before connecting and waits for host verification", async () => {
+    held.connections[2]!.available = true;
+    held.connections[2]!.state = "disconnected";
+    held.registerMcpClient.mockImplementationOnce(async () => {
+      held.connections[2]!.state = "restart_required";
+      return { skill: null };
+    });
+    await render();
+    const setup = host.querySelector("[data-claude-desktop-setup]")!;
+    expect(setup.textContent).toContain("quit it completely");
+    expect(setup.textContent).toContain("tools automatically");
+    expect(setup.textContent).toContain("start a new chat");
+    expect(held.registerMcpClient).not.toHaveBeenCalled();
+    await click("Connect", 2);
+    expect(held.registerMcpClient).toHaveBeenCalledWith("claude_desktop", "workflow");
+    const states = Array.from(host.querySelectorAll('[role="status"]')).map(node => node.textContent);
+    expect(states).toContain("Restart required");
+    expect(states).not.toContain("Connected");
+  });
+
   it("loads persistent state without installing or enabling anything", async () => {
     await render();
     expect(held.mcpConnections).toHaveBeenCalledTimes(1);

@@ -104,6 +104,15 @@ export default function McpSection({ onError }: { onError: (err: unknown) => voi
         <button disabled={busy !== null || !status.enabled} onClick={() => void act(connection.client, "test")}>{t("Test")}</button>
         {connection.state !== "disconnected" && connection.state !== "unavailable" && <button disabled={busy !== null} onClick={() => void act(connection.client, "disconnect")}>{t("Disconnect")}</button>}
       </div>)}
+      {connections.some(connection => connection.client === "claude_desktop") && <aside className="settings-note" data-claude-desktop-setup>
+        <strong>{t("Claude Desktop on Windows")}</strong>
+        <ol>
+          <li>{t("Open Claude Desktop once, then quit it completely, including its system tray icon, before changing this connection.")}</li>
+          <li>{t("Click Connect or Repair to configure this app's tools automatically. Existing Claude settings are preserved.")}</li>
+          <li>{t("Reopen Claude Desktop, start a new chat and ask it to read this app's guide. Claude manages its own tool permissions.")}</li>
+        </ol>
+        <p>{t("If you previously installed this app's extension, remove it in Claude's Extensions settings to avoid duplicate tools.")}</p>
+      </aside>}
       <p className="settings-note">{t("Restart the assistant after connecting. Connected appears after its first successful tool call.")}</p>
       {tested && <p role="status">{t("The app is reachable. Ask the assistant to read its guide to verify the connection.")}</p>}
       {status.bind_error && <p className="settings-error">{status.bind_error}</p>}

@@ -433,9 +433,14 @@ again.
 
 - **Add to Claude Code** and **Add to Codex** write the service into that
   client's own configuration. Restart a session that is already running.
-- **Add to Claude Desktop** (macOS and Windows) opens PolarExplorer's
-  extension in Claude Desktop, where you confirm the install. It needs
-  installing once.
+- **Claude Desktop on Windows:** open Claude once, then quit it completely,
+  including its system tray icon. Click **Connect** to configure PolarExplorer's
+  tools automatically, then reopen Claude and ask it to read PolarExplorer's
+  guide. Existing settings and other connections are preserved with backups.
+  Quit Claude before **Repair** or **Disconnect**, too. Remove an older
+  PolarExplorer extension in Claude's Extensions settings to avoid duplicate
+  tools. This registers tools, not separate skills; Claude manages its own
+  tool permissions. On macOS, confirm installation in Claude's extension dialog.
 - **Configuration for other clients** gives the address and token as text.
 - **ChatGPT** is not offered: it reaches MCP servers only over the public
   internet, and this service answers only on this computer.
