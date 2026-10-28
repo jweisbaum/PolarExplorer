@@ -1,0 +1,82 @@
+{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [
+    11,
+    4,
+    4,
+    8
+  ],
+  "data_type": "float16",
+  "fill_value": "NaN",
+  "dimension_names": [
+    "param",
+    "time",
+    "latitude",
+    "longitude"
+  ],
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "chunk_grid": {
+    "name": "rectilinear",
+    "configuration": {
+      "kind": "inline",
+      "chunk_shapes": [
+        11,
+        2,
+        [
+          2,
+          2
+        ],
+        [
+          4,
+          4
+        ]
+      ]
+    }
+  },
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          11,
+          2,
+          2,
+          2
+        ],
+        "index_location": "end",
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 22,
+              "checksum": true
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ]
+      }
+    }
+  ]
+}

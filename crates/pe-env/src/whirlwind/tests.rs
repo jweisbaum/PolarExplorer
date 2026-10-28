@@ -411,14 +411,14 @@ fn reads_the_recorded_s3_layout_with_five_degree_inner_chunks() {
     // 307 columns into the 400-column band from 20°E: a cell at 39.25°N,
     // 96.75°E.
     let (chunk, offset) = data.locate((73, 203, 1107));
-    assert_eq!(chunk.key(), "data/c/1/0/1/3");
+    assert_eq!(data.key(chunk), "data/c/1/0/1/3");
     assert_eq!(chunk.inner, 135); // inner row 6 of 14, column 15 of 20
     assert_eq!(offset, 2867); // time 1, parameter 0, row 3, column 7
     assert_eq!(data.index_len(chunk), 4484); // 14 × 20 index entries + checksum
     assert_eq!(data.decoded_len(), 403_200);
     // A position 5° away lands in another inner chunk of the same shard.
     let (east, _) = data.locate((73, 203, 1127));
-    assert_eq!(east.key(), chunk.key());
+    assert_eq!(data.key(east), data.key(chunk));
     assert_eq!(east.inner, 136);
 }
 
@@ -473,8 +473,9 @@ fn fleet_reads_each_inner_chunk_once_and_reuses_decoded_values_across_batches() 
         })
         .collect();
     let all: Vec<_> = routes.iter().flatten().copied().collect();
-    let (_, plan) = plan(&archive(), &all, &options());
-    let shards: BTreeSet<_> = plan.keys().map(|c| c.key()).collect();
+    let fixture_archive = archive();
+    let (_, plan) = plan(&fixture_archive, &all, &options());
+    let shards: BTreeSet<_> = plan.keys().map(|c| fixture_archive.data.key(*c)).collect();
     let begin = std::time::Instant::now();
     let expected = w.sample(&all, &options(), &cancel).unwrap();
     let cold = begin.elapsed();
@@ -779,6 +780,318 @@ fn a_layout_3_archive_samples_the_same_values_as_layout_2() {
     assert_eq!(three_layout.data.parameters, vec![1, 3, 4, 5, 6, 7, 8]);
     assert!(two[0].wind.is_some() && two[0].waves.is_some() && two[0].current.is_some());
     assert_eq!(two, three);
+}
+
+fn field_first_fixture(dtype: Dtype) -> BTreeMap<String, Vec<u8>> {
+    let mut objects = fixture_with(dtype, &ELEVEN);
+    objects.retain(|key, _| !key.starts_with("data/"));
+    let dtype = if dtype == Dtype::F16 {
+        "float16"
+    } else {
+        "float32"
+    };
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "tests/fixtures/whirlwind/field-time-zstd22-{dtype}"
+    ));
+    objects.insert(
+        "data/zarr.json".into(),
+        std::fs::read(root.join("zarr.json")).unwrap(),
+    );
+    for t in 0..2 {
+        for y in 0..2 {
+            for x in 0..2 {
+                let key = format!("c/0/{t}/{y}/{x}");
+                objects.insert(
+                    format!("data/{key}"),
+                    std::fs::read(root.join(key)).unwrap(),
+                );
+            }
+        }
+    }
+    objects
+}
+
+#[test]
+fn field_first_zstd22_archives_sample_over_s3_and_from_a_folder() {
+    for dtype in [Dtype::F16, Dtype::F32] {
+        let objects = field_first_fixture(dtype);
+        let dir = folder(&format!("field-first-{dtype:?}"));
+        testing::write_fixture_objects(&dir, &objects);
+        let local = folder_reader(&dir);
+        let server = serve(objects, 206);
+        let w = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
+        let cancel = Arc::new(AtomicBool::new(false));
+        // The first stencil crosses a time shard and longitude tile; the
+        // second uses time shard 1 and crosses the latitude shard boundary.
+        let points = [
+            Point {
+                t: 946684800 + 5400,
+                lat: 45.,
+                lon: -112.5,
+            },
+            Point {
+                t: 946684800 + 9000,
+                lat: 15.,
+                lon: 22.5,
+            },
+        ];
+        assert!(w.estimate(&points).unwrap().hourly_bytes > 0);
+        let sampled = w.sample(&points, &options(), &cancel).unwrap();
+        assert_eq!(sampled, local.sample(&points, &options(), &cancel).unwrap());
+        let wind = sampled[1].wind.unwrap();
+        assert_eq!((wind.u, wind.v), (7.0625, 6.1875));
+        let current = sampled[1].current.unwrap();
+        assert_eq!((current.u, current.v), (0.7734375, -0.5234375));
+        let waves = sampled[1].waves.unwrap();
+        assert_eq!((waves.hs, waves.period_s), (Some(4.96875), Some(10.1875)));
+        assert!((waves.from.unwrap() % 360.).abs() < 1e-5);
+        let before = w.net_totals();
+        assert_eq!(w.sample(&points, &options(), &cancel).unwrap(), sampled);
+        let estimate = w.estimate(&points).unwrap();
+        assert_eq!(estimate.hourly_bytes, 0);
+        assert!(estimate.hourly_cached_bytes > 0);
+        assert_eq!(w.net_totals(), before);
+        assert_eq!(local.net_totals(), (0, 0));
+        let requests = server.requests.lock().unwrap();
+        let shard_requests: Vec<_> = requests
+            .iter()
+            .filter(|(key, _)| key.starts_with("data/c/"))
+            .collect();
+        assert!(
+            shard_requests
+                .iter()
+                .any(|(key, _)| key.starts_with("data/c/0/1/"))
+        );
+        assert!(
+            shard_requests
+                .iter()
+                .all(|(_, range)| range.starts_with("bytes="))
+        );
+        drop(requests);
+
+        // Check every cell against the independent fixture formulas, including
+        // unused fields preceding u10, every inner tile, and both time shards.
+        let archive = w.archive(&cancel).unwrap();
+        assert_eq!(archive.data.shape, [4, 11, 4, 8]);
+        assert_eq!(archive.data.inner, [2, 11, 2, 2]);
+        assert_eq!(archive.data.parameter_stride(), 8);
+        let mut plan = ChunkPlan::new();
+        for t in 0..4 {
+            for y in 0..4 {
+                for x in 0..8 {
+                    let cell = (t, y, x);
+                    plan.entry(archive.data.locate(cell).0)
+                        .or_default()
+                        .insert(cell);
+                }
+            }
+        }
+        let values = w.runtime.block_on(w.read(&archive, plan, &cancel)).unwrap();
+        assert_eq!(values.len(), 128);
+        for ((t, y, x), actual) in values {
+            let (t, y, x) = (t as f32, y as f32, x as f32);
+            assert_eq!(
+                actual,
+                [
+                    2. * t + y + x / 8.,
+                    4. + t / 2. + y / 4. + x / 8.,
+                    0.5 + t / 16. + y / 32. + x / 64.,
+                    -0.25 - t / 16. - y / 32. - x / 64.,
+                    if t % 2. == 0. { 350. } else { 10. },
+                    2. + t + y / 8. + x / 16.,
+                    8. + t / 2. + y / 4. + x / 8.,
+                ],
+                "{dtype:?}, ({t}, {y}, {x})"
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn literal_field_time_y_x_dimension_names_select_the_corresponding_coordinates() {
+    let mut objects = field_first_fixture(Dtype::F32);
+    let mut data: Value = serde_json::from_slice(&objects["data/zarr.json"]).unwrap();
+    data["dimension_names"] = serde_json::json!(["field", "time", "y", "x"]);
+    objects.insert("data/zarr.json".into(), serde_json::to_vec(&data).unwrap());
+    for (old, new) in [("param", "field"), ("latitude", "y"), ("longitude", "x")] {
+        for suffix in ["zarr.json", "c/0"] {
+            let bytes = objects.remove(&format!("{old}/{suffix}")).unwrap();
+            objects.insert(format!("{new}/{suffix}"), bytes);
+        }
+    }
+    let (out, _) = sample_opened(objects);
+    // Hour 0.5, row 0.5, column 20/9.
+    let wind = out[0].wind.unwrap();
+    assert!((wind.u - (1.5 + 5. / 18.)).abs() < 1e-5);
+    assert!(out[0].waves.is_some() && out[0].current.is_some());
+}
+
+#[test]
+fn field_first_metadata_rejects_ambiguous_axes_and_inconsistent_shapes() {
+    let objects = field_first_fixture(Dtype::F32);
+    let metadata: Value = serde_json::from_slice(&objects["data/zarr.json"]).unwrap();
+    for names in [
+        serde_json::json!(["param", "time", "longitude", "latitude"]),
+        serde_json::json!(["time", "time", "latitude", "longitude"]),
+        serde_json::json!(["time", "latitude", "param", "longitude"]),
+        serde_json::json!(["param", "time", "latitude"]),
+        Value::Null,
+    ] {
+        let mut broken = metadata.clone();
+        broken["dimension_names"] = names;
+        assert!(Array::parse(&broken, (0..7).collect()).is_err());
+    }
+    for pointer in [
+        "/shape/0",
+        "/codecs/0/configuration/chunk_shape/0",
+        "/chunk_grid/configuration/chunk_shapes/0",
+        "/chunk_grid/configuration/chunk_shapes/1",
+    ] {
+        let mut broken = metadata.clone();
+        *broken.pointer_mut(pointer).unwrap() = serde_json::json!(3);
+        assert!(
+            Array::parse(&broken, (0..7).collect()).is_err(),
+            "{pointer}"
+        );
+    }
+}
+
+#[test]
+fn historysyncer_v4_presets_read_transposed_tiles_without_transposing_shard_keys() {
+    for routing in [false, true] {
+        let objects = testing::historysyncer_fixture(routing);
+        let dir = folder(if routing {
+            "historysyncer-routing"
+        } else {
+            "historysyncer-base"
+        });
+        testing::write_fixture_objects(&dir, &objects);
+        let local = folder_reader(&dir);
+        let server = serve(objects, 206);
+        let w = testing::whirlwind_opening(server.endpoint(), 4, BlockCache::new(16 << 20));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let at = |hour: f64, lon| Point {
+            t: 946684800 + (hour * 3600.) as i64,
+            lat: 39.25,
+            lon,
+        };
+        let points = [
+            at(73., 96.75),
+            at(72.5, 96.75),
+            at(71.5, 96.75),
+            at(73., 99.75),  // marine fields are missing, wind is present
+            at(73., 101.75), // all fields missing in a stored tile
+            at(73., 91.75),  // an absent tile's index entry
+        ];
+        assert!(w.estimate(&points).unwrap().hourly_bytes > 0);
+        let out = w.sample(&points, &options(), &cancel).unwrap();
+        assert_eq!(out, local.sample(&points, &options(), &cancel).unwrap());
+        let wind = out[0].wind.unwrap();
+        let current = out[0].current.unwrap();
+        let waves = out[0].waves.unwrap();
+        assert_eq!(
+            (wind.u, wind.v),
+            if routing {
+                (22.5, 14.25)
+            } else {
+                (22.625, 14.3125)
+            }
+        );
+        assert_eq!(
+            (current.u, current.v),
+            if routing {
+                (1.25, -1.)
+            } else {
+                (1.3359375, -1.0859375)
+            }
+        );
+        assert_eq!(
+            (waves.hs, waves.period_s),
+            if routing {
+                (Some(7.5), Some(10.75))
+            } else {
+                (Some(7.375), Some(10.6875))
+            }
+        );
+        assert!((waves.from.unwrap() - 10.).abs() < 1e-5);
+        assert_eq!(out[1].wind.unwrap().u, 22.5);
+        assert_eq!(
+            out[1].waves.unwrap().hs,
+            Some(if routing { 7.375 } else { 7.34375 })
+        );
+        assert_eq!(out[2].wind.unwrap().u, 22.25);
+        assert_eq!(out[2].wind.unwrap().v, 14.125);
+        assert!(out[3].wind.is_some());
+        assert!(out[3].current.is_none() && out[3].waves.is_none());
+        assert_eq!(out[4..], [EnvPoint::default(); 2]);
+        let before = w.net_totals();
+        assert_eq!(w.sample(&points, &options(), &cancel).unwrap(), out);
+        assert_eq!(w.estimate(&points).unwrap().hourly_bytes, 0);
+        assert_eq!(w.net_totals(), before);
+        let archive = w.archive(&cancel).unwrap();
+        assert_eq!(archive.data.inner, [72, 11, 20, 20]);
+        assert_eq!(archive.data.bytes_per_value, 2);
+        assert_eq!(archive.data.parameters, (0..7).collect::<Vec<_>>());
+        let (chunk, offset) = archive.data.locate((73, 203, 1107));
+        assert_eq!(archive.data.key(chunk), "data/c/1/0/1/3");
+        assert_eq!(chunk.inner, 135);
+        assert_eq!(offset, 467); // byte storage is field, time, y, x
+        assert_eq!(archive.data.parameter_stride(), 72 * 20 * 20);
+        let requests = server.requests.lock().unwrap();
+        let shards: BTreeSet<_> = requests
+            .iter()
+            .filter(|(key, _)| key.starts_with("data/c/"))
+            .map(|(key, range)| {
+                assert!(range.starts_with("bytes="));
+                key.as_str()
+            })
+            .collect();
+        assert_eq!(shards, BTreeSet::from(["data/c/0/0/1/3", "data/c/1/0/1/3"]));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn historysyncer_transpose_and_quantization_must_be_understood_before_sampling() {
+    let objects = testing::historysyncer_fixture(true);
+    let metadata: Value = serde_json::from_slice(&objects["data/zarr.json"]).unwrap();
+    for (pointer, value) in [
+        (
+            "/codecs/0/configuration/codecs/0/configuration/order",
+            serde_json::json!([1, 2, 3, 0]),
+        ),
+        (
+            "/codecs/0/configuration/codecs/0/configuration/order",
+            serde_json::json!([1, 1, 2, 3]),
+        ),
+        (
+            "/codecs/0/configuration/codecs/1/configuration/endian",
+            serde_json::json!("big"),
+        ),
+        (
+            "/codecs/0/configuration/codecs/2/name",
+            serde_json::json!("numcodecs.pcodec"),
+        ),
+        ("/attributes/quantization/scale", serde_json::json!(2)),
+        ("/attributes/quantization/offset", serde_json::json!(1)),
+        (
+            "/attributes/quantization/already_applied_to_stored_values",
+            serde_json::json!(false),
+        ),
+        (
+            "/attributes/quantization/source_dtype",
+            serde_json::json!("int16"),
+        ),
+        ("/fill_value", serde_json::json!("NaN")),
+    ] {
+        let mut broken = metadata.clone();
+        *broken.pointer_mut(pointer).unwrap() = value;
+        assert!(
+            Array::parse(&broken, (0..7).collect()).is_err(),
+            "{pointer}"
+        );
+    }
 }
 
 #[test]

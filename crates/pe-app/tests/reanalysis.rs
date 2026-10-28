@@ -587,6 +587,89 @@ fn the_ipc_settings_json_never_holds_a_secret() {
     assert!(!scan.contains("first-secret") && !scan.contains("AKIDTESTKEY"));
 }
 
+#[test]
+fn historysyncer_v4_listing_fetches_real_routing_weather_and_records_layout_4() {
+    let root = TempRoot::new("historysyncer-v4-fetch");
+    let bucket = pe_env::whirlwind::testing::serve_signed(
+        pe_env::whirlwind::testing::historysyncer_fixture(true),
+    );
+    let mut archive = cloud("routing-v4", s3(bucket.endpoint(), keys("fixture-secret")));
+    archive["layout_version"] = json!(4);
+    archive["compression"] = json!({"codec": "zstd22", "scale": 4});
+    let server = stub(vec![
+        (
+            "/v1/archives/cloud/reanalysis",
+            200,
+            json!({"api_version": 1, "archives": [archive], "errors": []}).to_string(),
+        ),
+        (
+            "/v1/archives/local/reanalysis",
+            200,
+            json!({"api_version": 1, "archives": [], "errors": []}).to_string(),
+        ),
+    ]);
+    let app = probed(&root, &server);
+    reanalysis::archive_set(&app, Some("routing-v4".into())).unwrap();
+    projects::create(&app, "Layout 4 weather".into(), None, false).unwrap();
+    let features: Vec<_> = (0..3)
+        .map(|k| {
+            json!({
+                "type": "Feature", "geometry": {"type": "Point", "coordinates": [96.75, 39.25]},
+                "properties": {"time": 946684800 + (73 + k) * 3600, "boat": "Alpha"}
+            })
+        })
+        .collect();
+    let path = root.file("layout4.geojson");
+    std::fs::write(
+        &path,
+        json!({"type": "FeatureCollection", "features": features}).to_string(),
+    )
+    .unwrap();
+    let imported = tracks::import(
+        &app,
+        &[tracks::TrackFileRequest {
+            path,
+            mapping: None,
+            boats: None,
+        }],
+    )
+    .unwrap();
+    let id = imported.imported[0].source_id;
+    env::queue_fetch(&app, &[id], "hourly", false).unwrap();
+    let provider = env::provider(&app).unwrap();
+    assert_eq!(drain(&app, provider.as_ref()), [Outcome::Done]);
+    app.with_session(|session| {
+        let track = session
+            .require_open()?
+            .project
+            .source(pe_core::SourceId(id))
+            .unwrap()
+            .track()
+            .unwrap();
+        assert_eq!(track.env_meta.status, pe_core::track::EnvStatus::Ready);
+        assert_eq!(track.samples.len(), 3);
+        let sample = &track.samples[0];
+        assert_eq!(
+            sample.tws,
+            Some(pe_core::canonical::env_knots(
+                22.5_f64.hypot(14.25) * env::KN_PER_MS
+            ))
+        );
+        assert_eq!(sample.hs_m, Some(7.5));
+        assert_eq!(sample.wave_period_s, Some(10.75));
+        assert_eq!(
+            sample.current_speed,
+            Some(pe_core::canonical::env_knots(
+                1.25_f64.hypot(-1.) * env::KN_PER_MS
+            ))
+        );
+        assert!(track.samples.iter().all(|sample| sample.env_fetched));
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(datasets(&app, id)[0].version, "hindsight-layout-4");
+}
+
 /// The message a fetch fails with when the chosen archive's bucket
 /// answers every read with `status` and `body`, after checking the bucket
 /// was really asked and no secret is in it.

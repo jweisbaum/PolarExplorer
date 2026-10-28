@@ -261,9 +261,9 @@ it is requested. Decoders get fixture tests from a recorded response
 in `crates/pe-trackers/tests/fixtures/`. No live request in the default suite.
 
 **Adding a reanalysis variable.** The archive is Hindsight Sync's: a
-variable must already be on its `param` axis (layout 3 stores eleven). In
+variable must already be on its `param` axis (layouts 3 and 4 store eleven). In
 `pe-env`'s reader, add its name to the names located in the `param` axis
-(never by position: layouts 2 and 3 differ), with its units, direction sense
+(never by position: layout 2 differs), with its units, direction sense
 and fill behaviour (land is NaN for waves and currents); an archive that does
 not list it is refused in words. Add a fixture-archive test
 (`whirlwind::testing`) and keep the dataset record on each sample.

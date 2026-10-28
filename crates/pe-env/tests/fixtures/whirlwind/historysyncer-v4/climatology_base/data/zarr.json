@@ -1,0 +1,130 @@
+{
+  "shape": [
+    144,
+    11,
+    720,
+    1440
+  ],
+  "data_type": "float16",
+  "chunk_grid": {
+    "name": "rectilinear",
+    "configuration": {
+      "kind": "inline",
+      "chunk_shapes": [
+        72,
+        11,
+        [
+          80,
+          280,
+          240,
+          120
+        ],
+        [
+          320,
+          160,
+          320,
+          400,
+          240
+        ]
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": "NaN",
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [
+          72,
+          11,
+          20,
+          20
+        ],
+        "codecs": [
+          {
+            "name": "transpose",
+            "configuration": {
+              "order": [
+                1,
+                0,
+                2,
+                3
+              ]
+            }
+          },
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 22,
+              "checksum": false
+            }
+          }
+        ],
+        "index_codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "crc32c"
+          }
+        ],
+        "index_location": "end"
+      }
+    }
+  ],
+  "attributes": {
+    "units": "m s-1",
+    "param_long_names": {
+      "u10": "10 m eastward wind",
+      "v10": "10 m northward wind",
+      "ucur": "total eastward surface current",
+      "vcur": "total northward surface current",
+      "wave_direction": "mean wave direction",
+      "wave_height": "significant height of combined wind waves and swell",
+      "wave_period": "mean wave period",
+      "mslp": "mean sea level pressure",
+      "z500": "geopotential height at 500 hPa",
+      "wind_speed": "10 m scalar wind speed",
+      "wind_constancy": "magnitude of mean wind divided by mean scalar speed"
+    },
+    "_FillValue": "NaN",
+    "param_units": {
+      "u10": "m s-1",
+      "v10": "m s-1",
+      "ucur": "m s-1",
+      "vcur": "m s-1",
+      "wave_direction": "degrees true",
+      "wave_height": "m",
+      "wave_period": "s",
+      "mslp": "hPa",
+      "z500": "dam",
+      "wind_speed": "m s-1",
+      "wind_constancy": "1"
+    },
+    "standard_gravity_m_s2": 9.80665
+  },
+  "dimension_names": [
+    "time",
+    "param",
+    "latitude",
+    "longitude"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

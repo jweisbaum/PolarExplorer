@@ -192,31 +192,46 @@ impl Whirlwind {
     }
 
     async fn open(&self, cancel: &AtomicBool) -> Result<Archive> {
+        let data_meta: Value =
+            serde_json::from_slice(&self.required("data/zarr.json", cancel).await?)
+                .map_err(|_| bad("invalid Whirlwind metadata: data/zarr.json"))?;
+        let order = layout::AxisOrder::parse(&data_meta)?;
+        let axis_name = |axis| {
+            data_meta["dimension_names"][axis]
+                .as_str()
+                .ok_or_else(|| bad("invalid Whirlwind dimension name"))
+        };
+        let param = axis_name(order.parameter_axis())?;
+        let lat = axis_name(2)?;
+        let lon = axis_name(3)?;
         let names = [
-            "data/zarr.json",
-            "param/zarr.json",
-            "param/c/0",
-            "latitude/zarr.json",
-            "latitude/c/0",
-            "longitude/zarr.json",
-            "longitude/c/0",
-            "time/zarr.json",
-            "time/c/0",
+            format!("{param}/zarr.json"),
+            format!("{param}/c/0"),
+            format!("{lat}/zarr.json"),
+            format!("{lat}/c/0"),
+            format!("{lon}/zarr.json"),
+            format!("{lon}/c/0"),
+            "time/zarr.json".to_owned(),
+            "time/c/0".to_owned(),
         ];
         let objects: BTreeMap<_, _> = stream::iter(names)
-            .map(
-                |name| async move { Ok::<_, EnvError>((name, self.required(name, cancel).await?)) },
-            )
+            .map(|name| async move {
+                let bytes = self.required(&name, cancel).await?;
+                Ok::<_, EnvError>((name, bytes))
+            })
             .buffer_unordered(self.concurrency)
             .try_collect()
             .await?;
-        let json = |name| -> Result<Value> {
+        let json = |name: &str| -> Result<Value> {
             serde_json::from_slice(&objects[name])
                 .map_err(|_| bad(format!("invalid Whirlwind metadata: {name}")))
         };
-        let (data_meta, param_meta) = (json("data/zarr.json")?, json("param/zarr.json")?);
+        let param_meta = json(&format!("{param}/zarr.json"))?;
         // A disagreeing axis would put every value at the wrong offset.
-        let (names, dimension) = (layout::axis_len(&param_meta)?, &data_meta["shape"][1]);
+        let (names, dimension) = (
+            layout::axis_len(&param_meta)?,
+            &data_meta["shape"][order.parameter_axis()],
+        );
         if dimension.as_u64() != Some(names as u64) {
             return Err(bad(format!(
                 "Whirlwind lists {names} parameter names but its data has {dimension} parameters"
@@ -226,7 +241,7 @@ impl Whirlwind {
             &data_meta,
             layout::parameters(
                 &param_meta,
-                &objects["param/c/0"],
+                &objects[&format!("{param}/c/0")],
                 &[
                     "u10",
                     "v10",
@@ -239,15 +254,15 @@ impl Whirlwind {
             )?,
         )?;
         let lat = layout::coordinate(
-            &json("latitude/zarr.json")?,
-            &objects["latitude/c/0"],
+            &json(&format!("{lat}/zarr.json"))?,
+            &objects[&format!("{lat}/c/0")],
             data.shape[2],
             "float32",
             4,
         )?;
         let lon = layout::coordinate(
-            &json("longitude/zarr.json")?,
-            &objects["longitude/c/0"],
+            &json(&format!("{lon}/zarr.json"))?,
+            &objects[&format!("{lon}/c/0")],
             data.shape[3],
             "float32",
             4,
@@ -345,7 +360,7 @@ impl Whirlwind {
     ) -> Result<BTreeMap<String, Index>> {
         let shards: BTreeMap<_, _> = plan
             .keys()
-            .map(|c| (c.key(), archive.data.index_len(*c)))
+            .map(|c| (archive.data.key(*c), archive.data.index_len(*c)))
             .collect();
         stream::iter(shards)
             .map(|(key, len)| async move {
@@ -368,7 +383,7 @@ impl Whirlwind {
         // A slow shard must not hold every other shard behind a global barrier.
         let indexes: BTreeMap<String, tokio::sync::OnceCell<Index>> = plan
             .keys()
-            .map(|chunk| (chunk.key(), tokio::sync::OnceCell::new()))
+            .map(|chunk| (archive.data.key(*chunk), tokio::sync::OnceCell::new()))
             .collect();
         let namespace = self.chunk_namespace(generation);
         let chunks = stream::iter(plan).map(|(chunk,cells)| {
@@ -376,8 +391,8 @@ impl Whirlwind {
             let namespace = &namespace;
             async move {
                 if cancel.load(Ordering::SeqCst) { return Err(EnvError::Cancelled); }
-                let key = chunk.key();
                 let array = &archive.data;
+                let key = array.key(chunk);
                 let index = indexes[&key].get_or_try_init(|| self.index(&key, array.index_len(chunk), cancel)).await?;
                 let memory_key = format!("{key}@{}",index.etag.as_deref().unwrap_or(""));
                 let extent = index.bytes.as_ref().map(|bytes| layout::index_entry(bytes,chunk)).transpose()?.flatten();
@@ -433,18 +448,19 @@ impl Whirlwind {
                         raw
                     }
                 };
-                let stride = array.inner[2]*array.inner[3];
+                let stride = array.parameter_stride();
                 let width = array.bytes_per_value;
                 let decoded = cells.into_iter().map(|cell| {
                     let offset = array.locate(cell).1;
                     let mut values = [f32::NAN;7];
                     for (i,param) in array.parameters.iter().enumerate() {
                         let at = (offset + param * stride)*width;
-                        values[i] = if width == 2 {
+                        let value = if width == 2 {
                             half::f16::from_bits(u16::from_le_bytes([raw[at],raw[at+1]])).to_f32()
                         } else {
                             f32::from_le_bytes([raw[at],raw[at+1],raw[at+2],raw[at+3]])
                         };
+                        values[i] = if value == array.fill_value { f32::NAN } else { value };
                     }
                     (cell, values)
                 }).collect::<Vec<_>>();
@@ -472,7 +488,7 @@ impl Whirlwind {
         let mut missing = 0;
         let mut cached = 0;
         for chunk in plan.keys() {
-            let key = chunk.key();
+            let key = archive.data.key(*chunk);
             let index = &indexes[&key];
             let memory_key = format!("{key}@{}", index.etag.as_deref().unwrap_or(""));
             if let Some(bytes) = &index.bytes

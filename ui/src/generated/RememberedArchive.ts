@@ -39,7 +39,7 @@ start: string,
  */
 stop: string | null,
 /**
- * Hindsight Sync's layout version (2 or 3).
+ * Hindsight Sync's layout version (2, 3 or 4).
  */
 layout_version: number,
 /**

@@ -42,6 +42,10 @@ fn codecs(value: &Value) -> bool {
     let Some(c) = value.as_array() else {
         return false;
     };
+    byte_codecs(c)
+}
+
+fn byte_codecs(c: &[Value]) -> bool {
     c.len() == 2
         && c[0]["name"] == "bytes"
         && c[0]["configuration"]["endian"] == "little"
@@ -125,13 +129,71 @@ pub(super) fn parameters(meta: &Value, bytes: &[u8], expected: &[&str]) -> Resul
         .collect()
 }
 
+/// Storage order of the combined weather array. Sampling always uses
+/// logical (time, parameter, latitude, longitude) coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AxisOrder {
+    TimeFirst,
+    FieldFirst,
+}
+
+impl AxisOrder {
+    pub fn parse(meta: &Value) -> Result<Self> {
+        let names = meta["dimension_names"]
+            .as_array()
+            .filter(|names| names.len() == 4)
+            .ok_or_else(|| bad("unsupported Whirlwind dimension order"))?;
+        let field = |v: &Value| v == "param" || v == "field";
+        if (names[2] != "latitude" && names[2] != "y")
+            || (names[3] != "longitude" && names[3] != "x")
+        {
+            return Err(bad("unsupported Whirlwind dimension order"));
+        }
+        if names[0] == "time" && field(&names[1]) {
+            Ok(Self::TimeFirst)
+        } else if field(&names[0]) && names[1] == "time" {
+            Ok(Self::FieldFirst)
+        } else {
+            Err(bad("unsupported Whirlwind dimension order"))
+        }
+    }
+
+    pub fn parameter_axis(self) -> usize {
+        match self {
+            Self::TimeFirst => 1,
+            Self::FieldFirst => 0,
+        }
+    }
+
+    fn logical(self, mut shape: [usize; 4]) -> [usize; 4] {
+        if self == Self::FieldFirst {
+            shape.swap(0, 1);
+        }
+        shape
+    }
+
+    fn transposed(self) -> Self {
+        match self {
+            Self::TimeFirst => Self::FieldFirst,
+            Self::FieldFirst => Self::TimeFirst,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct Array {
+    /// Shapes normalized to (time, parameter, latitude, longitude).
     pub shape: [usize; 4],
     pub inner: [usize; 4],
+    /// Array dimension order determines shard keys, independently of codecs.
+    pub order: AxisOrder,
+    /// Byte order after the inner chunk's optional transpose codec.
+    pub storage_order: AxisOrder,
+    /// Converted to NaN before interpolation; routing archives store -999.
+    pub fill_value: f32,
     pub bands: [Vec<usize>; 2],
     pub parameters: Vec<usize>,
-    /// Two for layout 2's float16, four for layout 3's float32.
+    /// Two for layouts 2/4's float16, four for layout 3's float32.
     pub bytes_per_value: usize,
 }
 
@@ -143,21 +205,20 @@ pub(super) struct Chunk {
     pub inner: u32,
 }
 
-impl Chunk {
-    pub fn key(self) -> String {
-        format!("data/c/{}/0/{}/{}", self.time, self.lat, self.lon)
-    }
-}
-
 impl Array {
     pub fn parse(meta: &Value, parameters: Vec<usize>) -> Result<Self> {
-        let shape: [usize; 4] = sizes(&meta["shape"])?
-            .try_into()
-            .map_err(|_| bad("Whirlwind needs four dimensions"))?;
+        let order = AxisOrder::parse(meta)?;
+        let shape = order.logical(
+            sizes(&meta["shape"])?
+                .try_into()
+                .map_err(|_| bad("Whirlwind needs four dimensions"))?,
+        );
         let shard = &meta["codecs"][0]["configuration"];
-        let inner: [usize; 4] = sizes(&shard["chunk_shape"])?
-            .try_into()
-            .map_err(|_| bad("invalid inner chunk shape"))?;
+        let inner = order.logical(
+            sizes(&shard["chunk_shape"])?
+                .try_into()
+                .map_err(|_| bad("invalid inner chunk shape"))?,
+        );
         let grid = &meta["chunk_grid"]["configuration"]["chunk_shapes"];
         let bands = [sizes(&grid[2])?, sizes(&grid[3])?];
         let bytes_per_value = match meta["data_type"].as_str() {
@@ -165,20 +226,51 @@ impl Array {
             Some("float32") => 4,
             _ => return Err(bad("unsupported Whirlwind sharded array layout")),
         };
+        let inner_codecs = shard["codecs"]
+            .as_array()
+            .ok_or_else(|| bad("unsupported Whirlwind inner chunk codecs"))?;
+        let storage_order = if byte_codecs(inner_codecs) {
+            order
+        } else if inner_codecs.len() == 3
+            && inner_codecs[0]["name"] == "transpose"
+            && inner_codecs[0]["configuration"]["order"] == serde_json::json!([1, 0, 2, 3])
+            && byte_codecs(&inner_codecs[1..])
+        {
+            order.transposed()
+        } else {
+            return Err(bad("unsupported Whirlwind inner chunk codecs"));
+        };
+        let quantization = meta["attributes"].get("quantization");
+        // HistorySyncer applies routing quantization before compression. These
+        // are already physical float16 values: never scale them a second time.
+        if let Some(q) = quantization
+            && (bytes_per_value != 2
+                || storage_order == order
+                || !matches!(q["scale"].as_u64(), Some(4 | 10))
+                || q["offset"] != 0
+                || q["already_applied_to_stored_values"] != true
+                || q["source_dtype"] != "float16"
+                || meta["fill_value"].as_f64() != Some(-999.))
+        {
+            return Err(bad("unsupported Whirlwind quantization"));
+        }
+        let fill_value = if meta["fill_value"] == "NaN" {
+            f32::NAN
+        } else if quantization.is_some() && meta["fill_value"].as_f64() == Some(-999.) {
+            -999.
+        } else {
+            return Err(bad("unsupported Whirlwind fill value"));
+        };
         if !v3(meta)
-            || meta["fill_value"] != "NaN"
-            || meta["dimension_names"]
-                != serde_json::json!(["time", "param", "latitude", "longitude"])
             || meta["chunk_grid"]["name"] != "rectilinear"
             || meta["chunk_grid"]["configuration"]["kind"] != "inline"
             || meta["codecs"].as_array().map(Vec::len) != Some(1)
             || meta["codecs"][0]["name"] != "sharding_indexed"
-            || !codecs(&shard["codecs"])
             || shard["index_location"] != "end"
             || shard["index_codecs"]
                 != serde_json::json!([{"name":"bytes","configuration":{"endian":"little"}},{"name":"crc32c"}])
-            || grid[0].as_u64() != Some(inner[0] as u64)
-            || grid[1].as_u64() != Some(shape[1] as u64)
+            || grid[1 - order.parameter_axis()].as_u64() != Some(inner[0] as u64)
+            || grid[order.parameter_axis()].as_u64() != Some(shape[1] as u64)
             || inner[1] != shape[1]
             || parameters.len() != 7
             || parameters.iter().any(|&p| p >= shape[1])
@@ -195,10 +287,29 @@ impl Array {
         Ok(Self {
             shape,
             inner,
+            order,
+            storage_order,
+            fill_value,
             bands,
             parameters,
             bytes_per_value,
         })
+    }
+
+    pub fn key(&self, chunk: Chunk) -> String {
+        let (time, lat, lon) = (chunk.time, chunk.lat, chunk.lon);
+        match self.order {
+            AxisOrder::TimeFirst => format!("data/c/{time}/0/{lat}/{lon}"),
+            AxisOrder::FieldFirst => format!("data/c/0/{time}/{lat}/{lon}"),
+        }
+    }
+
+    pub fn parameter_stride(&self) -> usize {
+        let plane = self.inner[2] * self.inner[3];
+        match self.storage_order {
+            AxisOrder::TimeFirst => plane,
+            AxisOrder::FieldFirst => self.inner[0] * plane,
+        }
     }
 
     pub fn locate(&self, cell: Cell) -> (Chunk, usize) {
@@ -217,9 +328,12 @@ impl Array {
         let (lon, x) = locate(x, &self.bands[1]);
         let columns = self.bands[1][lon] / self.inner[3];
         let inner = (y / self.inner[2] * columns + x / self.inner[3]) as u32;
-        let offset = ((t as usize % self.inner[0]) * self.inner[1] * self.inner[2]
-            + y % self.inner[2])
-            * self.inner[3]
+        let time_stride = match self.storage_order {
+            AxisOrder::TimeFirst => self.inner[1] * self.inner[2] * self.inner[3],
+            AxisOrder::FieldFirst => self.inner[2] * self.inner[3],
+        };
+        let offset = (t as usize % self.inner[0]) * time_stride
+            + (y % self.inner[2]) * self.inner[3]
             + x % self.inner[3];
         (
             Chunk {

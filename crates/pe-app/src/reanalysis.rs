@@ -80,7 +80,7 @@ pub struct RememberedArchive {
     pub start: String,
     /// The last time it holds, RFC 3339 UTC; none while it keeps growing.
     pub stop: Option<String>,
-    /// Hindsight Sync's layout version (2 or 3).
+    /// Hindsight Sync's layout version (2, 3 or 4).
     pub layout_version: u32,
     /// Degrees of latitude and longitude per inner chunk.
     pub chunk_degrees: u32,

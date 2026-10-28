@@ -1502,9 +1502,20 @@ expected in the combined layout: `data`
 contains `u10`, `v10`,
 `ucur`, `vcur`, `wave_direction`, `wave_height` and `wave_period`, mapped by
 the `param` coordinate names. There are no separate wave-array requests. Values
-are float16 (layout 2) or float32 (layout 3), among seven or eleven parameters,
-located by name, stored in Zstandard-compressed inner chunks inside rectilinear
-shards. Each archive has its own chunking (Hindsight Sync lists it as degrees
+are float16 (layouts 2 and 4) or float32 (layout 3), among seven or eleven parameters,
+located by name, stored in Zstandard-compressed inner chunks (including level
+22) inside rectilinear shards. Both time–field–y–x and field–time–y–x axis
+orders are supported; `dimension_names` determines coordinate-array names,
+shard keys and value strides. Fields may be named `param` or `field`, and
+spatial axes `latitude`/`longitude` or `y`/`x` (geographic degrees).
+HistorySyncer's layout-4 Zstd22 presets keep time-first dimensions and shard
+keys while their inner `transpose [1,0,2,3]` codec stores field-first bytes.
+The reader honors these orders independently. Routing values have already
+been quantized by the writer and are read directly, with `-999` converted to
+missing data before interpolation; Climatology base uses NaN. The seven
+weather fields retain their existing units in layout 4; its extra pressure
+and geopotential-height fields are not sampled by PolarExplorer.
+Each archive has its own chunking (Hindsight Sync lists it as degrees
 × hours); the reader takes the inner chunk shape and the shard bands from the
 metadata, never assuming them. Only inner chunks intersecting a requested sample's
 spatial and temporal interpolation stencil are downloaded. It reads each

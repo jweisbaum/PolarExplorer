@@ -6,7 +6,7 @@
     reason = "test support; a broken fixture should stop the test"
 )]
 
-use super::layout::{Archive, Array, Chunk};
+use super::layout::{Archive, Array, AxisOrder};
 use super::{ArchiveLocation, ArchiveRef, Whirlwind};
 use crate::Reanalysis;
 use crate::grid::{Axis, Grid};
@@ -61,6 +61,9 @@ pub(super) fn archive_with(dtype: Dtype, names: &[&str]) -> Archive {
     let array = Array {
         shape: [4, np, 4, 8],
         inner: [2, np, 2, 2],
+        order: AxisOrder::TimeFirst,
+        storage_order: AxisOrder::TimeFirst,
+        fill_value: f32::NAN,
         bands: [vec![2, 2], vec![4, 4]],
         parameters: NEEDED
             .iter()
@@ -88,6 +91,36 @@ pub(super) fn archive_with(dtype: Dtype, names: &[&str]) -> Archive {
 /// height 2 + hour and period 8 s.
 pub fn fixture() -> BTreeMap<String, Vec<u8>> {
     fixture_with(Dtype::F16, &NEEDED)
+}
+
+/// Metadata and full-size 72-hour tiles produced by HistorySyncer's layout-4
+/// writer. Routing uses pre-quantized values and -999; the base uses NaN.
+pub fn historysyncer_fixture(routing: bool) -> BTreeMap<String, Vec<u8>> {
+    let preset = if routing {
+        "routing"
+    } else {
+        "climatology_base"
+    };
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/whirlwind/historysyncer-v4")
+        .join(preset);
+    [
+        "zarr.json",
+        "data/zarr.json",
+        "param/zarr.json",
+        "param/c/0",
+        "latitude/zarr.json",
+        "latitude/c/0",
+        "longitude/zarr.json",
+        "longitude/c/0",
+        "time/zarr.json",
+        "time/c/0",
+        "data/c/0/0/1/3",
+        "data/c/1/0/1/3",
+    ]
+    .into_iter()
+    .map(|key| (key.to_owned(), std::fs::read(root.join(key)).unwrap()))
+    .collect()
 }
 
 /// [`fixture`]'s truth values in the parameters of `names` that [`fixture`]
@@ -140,16 +173,7 @@ pub fn fixture_with(dtype: Dtype, names: &[&str]) -> BTreeMap<String, Vec<u8>> {
                 }
                 index.extend_from_slice(&crc32c::crc32c(&index).to_le_bytes());
                 shard.extend(index);
-                objects.insert(
-                    Chunk {
-                        time: t,
-                        lat: y,
-                        lon: x,
-                        inner: 0,
-                    }
-                    .key(),
-                    shard,
-                );
+                objects.insert(format!("data/c/{t}/0/{y}/{x}"), shard);
             }
         }
     }

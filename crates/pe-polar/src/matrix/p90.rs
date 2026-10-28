@@ -94,7 +94,7 @@ impl Distribution<'_> {
         match self {
             Self::Point(v) => *v,
             Self::Gaussian(mean, sigma) => mean + 10. * sigma,
-            Self::Sampled(_, bins, _) => f64::from(*bins.last().unwrap()),
+            Self::Sampled(_, bins, _) => bins.last().map_or(0., |&v| f64::from(v)),
         }
     }
     fn cdf(&self, speed: f64) -> f64 {
